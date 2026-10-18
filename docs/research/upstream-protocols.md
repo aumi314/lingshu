@@ -71,6 +71,7 @@
 | 智谱 chat | `glm-5.3` | **默认带**（文档没写，实测有），最后一块 |
 | StepFun chat | `step-5-preview` | 几乎每块都带**累计** usage；最后一块 `choices` 为空，是总量 |
 | Moonshot chat | `kimi-k3` | **不加 `include_usage` 就没有 usage**；加了以后最后一块 `choices` 为空 |
+| MiMo chat | `mimo-v2.6-pro` | **默认带**，最后一块 `choices` 为空 |
 | 阿里 messages | `qwen3.8-max` | `message_start` 的 `input_tokens`=7，`message_delta` 的 `input_tokens`=68。**开头的值不准，必须以 `message_delta` 为准** |
 
 结算规则据此定为：**每个字段取流里最后出现的值**（后出现的覆盖先出现的），不累加，也不信任开头的值。
@@ -79,5 +80,5 @@
 - 阿里旧域名 `dashscope.aliyuncs.com/apps/anthropic` 可用；`qwen3.8-max`、`qwen3.8-flash` 都能通，回复里带 thinking 块。
 - 智谱模型名不区分大小写（`GLM-5.3` 和 `glm-5.3` 都行，返回的 `model` 字段原样回显）。
 - DeepSeek `/models` 只有 `deepseek-flash`、`deepseek-v4-pro`；传 `deepseek-v4.1-flash` 会报错。
-- MiMo 这个 key 在 `api.xiaomimimo.com`、`token-plan-cn`、`token-plan-sgp` 上都返回 401 Invalid API Key。
+- MiMo 第一次给的 key 无效（401），换 key 后 `https://api.xiaomimimo.com/v1` 正常。
 - 阿里渠道上没有 `MiniMax-M3`。
