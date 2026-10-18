@@ -1,0 +1,7 @@
+# 参考仓库，各自有 git，不进本仓库
+/references/
+
+# 本地环境和密钥
+.env
+.env.*
+!.env.example
