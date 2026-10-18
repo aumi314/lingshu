@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -119,9 +120,14 @@ func serve() error {
 	dist, _ := fs.Sub(web.Dist, "dist")
 	(&api.Server{Store: s, Relay: h, Web: dist}).Register(mux)
 
-	srv := &http.Server{Addr: cfg.Listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	// 先占住端口再报"已启动"，端口被占用时直接报错退出
+	ln, err := net.Listen("tcp", cfg.Listen)
+	if err != nil {
+		return err
+	}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	errCh := make(chan error, 1)
-	go func() { errCh <- srv.ListenAndServe() }()
+	go func() { errCh <- srv.Serve(ln) }()
 	slog.Info("灵枢已启动", "listen", cfg.Listen)
 
 	select {

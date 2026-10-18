@@ -15,6 +15,8 @@ import grok from '../assets/logos/grok.svg?raw'
 import mistral from '../assets/logos/mistral.svg?raw'
 import minimax from '../assets/logos/minimax.svg?raw'
 import meta from '../assets/logos/meta.svg?raw'
+import doubao from '../assets/logos/doubao.svg?raw'
+import hunyuan from '../assets/logos/hunyuan.svg?raw'
 
 type Vendor = { name: string; svg: string }
 
@@ -26,6 +28,9 @@ const OUTER: Vendor[] = [
   { name: 'Qwen', svg: qwen },
   { name: 'MiMo', svg: mimo },
   { name: 'StepFun', svg: stepfun },
+  { name: 'MiniMax', svg: minimax },
+  { name: 'Doubao Seed', svg: doubao },
+  { name: 'HY', svg: hunyuan }, // 腾讯混元
 ]
 // 内圈：海外模型
 const INNER: Vendor[] = [
@@ -33,7 +38,6 @@ const INNER: Vendor[] = [
   { name: 'Claude', svg: claude },
   { name: 'Grok', svg: grok },
   { name: 'Mistral', svg: mistral },
-  { name: 'MiniMax', svg: minimax },
   { name: 'Muse', svg: meta }, // Meta 的模型
 ]
 
@@ -109,7 +113,7 @@ export default function Meridian() {
     // 两层轨道都是倾斜的椭圆，depth = sin(角度)：>0 在中枢前面，<0 在后面。
     const geometry = () => {
       const narrow = w < 860
-      const pivot = narrow ? { x: w * 0.5, y: h * 0.27 } : { x: w * 0.72, y: h * 0.5 }
+      const pivot = narrow ? { x: w * 0.5, y: h * 0.27 } : { x: w * 0.73, y: h * 0.5 }
       const R = narrow ? Math.min(w * 0.36, h * 0.22) : Math.min(w * 0.235, h * 0.36)
       const logo = narrow ? 30 : 54
       return { narrow, pivot, R, logo }
@@ -118,7 +122,7 @@ export default function Meridian() {
     const place = (i: number, outer: boolean, R: number, pivot: Pt) => {
       const n = outer ? OUTER.length : INNER.length
       const a = outer ? time * 0.05 + (i / n) * Math.PI * 2 : -time * 0.09 + (i / n) * Math.PI * 2 + Math.PI / n
-      const rx = outer ? R * 1.16 : R * 0.82
+      const rx = outer ? R * 1.1 : R * 0.8
       const ry = outer ? R * 0.86 : R * 0.6
       const depth = Math.sin(a)
       return { x: pivot.x + Math.cos(a) * rx, y: pivot.y + depth * ry, depth }
@@ -191,7 +195,7 @@ export default function Meridian() {
     const drawOrbits = (pivot: Pt, R: number) => {
       ctx.lineWidth = 1
       ctx.strokeStyle = rgba(JADE, 0.07)
-      for (const [rx, ry] of [[1.16, 0.86], [0.82, 0.6]]) {
+      for (const [rx, ry] of [[1.1, 0.86], [0.8, 0.6]]) {
         ctx.beginPath()
         ctx.ellipse(pivot.x, pivot.y, R * rx, R * ry, 0, 0, Math.PI * 2)
         ctx.stroke()
