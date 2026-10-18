@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Alert, Button, Card, Form, Input, Typography } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
 import { post } from '../api'
 import { useApp } from '../app'
 
@@ -8,13 +9,14 @@ export default function Login() {
   const { reload, t } = useApp()
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const nav = useNavigate()
 
   const onFinish = async (v: { username: string; password: string }) => {
     setSubmitting(true)
     setError('')
     try {
       await post('/api/auth/login', v)
-      await reload()
+      await reload() // 登录状态更新后，/login 路由会跳回原来要去的页面
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -43,6 +45,9 @@ export default function Login() {
             {t('登录', 'Sign in')}
           </Button>
         </Form>
+        <Button type="link" style={{ padding: 0, marginTop: 12 }} onClick={() => nav('/')}>
+          ← {t('返回首页', 'Back to home')}
+        </Button>
       </Card>
     </div>
   )
