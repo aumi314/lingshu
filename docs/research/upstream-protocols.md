@@ -59,3 +59,25 @@
 - **阿里百炼**：官方文档说 `dashscope.aliyuncs.com` 已迁移到 `{WorkspaceId}.cn-beijing.maas.aliyuncs.com`。旧域名现在能不能用，以冒烟测试为准。
 - **缓存计价差别大**：智谱命中约半价、自动；阿里显式缓存写入 125%、命中约 10%；MiMo 写入限时免费；StepFun 没有单独的写入价。4 个价格维度都能覆盖，写入价填 0 也合法。
 - **订阅套餐的使用条款**：GLM Coding Plan 只能在指定工具里用；Kimi Code 要求保留工具真实的 User-Agent。风险用户已知悉，是否使用由用户决定。
+
+## 实测结果（2026-10-18，本地 WSL 直连）
+
+文档说的和实测不一致时，以实测为准。
+
+| 上游 / 协议 | 模型 | 流式 usage 实测 |
+|---|---|---|
+| DeepSeek chat | `deepseek-flash` | **默认带**。最后一块带 usage，这一块 `choices` 不为空（含 `finish_reason`）。另有 `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` |
+| DeepSeek responses | `deepseek-flash` | `response.completed` 带 usage；没有 `[DONE]`（Responses 协议本来就不发） |
+| 智谱 chat | `glm-5.3` | **默认带**（文档没写，实测有），最后一块 |
+| StepFun chat | `step-5-preview` | 几乎每块都带**累计** usage；最后一块 `choices` 为空，是总量 |
+| Moonshot chat | `kimi-k3` | **不加 `include_usage` 就没有 usage**；加了以后最后一块 `choices` 为空 |
+| 阿里 messages | `qwen3.8-max` | `message_start` 的 `input_tokens`=7，`message_delta` 的 `input_tokens`=68。**开头的值不准，必须以 `message_delta` 为准** |
+
+结算规则据此定为：**每个字段取流里最后出现的值**（后出现的覆盖先出现的），不累加，也不信任开头的值。
+
+其他实测：
+- 阿里旧域名 `dashscope.aliyuncs.com/apps/anthropic` 可用；`qwen3.8-max`、`qwen3.8-flash` 都能通，回复里带 thinking 块。
+- 智谱模型名不区分大小写（`GLM-5.3` 和 `glm-5.3` 都行，返回的 `model` 字段原样回显）。
+- DeepSeek `/models` 只有 `deepseek-flash`、`deepseek-v4-pro`；传 `deepseek-v4.1-flash` 会报错。
+- MiMo 这个 key 在 `api.xiaomimimo.com`、`token-plan-cn`、`token-plan-sgp` 上都返回 401 Invalid API Key。
+- 阿里渠道上没有 `MiniMax-M3`。
