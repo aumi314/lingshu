@@ -128,7 +128,7 @@ resp = client.chat.completions.create(
       </header>
 
       <section className="ls-hero">
-        <Meridian legend={{ live: t('已接入', 'Live'), soon: t('即将接入', 'Coming soon') }} />
+        <Meridian />
         <div className="ls-hero-text">
           <div className={`ls-eyebrow ls-rise${lang === 'en' ? ' ls-eyebrow-en' : ''}`} style={{ animationDelay: '0.05s' }}>
             {t('团队 AI 模型中枢', 'The team AI model gateway')}

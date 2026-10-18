@@ -1,5 +1,6 @@
 // 首页主视觉"经络图"：请求像气血一样从画面左侧流入中枢，再沿经脉分到各家模型。
-// 各家模型的 logo 由粒子组成，分两层轨道：内圈已接入，外圈即将接入。轨道倾斜，转到中枢后面的会变小变暗。
+// 各家模型的 logo 由粒子组成，分两层轨道：外圈中国模型，内圈海外模型，光点两圈都会去。
+// 轨道倾斜，转到中枢后面的会变小变暗。
 // 纯 canvas 绘制；系统开启"减少动态效果"时只画静止的一帧。
 import { useEffect, useRef } from 'react'
 import deepseek from '../assets/logos/deepseek.svg?raw'
@@ -13,24 +14,27 @@ import claude from '../assets/logos/claude.svg?raw'
 import grok from '../assets/logos/grok.svg?raw'
 import mistral from '../assets/logos/mistral.svg?raw'
 import minimax from '../assets/logos/minimax.svg?raw'
+import meta from '../assets/logos/meta.svg?raw'
 
-type Vendor = { name: string; svg?: string; text?: string; live: boolean }
+type Vendor = { name: string; svg: string }
 
-const LIVE: Vendor[] = [
-  { name: 'DeepSeek', svg: deepseek, live: true },
-  { name: 'GLM', svg: zhipu, live: true },
-  { name: 'Kimi', svg: kimi, live: true },
-  { name: 'Qwen', svg: qwen, live: true },
-  { name: 'MiMo', svg: mimo, live: true },
-  { name: 'StepFun', svg: stepfun, live: true },
+// 外圈：中国模型
+const OUTER: Vendor[] = [
+  { name: 'DeepSeek', svg: deepseek },
+  { name: 'GLM', svg: zhipu },
+  { name: 'Kimi', svg: kimi },
+  { name: 'Qwen', svg: qwen },
+  { name: 'MiMo', svg: mimo },
+  { name: 'StepFun', svg: stepfun },
 ]
-const SOON: Vendor[] = [
-  { name: 'GPT', svg: openai, live: false },
-  { name: 'Claude', svg: claude, live: false },
-  { name: 'Grok', svg: grok, live: false },
-  { name: 'Mistral', svg: mistral, live: false },
-  { name: 'MiniMax', svg: minimax, live: false },
-  { name: 'Muse', text: 'M', live: false }, // 图标库里没有，先用字形占位
+// 内圈：海外模型
+const INNER: Vendor[] = [
+  { name: 'GPT', svg: openai },
+  { name: 'Claude', svg: claude },
+  { name: 'Grok', svg: grok },
+  { name: 'Mistral', svg: mistral },
+  { name: 'MiniMax', svg: minimax },
+  { name: 'Muse', svg: meta }, // Meta 的模型
 ]
 
 const JADE = [110, 231, 200]
@@ -58,19 +62,11 @@ async function sampleLogo(v: Vendor): Promise<{ hx: number; hy: number }[]> {
   const c = document.createElement('canvas')
   c.width = c.height = S
   const g = c.getContext('2d', { willReadFrequently: true })!
-  if (v.svg) {
-    const svg = v.svg.replace('fill="currentColor"', 'fill="#fff"').replace(/width="1em"/, `width="${S}"`).replace(/height="1em"/, `height="${S}"`)
-    const img = new Image()
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
-    await img.decode()
-    g.drawImage(img, 0, 0, S, S)
-  } else {
-    g.fillStyle = '#fff'
-    g.font = `900 ${S * 0.9}px LingshuSerif, serif`
-    g.textAlign = 'center'
-    g.textBaseline = 'middle'
-    g.fillText(v.text ?? '?', S / 2, S / 2 + 4)
-  }
+  const svg = v.svg.replace('fill="currentColor"', 'fill="#fff"').replace(/width="1em"/, `width="${S}"`).replace(/height="1em"/, `height="${S}"`)
+  const img = new Image()
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
+  await img.decode()
+  g.drawImage(img, 0, 0, S, S)
   const data = g.getImageData(0, 0, S, S).data
   const pts: { hx: number; hy: number }[] = []
   const step = 2
@@ -82,10 +78,8 @@ async function sampleLogo(v: Vendor): Promise<{ hx: number; hy: number }[]> {
   return pts
 }
 
-export default function Meridian({ legend }: { legend: { live: string; soon: string } }) {
+export default function Meridian() {
   const ref = useRef<HTMLCanvasElement>(null)
-  const legendRef = useRef(legend)
-  legendRef.current = legend // 切换语言时动画不重启，下一帧直接用新文字
 
   useEffect(() => {
     const canvas = ref.current!
@@ -121,11 +115,11 @@ export default function Meridian({ legend }: { legend: { live: string; soon: str
       return { narrow, pivot, R, logo }
     }
 
-    const place = (i: number, live: boolean, R: number, pivot: Pt) => {
-      const n = live ? LIVE.length : SOON.length
-      const a = live ? time * 0.09 + (i / n) * Math.PI * 2 : -time * 0.05 + (i / n) * Math.PI * 2 + Math.PI / n
-      const rx = live ? R * 0.82 : R * 1.16
-      const ry = live ? R * 0.6 : R * 0.86
+    const place = (i: number, outer: boolean, R: number, pivot: Pt) => {
+      const n = outer ? OUTER.length : INNER.length
+      const a = outer ? time * 0.05 + (i / n) * Math.PI * 2 : -time * 0.09 + (i / n) * Math.PI * 2 + Math.PI / n
+      const rx = outer ? R * 1.16 : R * 0.82
+      const ry = outer ? R * 0.86 : R * 0.6
       const depth = Math.sin(a)
       return { x: pivot.x + Math.cos(a) * rx, y: pivot.y + depth * ry, depth }
     }
@@ -144,7 +138,7 @@ export default function Meridian({ legend }: { legend: { live: string; soon: str
         t: 0,
         speed: 0.3 + Math.random() * 0.25,
         client: Math.floor(Math.random() * CLIENTS),
-        target: Math.floor(Math.random() * LIVE.length),
+        target: Math.floor(Math.random() * (OUTER.length + INNER.length)),
         color: r < 0.72 ? JADE : r < 0.9 ? GOLD : CINNABAR,
       })
     }
@@ -197,23 +191,19 @@ export default function Meridian({ legend }: { legend: { live: string; soon: str
     const drawOrbits = (pivot: Pt, R: number) => {
       ctx.lineWidth = 1
       ctx.strokeStyle = rgba(JADE, 0.07)
-      ctx.beginPath()
-      ctx.ellipse(pivot.x, pivot.y, R * 0.82, R * 0.6, 0, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.setLineDash([3, 7])
-      ctx.strokeStyle = rgba(PAPER, 0.08)
-      ctx.beginPath()
-      ctx.ellipse(pivot.x, pivot.y, R * 1.16, R * 0.86, 0, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.setLineDash([])
+      for (const [rx, ry] of [[1.16, 0.86], [0.82, 0.6]]) {
+        ctx.beginPath()
+        ctx.ellipse(pivot.x, pivot.y, R * rx, R * ry, 0, 0, Math.PI * 2)
+        ctx.stroke()
+      }
     }
 
     // 画一个 logo：粒子跟随目标位置（入场时从中枢飞出聚拢），收到请求时向外一涨并变亮
-    const drawNode = (n: Node, at: { x: number; y: number; depth: number }, size: number, dt: number, labelBelow: boolean) => {
+    const drawNode = (n: Node, at: { x: number; y: number; depth: number }, size: number, dt: number) => {
       const scale = 0.78 + 0.22 * (at.depth + 1) / 2
-      const s = size * scale * (n.v.live ? 1 : 0.82)
+      const s = size * scale
       const swell = 1 + n.glow * 0.28
-      const base = (n.v.live ? 0.82 : 0.38) * (0.55 + 0.45 * (at.depth + 1) / 2)
+      const base = 0.82 * (0.55 + 0.45 * (at.depth + 1) / 2)
       const k = reduced ? 1 : Math.min(1, dt * 4.5)
       const color = n.glow > 0.05 ? JADE : PAPER
       for (const d of n.dots) {
@@ -237,8 +227,8 @@ export default function Meridian({ legend }: { legend: { live: string; soon: str
       ctx.font = `500 ${Math.round(11 * scale)}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
-      ctx.fillStyle = rgba(PAPER, (n.v.live ? 0.6 : 0.3) * (0.6 + 0.4 * (at.depth + 1) / 2) + n.glow * 0.4)
-      if (labelBelow) ctx.fillText(n.v.name, at.x, at.y + s * 0.5 + 6)
+      ctx.fillStyle = rgba(PAPER, 0.6 * (0.6 + 0.4 * (at.depth + 1) / 2) + n.glow * 0.4)
+      ctx.fillText(n.v.name, at.x, at.y + s * 0.5 + 6)
     }
 
     const draw = (dt: number) => {
@@ -248,8 +238,9 @@ export default function Meridian({ legend }: { legend: { live: string; soon: str
       ctx.fillStyle = `rgba(${INK}, ${reduced ? 1 : 0.3})`
       ctx.fillRect(0, 0, w, h)
 
-      const live = LIVE.map((_, i) => place(i, true, R, pivot))
-      const soon = SOON.map((_, i) => place(i, false, R, pivot))
+      const outer = OUTER.map((_, i) => place(i, true, R, pivot))
+      const inner = INNER.map((_, i) => place(i, false, R, pivot))
+      const spots = [...outer, ...inner] // 和 nodes 的顺序一致
 
       // 经脉：调用方 → 中枢 → 已接入的各家
       ctx.lineWidth = 1
@@ -262,9 +253,9 @@ export default function Meridian({ legend }: { legend: { live: string; soon: str
         ctx.quadraticCurveTo(k.x, k.y, pivot.x, pivot.y)
         ctx.stroke()
       }
-      for (const m of live) {
+      for (const m of spots) {
         const k = ctrlOut(pivot, m)
-        ctx.strokeStyle = rgba(JADE, 0.05 + 0.05 * (m.depth + 1) / 2)
+        ctx.strokeStyle = rgba(JADE, 0.04 + 0.05 * (m.depth + 1) / 2)
         ctx.beginPath()
         ctx.moveTo(pivot.x, pivot.y)
         ctx.quadraticCurveTo(k.x, k.y, m.x, m.y)
@@ -274,13 +265,13 @@ export default function Meridian({ legend }: { legend: { live: string; soon: str
 
       // 先画在中枢后面的，再画中枢，最后画在前面的
       const all = [
-        ...nodes.slice(0, LIVE.length).map((n, i) => ({ n, at: live[i] })),
-        ...nodes.slice(LIVE.length).map((n, i) => ({ n, at: soon[i] })),
+        ...nodes.slice(0, OUTER.length).map((n, i) => ({ n, at: outer[i] })),
+        ...nodes.slice(OUTER.length).map((n, i) => ({ n, at: inner[i] })),
       ].sort((a, b) => a.at.depth - b.at.depth)
       for (const n of nodes) n.glow = Math.max(0, n.glow - dt * 1.4)
-      for (const { n, at } of all) if (at.depth < 0) drawNode(n, at, logo, dt, true)
+      for (const { n, at } of all) if (at.depth < 0) drawNode(n, at, logo, dt)
       drawPivot(pivot, R)
-      for (const { n, at } of all) if (at.depth >= 0) drawNode(n, at, logo, dt, true)
+      for (const { n, at } of all) if (at.depth >= 0) drawNode(n, at, logo, dt)
 
       // 请求光点
       ctx.globalCompositeOperation = 'lighter'
@@ -298,7 +289,7 @@ export default function Meridian({ legend }: { legend: { live: string; soon: str
           }
         }
         const c = clientPt(p.client, narrow)
-        const m = live[p.target]
+        const m = spots[p.target]
         const pos = p.leg === 0 ? bezier(c, ctrlIn(c, pivot), pivot, p.t) : bezier(pivot, ctrlOut(pivot, m), m, p.t)
         const g = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, 7)
         g.addColorStop(0, rgba(p.color, 0.95))
@@ -310,26 +301,6 @@ export default function Meridian({ legend }: { legend: { live: string; soon: str
       }
       ctx.globalCompositeOperation = 'source-over'
 
-      // 图例：实心点 = 已接入（内圈），空心点 = 即将接入（外圈）
-      const lx = narrow ? w - 16 : w - 40
-      const ly = narrow ? h * 0.52 : h - 40
-      ctx.font = '12px -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif'
-      ctx.textBaseline = 'middle'
-      ctx.textAlign = 'right'
-      const soonW = ctx.measureText(legendRef.current.soon).width
-      ctx.fillStyle = rgba(PAPER, 0.4)
-      ctx.fillText(legendRef.current.soon, lx, ly)
-      ctx.strokeStyle = rgba(PAPER, 0.5)
-      ctx.beginPath()
-      ctx.arc(lx - soonW - 10, ly, 3, 0, Math.PI * 2)
-      ctx.stroke()
-      const liveX = lx - soonW - 28
-      ctx.fillStyle = rgba(PAPER, 0.65)
-      ctx.fillText(legendRef.current.live, liveX, ly)
-      ctx.fillStyle = rgba(JADE, 0.9)
-      ctx.beginPath()
-      ctx.arc(liveX - ctx.measureText(legendRef.current.live).width - 10, ly, 3, 0, Math.PI * 2)
-      ctx.fill()
     }
 
     const tick = (now: number) => {
@@ -341,14 +312,14 @@ export default function Meridian({ legend }: { legend: { live: string; soon: str
       raf = requestAnimationFrame(tick)
     }
 
-    // 等宋体（中枢的"枢"、Muse 的占位字）和各家 logo 都准备好再开始画
+    // 等宋体（中枢的"枢"）和各家 logo 都准备好再开始画
     Promise.all([document.fonts.load('900 40px LingshuSerif'), document.fonts.load('600 40px LingshuSerif')])
       .catch(() => {})
-      .then(() => Promise.all([...LIVE, ...SOON].map(sampleLogo)))
+      .then(() => Promise.all([...OUTER, ...INNER].map(sampleLogo)))
       .then((sampled) => {
         if (cancelled) return
         const { pivot } = geometry()
-        nodes = [...LIVE, ...SOON].map((v, i) => ({
+        nodes = [...OUTER, ...INNER].map((v, i) => ({
           v,
           glow: 0,
           // 入场：粒子从中枢附近散开出发
