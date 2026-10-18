@@ -1,5 +1,5 @@
 // 首页：不需要登录，不请求任何数据。视觉取《灵枢》经络之意——一枢通百脉。
-import { useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../app'
 import Meridian from '../components/Meridian'
@@ -22,6 +22,109 @@ function highlight(code: string) {
   })
 }
 
+const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+// 滚动到视野里时给 [data-reveal] 加上 is-in，触发 CSS 里的浮现动画
+function useReveal() {
+  useEffect(() => {
+    const els = document.querySelectorAll('[data-reveal]')
+    if (reducedMotion()) {
+      els.forEach((el) => el.classList.add('is-in'))
+      return
+    }
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((e) => e.isIntersecting && (e.target.classList.add('is-in'), io.unobserve(e.target))),
+      { threshold: 0.2 },
+    )
+    els.forEach((el) => io.observe(el))
+    return () => io.disconnect()
+  })
+}
+
+// 标题逐字晕开，像墨滴进宣纸
+function InkTitle({ parts }: { parts: { text: string; accent?: boolean; br?: boolean }[] }) {
+  let i = 0
+  return (
+    <>
+      {parts.map((p, k) =>
+        p.br ? (
+          <br key={k} />
+        ) : (
+          <span key={k} className={p.accent ? 'ls-accent' : undefined}>
+            {[...p.text].map((ch) => (
+              <span key={i} className="ls-ink" style={{ animationDelay: `${0.2 + i++ * 0.11}s` }}>
+                {ch === ' ' ? '\u00a0' : ch}
+              </span>
+            ))}
+          </span>
+        ),
+      )}
+    </>
+  )
+}
+
+// 进入视野后从 0 滚到目标值
+function CountUp({ to }: { to: number }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [n, setN] = useState(reducedMotion() ? to : 0)
+  useEffect(() => {
+    if (reducedMotion()) return
+    const el = ref.current!
+    let raf = 0
+    const io = new IntersectionObserver(([e]) => {
+      if (!e.isIntersecting) return
+      io.disconnect()
+      const start = performance.now()
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / 1400)
+        setN(Math.round(to * (1 - Math.pow(1 - t, 3))))
+        if (t < 1) raf = requestAnimationFrame(step)
+      }
+      raf = requestAnimationFrame(step)
+    })
+    io.observe(el)
+    return () => (io.disconnect(), cancelAnimationFrame(raf))
+  }, [to])
+  return <span ref={ref}>{n}</span>
+}
+
+// 终端里逐字打出代码；换标签页时重新打
+function Typewriter({ code, render }: { code: string; render: (s: string) => ReactNode }) {
+  const ref = useRef<HTMLPreElement>(null)
+  const [shown, setShown] = useState(reducedMotion() ? code.length : 0)
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const io = new IntersectionObserver(([e]) => e.isIntersecting && setVisible(true), { threshold: 0.3 })
+    io.observe(ref.current!)
+    return () => io.disconnect()
+  }, [])
+  useEffect(() => {
+    if (reducedMotion()) return setShown(code.length)
+    if (!visible) return
+    setShown(0)
+    let i = 0
+    const id = setInterval(() => {
+      i += Math.max(1, Math.round(code.length / 70))
+      setShown(Math.min(i, code.length))
+      if (i >= code.length) clearInterval(id)
+    }, 16)
+    return () => clearInterval(id)
+  }, [code, visible])
+  return (
+    <pre ref={ref} className="ls-code">
+      {render(code.slice(0, shown))}
+      <span className={`ls-caret${shown >= code.length ? ' done' : ''}`} aria-hidden="true" />
+    </pre>
+  )
+}
+
+// 卡片边框的光跟着鼠标走
+const trackGlow = (e: MouseEvent<HTMLElement>) => {
+  const r = e.currentTarget.getBoundingClientRect()
+  e.currentTarget.style.setProperty('--gx', `${e.clientX - r.left}px`)
+  e.currentTarget.style.setProperty('--gy', `${e.clientY - r.top}px`)
+}
+
 export default function Welcome() {
   const { user, t, lang, setPref } = useApp()
   const nav = useNavigate()
@@ -30,6 +133,7 @@ export default function Welcome() {
   const [copied, setCopied] = useState('')
 
   const enter = () => nav(user ? '/console' : '/login')
+  useReveal()
   const copy = async (text: string, id: string) => {
     await navigator.clipboard.writeText(text).catch(() => {})
     setCopied(id)
@@ -133,26 +237,20 @@ resp = client.chat.completions.create(
           <div className={`ls-eyebrow ls-rise${lang === 'en' ? ' ls-eyebrow-en' : ''}`} style={{ animationDelay: '0.05s' }}>
             {t('团队 AI 模型中枢', 'The team AI model gateway')}
           </div>
-          <h1 className={`ls-title ls-rise${lang === 'en' ? ' ls-title-en' : ''}`} style={{ animationDelay: '0.15s' }}>
+          <h1 key={lang} className={`ls-title${lang === 'en' ? ' ls-title-en' : ''}`} aria-label={t('一枢通百脉', 'One pivot, every model.')}>
             {lang === 'zh' ? (
-              <>
-                一枢<span className="ls-accent">通</span>百脉
-              </>
+              <InkTitle parts={[{ text: '一枢' }, { text: '通', accent: true }, { text: '百脉' }]} />
             ) : (
-              <>
-                One pivot,
-                <br />
-                every <span className="ls-accent">model</span>.
-              </>
+              <InkTitle parts={[{ text: 'One pivot,' }, { text: '', br: true }, { text: 'every ' }, { text: 'model', accent: true }, { text: '.' }]} />
             )}
           </h1>
-          <p className="ls-lede ls-rise" style={{ animationDelay: '0.3s' }}>
+          <p className="ls-lede ls-rise" style={{ animationDelay: '0.85s' }}>
             {t(
               '灵枢把各家模型汇到一处。团队只需要一个地址、一把 key，调用体验和直连官方一模一样，每一笔花费都看得见。',
               'Lingshu brings every vendor\'s models to one place. One endpoint and one key for the whole team — feels exactly like calling the vendor directly, with every cent on the record.',
             )}
           </p>
-          <div className="ls-cta ls-rise" style={{ animationDelay: '0.45s' }}>
+          <div className="ls-cta ls-rise" style={{ animationDelay: '1s' }}>
             <button className="ls-btn ls-btn-primary" onClick={enter}>
               {user ? t('进入控制台', 'Open console') : t('登录', 'Sign in')}
               <span aria-hidden="true">→</span>
@@ -166,23 +264,25 @@ resp = client.chat.completions.create(
         <div className="ls-scroll-hint" aria-hidden="true" />
       </section>
 
-      <section className="ls-stats">
-        {[
-          ['3', t('种协议', 'protocols')],
-          ['6', t('家厂商', 'vendors')],
-          ['1', t('把 key', 'key')],
-          ['10', t('位小数记账', 'decimal places')],
-        ].map(([n, label]) => (
-          <div key={label} className="ls-stat">
-            <span className="ls-stat-num">{n}</span>
+      <section className="ls-stats" data-reveal>
+        {([
+          [3, t('种协议', 'protocols')],
+          [6, t('家厂商', 'vendors')],
+          [1, t('把 key', 'key')],
+          [10, t('位小数记账', 'decimal places')],
+        ] as const).map(([n, label], i) => (
+          <div key={label} className="ls-stat" style={{ transitionDelay: `${i * 0.08}s` }}>
+            <span className="ls-stat-num">
+              <CountUp to={n} />
+            </span>
             <span className="ls-stat-label">{label}</span>
           </div>
         ))}
       </section>
 
-      <section className="ls-veins">
-        {veins.map((v) => (
-          <article key={v.num} className="ls-vein">
+      <section className="ls-veins" data-reveal>
+        {veins.map((v, i) => (
+          <article key={v.num} className="ls-vein" onMouseMove={trackGlow} style={{ transitionDelay: `${i * 0.12}s` }}>
             <div className="ls-vein-head">
               <span className="ls-vein-num">{v.num}</span>
               <span className="ls-vein-char">{v.char}</span>
@@ -193,7 +293,7 @@ resp = client.chat.completions.create(
         ))}
       </section>
 
-      <section className="ls-connect">
+      <section className="ls-connect" data-reveal>
         <div className="ls-connect-text">
           <h2>{t('只换一个地址', 'Change one line')}</h2>
           <p>
@@ -225,12 +325,12 @@ resp = client.chat.completions.create(
               {copied === current.id ? t('已复制', 'Copied') : t('复制', 'Copy')}
             </button>
           </div>
-          <pre className="ls-code">{highlight(current.code)}</pre>
+          <Typewriter code={current.code} render={highlight} />
         </div>
       </section>
 
       <footer className="ls-footer">
-        <blockquote>
+        <blockquote data-reveal>
           <p>经脉者，所以能决死生，处百病，调虚实，不可不通。</p>
           <cite>——《灵枢·经脉》</cite>
         </blockquote>

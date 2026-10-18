@@ -1,7 +1,7 @@
-// 首页主视觉"经络图"：请求像气血一样从画面左侧流入中枢，再沿经脉分到各家模型。
-// 各家模型的 logo 由粒子组成，分两层轨道：外圈中国模型，内圈海外模型，光点两圈都会去。
-// 轨道倾斜，转到中枢后面的会变小变暗。
-// 纯 canvas 绘制；系统开启"减少动态效果"时只画静止的一帧。
+// 首页主视觉：以浑天仪为"枢"，各家模型的粒子 logo 在两条交叉的空间轨道上运行，
+// 请求像气血一样从左侧流入中枢、再分往各家；背景是汇向中枢的"气"流。
+// 整个场景是三维投影，镜头随鼠标轻微偏转；鼠标划过 logo 会把粒子拨开，随后自己聚回。
+// 纯 canvas 2D，无依赖；"减少动态效果"时只画一帧静止画面。
 import { useEffect, useRef } from 'react'
 import deepseek from '../assets/logos/deepseek.svg?raw'
 import zhipu from '../assets/logos/zhipu.svg?raw'
@@ -9,14 +9,14 @@ import kimi from '../assets/logos/kimi.svg?raw'
 import qwen from '../assets/logos/qwen.svg?raw'
 import mimo from '../assets/logos/xiaomimimo.svg?raw'
 import stepfun from '../assets/logos/stepfun.svg?raw'
+import minimax from '../assets/logos/minimax.svg?raw'
+import doubao from '../assets/logos/doubao.svg?raw'
+import hunyuan from '../assets/logos/hunyuan.svg?raw'
 import openai from '../assets/logos/openai.svg?raw'
 import claude from '../assets/logos/claude.svg?raw'
 import grok from '../assets/logos/grok.svg?raw'
 import mistral from '../assets/logos/mistral.svg?raw'
-import minimax from '../assets/logos/minimax.svg?raw'
 import meta from '../assets/logos/meta.svg?raw'
-import doubao from '../assets/logos/doubao.svg?raw'
-import hunyuan from '../assets/logos/hunyuan.svg?raw'
 
 type Vendor = { name: string; svg: string }
 
@@ -40,27 +40,36 @@ const INNER: Vendor[] = [
   { name: 'Mistral', svg: mistral },
   { name: 'Muse', svg: meta }, // Meta 的模型
 ]
+const VENDORS = [...OUTER, ...INNER]
 
 const JADE = [110, 231, 200]
 const CINNABAR = [226, 72, 61]
 const GOLD = [212, 169, 90]
 const PAPER = [233, 228, 216]
 const INK = '7, 8, 11'
-const CLIENTS = 4 // 调用方在画面左边缘外，只画流进来的光点
+const CLIENTS = 5 // 调用方在画面左边缘外，只画流进来的光点
 
+type V3 = [number, number, number]
 type Pt = { x: number; y: number }
-type Dot = { hx: number; hy: number; x: number; y: number; phase: number } // hx/hy：在 logo 里的位置（-0.5..0.5）
-type Node = { v: Vendor; dots: Dot[]; glow: number }
+type Proj = { x: number; y: number; z: number; k: number } // k：透视缩放；z 越大越靠近镜头
+type Dot = { hx: number; hy: number; x: number; y: number; vx: number; vy: number; phase: number }
+type Node = { v: Vendor; dots: Dot[]; glow: number; hover: number }
 type Pulse = { leg: 0 | 1; t: number; speed: number; client: number; target: number; color: number[] }
+type Mote = { x: number; y: number; life: number; max: number } // 背景的"气"
 
-const rgba = (c: number[], a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`
+const rgba = (c: number[], a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a < 0 ? 0 : a > 1 ? 1 : a})`
+
+// ---- 三维 ----
+const rotX = ([x, y, z]: V3, a: number): V3 => [x, y * Math.cos(a) - z * Math.sin(a), y * Math.sin(a) + z * Math.cos(a)]
+const rotY = ([x, y, z]: V3, a: number): V3 => [x * Math.cos(a) + z * Math.sin(a), y, -x * Math.sin(a) + z * Math.cos(a)]
+const rotZ = ([x, y, z]: V3, a: number): V3 => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a), z]
 
 function bezier(a: Pt, c: Pt, b: Pt, t: number): Pt {
   const u = 1 - t
   return { x: u * u * a.x + 2 * u * t * c.x + t * t * b.x, y: u * u * a.y + 2 * u * t * c.y + t * t * b.y }
 }
 
-// 把 logo 栅格化后按网格采样，得到组成 logo 的粒子位置
+// 把 logo 栅格化后按网格采样，得到组成 logo 的粒子位置（-0.5..0.5）
 async function sampleLogo(v: Vendor): Promise<{ hx: number; hy: number }[]> {
   const S = 72
   const c = document.createElement('canvas')
@@ -73,9 +82,8 @@ async function sampleLogo(v: Vendor): Promise<{ hx: number; hy: number }[]> {
   g.drawImage(img, 0, 0, S, S)
   const data = g.getImageData(0, 0, S, S).data
   const pts: { hx: number; hy: number }[] = []
-  const step = 2
-  for (let y = 0; y < S; y += step) {
-    for (let x = (y / step) % 2 ? 1 : 0; x < S; x += step) {
+  for (let y = 0; y < S; y += 2) {
+    for (let x = (y / 2) % 2 ? 1 : 0; x < S; x += 2) {
       if (data[(y * S + x) * 4 + 3] > 120) pts.push({ hx: x / S - 0.5, hy: y / S - 0.5 })
     }
   }
@@ -89,10 +97,22 @@ export default function Meridian() {
     const canvas = ref.current!
     const ctx = canvas.getContext('2d')!
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    let w = 0, h = 0, raf = 0, last = performance.now(), time = 0
+    let w = 0, h = 0, raf = 0, last = performance.now(), time = 0, cancelled = false
     let nodes: Node[] = []
     const pulses: Pulse[] = []
-    let cancelled = false
+    let motes: Mote[] = []
+    // 镜头：随鼠标轻微偏转（平滑跟随）
+    const cam = { yaw: 0, pitch: 0, tyaw: 0, tpitch: 0 }
+    const mouse = { x: -9999, y: -9999, active: false }
+
+    function newMote(anywhere: boolean): Mote {
+      const max = 4 + Math.random() * 6
+      // 新的气从左边和上下边缘生出，向中枢汇聚
+      const edge = Math.random()
+      const x = anywhere ? Math.random() * w : edge < 0.6 ? -10 : Math.random() * w * 0.7
+      const y = anywhere ? Math.random() * h : edge < 0.6 ? Math.random() * h : edge < 0.8 ? -10 : h + 10
+      return { x, y, life: anywhere ? Math.random() * max : 0, max }
+    }
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
@@ -104,154 +124,246 @@ export default function Meridian() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.fillStyle = `rgb(${INK})`
       ctx.fillRect(0, 0, w, h)
+      motes = Array.from({ length: w < 860 ? 380 : 1100 }, () => newMote(true))
     }
-    resize()
-    const ro = new ResizeObserver(resize)
-    ro.observe(canvas)
 
-    // 布局。宽屏中枢靠右给文字留位置；窄屏中枢在上方。
-    // 两层轨道都是倾斜的椭圆，depth = sin(角度)：>0 在中枢前面，<0 在后面。
+    const onMove = (e: PointerEvent) => {
+      const r = canvas.getBoundingClientRect()
+      mouse.x = e.clientX - r.left
+      mouse.y = e.clientY - r.top
+      mouse.active = mouse.y >= 0 && mouse.y <= h
+      cam.tyaw = (e.clientX / window.innerWidth - 0.5) * 0.5
+      cam.tpitch = (e.clientY / window.innerHeight - 0.5) * 0.28
+    }
+    const onLeave = () => {
+      mouse.active = false
+      mouse.x = mouse.y = -9999
+    }
+
+    // 布局：宽屏中枢靠右给文字留位置；窄屏中枢在上方
     const geometry = () => {
       const narrow = w < 860
-      const pivot = narrow ? { x: w * 0.5, y: h * 0.27 } : { x: w * 0.73, y: h * 0.5 }
-      const R = narrow ? Math.min(w * 0.36, h * 0.22) : Math.min(w * 0.235, h * 0.36)
-      const logo = narrow ? 30 : 54
-      return { narrow, pivot, R, logo }
+      const pivot = narrow ? { x: w * 0.5, y: h * 0.27 } : { x: w * 0.72, y: h * 0.5 }
+      const R = narrow ? Math.min(w * 0.36, h * 0.22) : Math.min(w * 0.23, h * 0.35)
+      return { narrow, pivot, R, logo: narrow ? 30 : 56 }
     }
 
-    const place = (i: number, outer: boolean, R: number, pivot: Pt) => {
-      const n = outer ? OUTER.length : INNER.length
-      const a = outer ? time * 0.05 + (i / n) * Math.PI * 2 : -time * 0.09 + (i / n) * Math.PI * 2 + Math.PI / n
-      const rx = outer ? R * 1.1 : R * 0.8
-      const ry = outer ? R * 0.86 : R * 0.6
-      const depth = Math.sin(a)
-      return { x: pivot.x + Math.cos(a) * rx, y: pivot.y + depth * ry, depth }
+    // 世界坐标 → 屏幕
+    const project = (p: V3, pivot: Pt, R: number): Proj => {
+      let q = rotY(p, cam.yaw)
+      q = rotX(q, cam.pitch)
+      const f = R * 4.2
+      const k = f / (f - q[2])
+      return { x: pivot.x + q[0] * k, y: pivot.y + q[1] * k, z: q[2], k }
     }
 
-    const ctrlIn = (a: Pt, p: Pt): Pt => ({ x: (a.x + p.x) / 2, y: a.y + (p.y - a.y) * 0.15 })
-    const ctrlOut = (p: Pt, m: Pt): Pt => ({ x: (p.x + m.x) / 2 + (m.y - p.y) * 0.22, y: (p.y + m.y) / 2 - (m.x - p.x) * 0.22 })
+    // 两条交叉倾斜的轨道：外圈平缓、内圈陡一些，像原子轨道
+    const orbitPoint = (outer: boolean, a: number, R: number): V3 => {
+      const r = outer ? R * 1.12 : R * 0.78
+      let p: V3 = [Math.cos(a) * r, 0, Math.sin(a) * r]
+      p = rotX(p, outer ? 1.22 : 1.02)
+      return rotZ(p, outer ? -0.18 : 0.42)
+    }
+    const vendorAngle = (i: number) => {
+      if (i < OUTER.length) return time * 0.06 + (i / OUTER.length) * Math.PI * 2
+      const j = i - OUTER.length
+      return -time * 0.1 + (j / INNER.length) * Math.PI * 2 + 0.4
+    }
+
     const clientPt = (i: number, narrow: boolean): Pt => ({
       x: -40,
-      y: narrow ? h * (0.02 + (i * 0.48) / (CLIENTS - 1)) : h * (0.12 + (i * 0.76) / (CLIENTS - 1)),
+      y: narrow ? h * (0.02 + (i * 0.46) / (CLIENTS - 1)) : h * (0.1 + (i * 0.8) / (CLIENTS - 1)),
     })
+    const ctrlIn = (a: Pt, p: Pt): Pt => ({ x: (a.x + p.x) / 2, y: a.y + (p.y - a.y) * 0.15 })
+    const ctrlOut = (p: Pt, m: Pt): Pt => ({ x: (p.x + m.x) / 2 + (m.y - p.y) * 0.2, y: (p.y + m.y) / 2 - (m.x - p.x) * 0.2 })
 
-    const spawn = () => {
+    const spawnPulse = () => {
       const r = Math.random()
       pulses.push({
         leg: 0,
         t: 0,
-        speed: 0.3 + Math.random() * 0.25,
+        speed: 0.32 + Math.random() * 0.25,
         client: Math.floor(Math.random() * CLIENTS),
-        target: Math.floor(Math.random() * (OUTER.length + INNER.length)),
-        color: r < 0.72 ? JADE : r < 0.9 ? GOLD : CINNABAR,
+        target: Math.floor(Math.random() * VENDORS.length),
+        color: r < 0.7 ? JADE : r < 0.88 ? GOLD : CINNABAR,
       })
     }
 
-    const drawPivot = (pivot: Pt, R: number) => {
-      ctx.save()
-      ctx.translate(pivot.x, pivot.y)
-      const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.5)
-      halo.addColorStop(0, rgba(JADE, 0.17))
+    // ---- 背景的"气"：沿流场漂动，整体汇向中枢，越近越绕着转 ----
+    const drawMotes = (pivot: Pt, R: number, dt: number) => {
+      ctx.fillStyle = rgba(JADE, 1)
+      for (let i = 0; i < motes.length; i++) {
+        const m = motes[i]
+        const dx = pivot.x - m.x
+        const dy = pivot.y - m.y
+        const dist = Math.hypot(dx, dy) || 1
+        const swirl = Math.sin(m.x * 0.0042 + time * 0.25) * 1.6 + Math.cos(m.y * 0.0051 - time * 0.2) * 1.6
+        const ang = Math.atan2(dy, dx) + swirl * 0.55 + 0.9 * Math.min(1, R / dist)
+        const sp = 18 + 50 * Math.min(1, (R * 1.5) / dist)
+        m.x += Math.cos(ang) * sp * dt
+        m.y += Math.sin(ang) * sp * dt
+        if (mouse.active) {
+          const mx = m.x - mouse.x, my = m.y - mouse.y, md = mx * mx + my * my
+          if (md < 6400) {
+            const f = (1 - md / 6400) * 60 * dt
+            const inv = 1 / Math.sqrt(md + 1)
+            m.x += mx * inv * f
+            m.y += my * inv * f
+          }
+        }
+        m.life += dt
+        if (m.life > m.max || dist < R * 0.18 || m.x > w + 20 || m.y < -20 || m.y > h + 20) {
+          motes[i] = newMote(false)
+          continue
+        }
+        ctx.globalAlpha = Math.sin((m.life / m.max) * Math.PI) * 0.18
+        ctx.fillRect(m.x, m.y, 1.2, 1.2)
+      }
+      ctx.globalAlpha = 1
+    }
+
+    // ---- 浑天仪：赤道环（带二十四节气刻度）、子午环、黄道环，三环各自转动 ----
+    // front=false 只画背向镜头的半边，front=true 只画朝向镜头的半边，这样"枢"字被夹在中间
+    const drawArmillary = (pivot: Pt, R: number, front: boolean) => {
+      const Rp = R * 0.42
+      const rings: { at: (a: number) => V3; color: number[]; alpha: number; width: number }[] = [
+        { at: (a) => rotX([Math.cos(a) * Rp, 0, Math.sin(a) * Rp], 1.25), color: JADE, alpha: 0.8, width: 1.4 },
+        { at: (a) => rotY([0, Math.cos(a) * Rp * 0.94, Math.sin(a) * Rp * 0.94], time * 0.35), color: JADE, alpha: 0.5, width: 1 },
+        { at: (a) => rotY(rotZ(rotX([Math.cos(a) * Rp * 0.86, 0, Math.sin(a) * Rp * 0.86], 1.25), 0.41), -time * 0.22), color: GOLD, alpha: 0.6, width: 1 },
+      ]
+      const N = 72
+      for (const ring of rings) {
+        ctx.lineWidth = ring.width
+        for (let i = 0; i < N; i++) {
+          const p0 = project(ring.at((i / N) * Math.PI * 2), pivot, R)
+          const p1 = project(ring.at(((i + 1) / N) * Math.PI * 2), pivot, R)
+          if ((p0.z + p1.z >= 0) !== front) continue
+          const depth = (p0.z + p1.z) / 2 / Rp
+          ctx.strokeStyle = rgba(ring.color, ring.alpha * (0.3 + 0.7 * (depth + 1) / 2))
+          ctx.beginPath()
+          ctx.moveTo(p0.x, p0.y)
+          ctx.lineTo(p1.x, p1.y)
+          ctx.stroke()
+        }
+      }
+      // 赤道环上的二十四道刻度，随时间转动；四正位用朱砂
+      for (let i = 0; i < 24; i++) {
+        const a = (i / 24) * Math.PI * 2 + time * 0.12
+        const p0 = project(rotX([Math.cos(a) * Rp * 0.9, 0, Math.sin(a) * Rp * 0.9], 1.25), pivot, R)
+        const p1 = project(rotX([Math.cos(a) * Rp * 1.07, 0, Math.sin(a) * Rp * 1.07], 1.25), pivot, R)
+        if ((p0.z >= 0) !== front) continue
+        const major = i % 6 === 0
+        ctx.strokeStyle = rgba(major ? CINNABAR : JADE, (major ? 1 : 0.5) * (0.3 + 0.7 * (p0.z / Rp + 1) / 2))
+        ctx.lineWidth = major ? 2.4 : 1
+        ctx.beginPath()
+        ctx.moveTo(p0.x, p0.y)
+        ctx.lineTo(p1.x, p1.y)
+        ctx.stroke()
+      }
+    }
+
+    const drawCore = (pivot: Pt, R: number) => {
+      const r = R * 0.62 * (1 + Math.sin(time * 1.4) * 0.06)
+      const halo = ctx.createRadialGradient(pivot.x, pivot.y, 0, pivot.x, pivot.y, r)
+      halo.addColorStop(0, rgba(JADE, 0.24))
+      halo.addColorStop(0.45, rgba(JADE, 0.07))
       halo.addColorStop(1, rgba(JADE, 0))
       ctx.fillStyle = halo
       ctx.beginPath()
-      ctx.arc(0, 0, R * 0.5, 0, Math.PI * 2)
+      ctx.arc(pivot.x, pivot.y, r, 0, Math.PI * 2)
       ctx.fill()
-      ctx.lineWidth = 1
-      for (const [r, a] of [[R * 0.4, 0.2], [R * 0.29, 0.3], [R * 0.17, 0.5]] as const) {
-        ctx.strokeStyle = rgba(JADE, a)
-        ctx.beginPath()
-        ctx.arc(0, 0, r, 0, Math.PI * 2)
-        ctx.stroke()
-      }
-      // 二十四道刻度，对应二十四节气
-      ctx.rotate(time * 0.15)
-      for (let i = 0; i < 24; i++) {
-        const major = i % 6 === 0
-        ctx.strokeStyle = major ? rgba(CINNABAR, 0.85) : rgba(JADE, 0.35)
-        ctx.lineWidth = major ? 2 : 1
-        ctx.beginPath()
-        ctx.moveTo(0, -R * 0.4)
-        ctx.lineTo(0, -R * (major ? 0.34 : 0.37))
-        ctx.stroke()
-        ctx.rotate((Math.PI * 2) / 24)
-      }
-      ctx.rotate(-time * 0.55)
-      ctx.setLineDash([2, 6])
-      ctx.strokeStyle = rgba(GOLD, 0.45)
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.arc(0, 0, R * 0.23, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.setLineDash([])
-      ctx.restore()
-      ctx.fillStyle = rgba(PAPER, 0.95)
-      ctx.font = `600 ${Math.round(R * 0.2)}px LingshuSerif, serif`
+      ctx.font = `900 ${Math.round(R * 0.24)}px LingshuSerif, serif`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
+      ctx.shadowColor = rgba(JADE, 0.9)
+      ctx.shadowBlur = 24
+      ctx.fillStyle = rgba(PAPER, 0.96)
       ctx.fillText('枢', pivot.x, pivot.y + 1)
+      ctx.shadowBlur = 0
     }
 
-    const drawOrbits = (pivot: Pt, R: number) => {
-      ctx.lineWidth = 1
-      ctx.strokeStyle = rgba(JADE, 0.07)
-      for (const [rx, ry] of [[1.1, 0.86], [0.8, 0.6]]) {
-        ctx.beginPath()
-        ctx.ellipse(pivot.x, pivot.y, R * rx, R * ry, 0, 0, Math.PI * 2)
-        ctx.stroke()
-      }
-    }
-
-    // 画一个 logo：粒子跟随目标位置（入场时从中枢飞出聚拢），收到请求时向外一涨并变亮
-    const drawNode = (n: Node, at: { x: number; y: number; depth: number }, size: number, dt: number) => {
-      const scale = 0.78 + 0.22 * (at.depth + 1) / 2
-      const s = size * scale
-      const swell = 1 + n.glow * 0.28
-      const base = 0.82 * (0.55 + 0.45 * (at.depth + 1) / 2)
-      const k = reduced ? 1 : Math.min(1, dt * 4.5)
-      const color = n.glow > 0.05 ? JADE : PAPER
+    // 画一个 logo：粒子用弹簧跟随目标；鼠标靠近时被拨开；悬停放大发光；收到请求时向外一涨、变亮
+    const drawNode = (n: Node, at: Proj, size: number, dt: number, R: number) => {
+      const near = (Math.max(-1, Math.min(1, at.z / (R * 1.12))) + 1) / 2
+      const hoverD = mouse.active ? Math.hypot(mouse.x - at.x, mouse.y - at.y) : 1e9
+      n.hover += ((hoverD < size * 0.75 ? 1 : 0) - n.hover) * Math.min(1, dt * 6)
+      const s = size * at.k * (1 + n.hover * 0.25)
+      const swell = 1 + n.glow * 0.3
+      const color = n.glow > 0.35 || n.hover > 0.3 ? JADE : PAPER
+      ctx.fillStyle = rgba(color, 0.4 + 0.52 * near + n.glow * 0.4 + n.hover * 0.3)
+      const stiff = reduced ? 1 : Math.min(1, dt * 5)
+      const r = 0.65 + 0.35 * near
       for (const d of n.dots) {
-        const tx = at.x + d.hx * s * swell + Math.sin(time * 1.3 + d.phase) * 0.35
-        const ty = at.y + d.hy * s * swell + Math.cos(time * 1.1 + d.phase) * 0.35
-        d.x += (tx - d.x) * k
-        d.y += (ty - d.y) * k
-        const tw = 0.75 + 0.25 * Math.sin(time * 2 + d.phase * 3)
-        ctx.fillStyle = rgba(color, Math.min(1, (base + n.glow * 0.6) * tw))
-        ctx.fillRect(d.x - 0.7, d.y - 0.7, 1.4, 1.4)
+        const tx = at.x + d.hx * s * swell + Math.sin(time * 1.3 + d.phase) * 0.4
+        const ty = at.y + d.hy * s * swell + Math.cos(time * 1.1 + d.phase) * 0.4
+        if (mouse.active) {
+          const mx = d.x - mouse.x, my = d.y - mouse.y, md = mx * mx + my * my
+          if (md < 2500) {
+            const f = (1 - md / 2500) * 900 * dt
+            const inv = 1 / Math.sqrt(md + 1)
+            d.vx += mx * inv * f
+            d.vy += my * inv * f
+          }
+        }
+        d.vx *= 0.86
+        d.vy *= 0.86
+        d.x += (tx - d.x) * stiff + d.vx * dt
+        d.y += (ty - d.y) * stiff + d.vy * dt
+        ctx.fillRect(d.x - r, d.y - r, r * 2, r * 2)
       }
-      if (n.glow > 0.02) {
-        const g = ctx.createRadialGradient(at.x, at.y, 0, at.x, at.y, s)
-        g.addColorStop(0, rgba(JADE, 0.22 * n.glow))
+      const gl = Math.max(n.glow, n.hover * 0.8)
+      if (gl > 0.02) {
+        const g = ctx.createRadialGradient(at.x, at.y, 0, at.x, at.y, s * 1.1)
+        g.addColorStop(0, rgba(JADE, 0.25 * gl))
         g.addColorStop(1, rgba(JADE, 0))
         ctx.fillStyle = g
         ctx.beginPath()
-        ctx.arc(at.x, at.y, s, 0, Math.PI * 2)
+        ctx.arc(at.x, at.y, s * 1.1, 0, Math.PI * 2)
         ctx.fill()
       }
-      ctx.font = `500 ${Math.round(11 * scale)}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`
+      ctx.font = `500 ${Math.round(10 + 2 * near + n.hover * 3)}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
-      ctx.fillStyle = rgba(PAPER, 0.6 * (0.6 + 0.4 * (at.depth + 1) / 2) + n.glow * 0.4)
-      ctx.fillText(n.v.name, at.x, at.y + s * 0.5 + 6)
+      ctx.fillStyle = rgba(PAPER, 0.3 + 0.35 * near + n.glow * 0.4 + n.hover * 0.4)
+      ctx.fillText(n.v.name, at.x, at.y + s * 0.52 + 6)
     }
 
     const draw = (dt: number) => {
       const { narrow, pivot, R, logo } = geometry()
+      cam.yaw += (cam.tyaw - cam.yaw) * Math.min(1, dt * 2.2)
+      cam.pitch += (cam.tpitch - cam.pitch) * Math.min(1, dt * 2.2)
 
+      // 拖尾：每帧盖一层半透明的墨色
       ctx.globalCompositeOperation = 'source-over'
-      ctx.fillStyle = `rgba(${INK}, ${reduced ? 1 : 0.3})`
+      ctx.fillStyle = `rgba(${INK}, ${reduced ? 1 : 0.28})`
       ctx.fillRect(0, 0, w, h)
 
-      const outer = OUTER.map((_, i) => place(i, true, R, pivot))
-      const inner = INNER.map((_, i) => place(i, false, R, pivot))
-      const spots = [...outer, ...inner] // 和 nodes 的顺序一致
+      ctx.globalCompositeOperation = 'lighter'
+      drawMotes(pivot, R, dt)
+      ctx.globalCompositeOperation = 'source-over'
 
-      // 经脉：调用方 → 中枢 → 已接入的各家
+      const spots = VENDORS.map((_, i) => project(orbitPoint(i < OUTER.length, vendorAngle(i), R), pivot, R))
+
+      // 轨道：靠近镜头的半边更亮
       ctx.lineWidth = 1
+      for (const outer of [true, false]) {
+        const N = 96
+        for (let i = 0; i < N; i++) {
+          const p0 = project(orbitPoint(outer, (i / N) * Math.PI * 2, R), pivot, R)
+          const p1 = project(orbitPoint(outer, ((i + 1) / N) * Math.PI * 2, R), pivot, R)
+          ctx.strokeStyle = rgba(JADE, 0.04 + 0.1 * ((p0.z + p1.z) / 2 / (R * 1.12) + 1) / 2)
+          ctx.beginPath()
+          ctx.moveTo(p0.x, p0.y)
+          ctx.lineTo(p1.x, p1.y)
+          ctx.stroke()
+        }
+      }
+
+      // 经脉：调用方 → 中枢 → 各家
       for (let i = 0; i < CLIENTS; i++) {
         const c = clientPt(i, narrow)
         const k = ctrlIn(c, pivot)
-        ctx.strokeStyle = rgba(JADE, 0.08)
+        ctx.strokeStyle = rgba(JADE, 0.07)
         ctx.beginPath()
         ctx.moveTo(c.x, c.y)
         ctx.quadraticCurveTo(k.x, k.y, pivot.x, pivot.y)
@@ -259,23 +371,21 @@ export default function Meridian() {
       }
       for (const m of spots) {
         const k = ctrlOut(pivot, m)
-        ctx.strokeStyle = rgba(JADE, 0.04 + 0.05 * (m.depth + 1) / 2)
+        ctx.strokeStyle = rgba(JADE, 0.03 + 0.05 * (Math.max(-1, Math.min(1, m.z / R)) + 1) / 2)
         ctx.beginPath()
         ctx.moveTo(pivot.x, pivot.y)
         ctx.quadraticCurveTo(k.x, k.y, m.x, m.y)
         ctx.stroke()
       }
-      drawOrbits(pivot, R)
 
-      // 先画在中枢后面的，再画中枢，最后画在前面的
-      const all = [
-        ...nodes.slice(0, OUTER.length).map((n, i) => ({ n, at: outer[i] })),
-        ...nodes.slice(OUTER.length).map((n, i) => ({ n, at: inner[i] })),
-      ].sort((a, b) => a.at.depth - b.at.depth)
-      for (const n of nodes) n.glow = Math.max(0, n.glow - dt * 1.4)
-      for (const { n, at } of all) if (at.depth < 0) drawNode(n, at, logo, dt)
-      drawPivot(pivot, R)
-      for (const { n, at } of all) if (at.depth >= 0) drawNode(n, at, logo, dt)
+      // 远处的 logo → 浑天仪后半 → 光晕和"枢" → 浑天仪前半 → 近处的 logo
+      const order = spots.map((p, i) => ({ p, i })).sort((a, b) => a.p.z - b.p.z)
+      for (const n of nodes) n.glow = Math.max(0, n.glow - dt * 2.4)
+      for (const { p, i } of order) if (p.z < 0 && nodes[i]) drawNode(nodes[i], p, logo, dt, R)
+      drawArmillary(pivot, R, false)
+      drawCore(pivot, R)
+      drawArmillary(pivot, R, true)
+      for (const { p, i } of order) if (p.z >= 0 && nodes[i]) drawNode(nodes[i], p, logo, dt, R)
 
       // 请求光点
       ctx.globalCompositeOperation = 'lighter'
@@ -287,7 +397,7 @@ export default function Meridian() {
             p.leg = 1
             p.t = 0
           } else {
-            nodes[p.target].glow = 1
+            if (nodes[p.target]) nodes[p.target].glow = 1
             pulses.splice(i, 1)
             continue
           }
@@ -295,43 +405,56 @@ export default function Meridian() {
         const c = clientPt(p.client, narrow)
         const m = spots[p.target]
         const pos = p.leg === 0 ? bezier(c, ctrlIn(c, pivot), pivot, p.t) : bezier(pivot, ctrlOut(pivot, m), m, p.t)
-        const g = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, 7)
+        const rad = 6 + (p.leg === 1 ? 2 * m.k : 0)
+        const g = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, rad)
         g.addColorStop(0, rgba(p.color, 0.95))
+        g.addColorStop(0.35, rgba(p.color, 0.45))
         g.addColorStop(1, rgba(p.color, 0))
         ctx.fillStyle = g
         ctx.beginPath()
-        ctx.arc(pos.x, pos.y, 7, 0, Math.PI * 2)
+        ctx.arc(pos.x, pos.y, rad, 0, Math.PI * 2)
         ctx.fill()
       }
       ctx.globalCompositeOperation = 'source-over'
-
     }
 
     const tick = (now: number) => {
       const dt = Math.min((now - last) / 1000, 0.05)
       last = now
       time += dt
-      if (Math.random() < dt * 9) spawn()
+      if (Math.random() < dt * 6) spawnPulse()
       draw(dt)
       raf = requestAnimationFrame(tick)
     }
 
+    resize()
+    const ro = new ResizeObserver(resize)
+    ro.observe(canvas)
+    window.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerleave', onLeave)
+
     // 等宋体（中枢的"枢"）和各家 logo 都准备好再开始画
-    Promise.all([document.fonts.load('900 40px LingshuSerif'), document.fonts.load('600 40px LingshuSerif')])
+    document.fonts
+      .load('900 40px LingshuSerif')
       .catch(() => {})
-      .then(() => Promise.all([...OUTER, ...INNER].map(sampleLogo)))
+      .then(() => Promise.all(VENDORS.map(sampleLogo)))
       .then((sampled) => {
         if (cancelled) return
         const { pivot } = geometry()
-        nodes = [...OUTER, ...INNER].map((v, i) => ({
+        nodes = VENDORS.map((v, i) => ({
           v,
           glow: 0,
-          // 入场：粒子从中枢附近散开出发
-          dots: sampled[i].map((p) => ({ ...p, x: pivot.x + (Math.random() - 0.5) * 60, y: pivot.y + (Math.random() - 0.5) * 60, phase: Math.random() * Math.PI * 2 })),
+          hover: 0,
+          // 入场：粒子从中枢迸发出去，各自聚成 logo
+          dots: sampled[i].map((p) => {
+            const a = Math.random() * Math.PI * 2
+            const sp = reduced ? 0 : 200 + Math.random() * 500
+            return { ...p, x: pivot.x, y: pivot.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, phase: Math.random() * Math.PI * 2 }
+          }),
         }))
         if (reduced) {
-          for (let i = 0; i < 12; i++) spawn()
-          pulses.forEach((p, i) => ((p.t = (i % 6) / 6), (p.leg = (i % 2) as 0 | 1)))
+          for (let i = 0; i < 14; i++) spawnPulse()
+          pulses.forEach((p, i) => ((p.t = (i % 7) / 7), (p.leg = (i % 2) as 0 | 1)))
           draw(1)
         } else {
           last = performance.now()
@@ -343,6 +466,8 @@ export default function Meridian() {
       cancelled = true
       cancelAnimationFrame(raf)
       ro.disconnect()
+      window.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerleave', onLeave)
     }
   }, [])
 

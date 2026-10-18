@@ -321,7 +321,7 @@
   font-weight: 900;
   font-size: 88px;
   line-height: 0.9;
-  background: linear-gradient(180deg, var(--paper) 30%, rgba(110, 231, 200, 0.55));
+  background-image: linear-gradient(180deg, var(--paper) 15%, rgba(110, 231, 200, 0.55) 45%, var(--jade) 70%, var(--cinnabar));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -486,6 +486,94 @@
   color: rgba(233, 228, 216, 0.35);
 }
 
+/* ---- 标题：逐字晕开 ---- */
+.ls-ink {
+  display: inline-block;
+  opacity: 0;
+  filter: blur(14px);
+  transform: translateY(0.12em) scale(1.08);
+  animation: ls-ink 1.3s cubic-bezier(0.2, 0.7, 0.1, 1) forwards;
+}
+@keyframes ls-ink {
+  60% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+  }
+}
+
+/* ---- 滚动浮现 ---- */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 1s cubic-bezier(0.2, 0.7, 0.2, 1), transform 1s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+[data-reveal].is-in {
+  opacity: 1;
+  transform: none;
+}
+/* 区块里的子项依次浮现 */
+.ls-stats[data-reveal] .ls-stat,
+.ls-veins[data-reveal] .ls-vein {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.9s, transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.ls-stats.is-in .ls-stat,
+.ls-veins.is-in .ls-vein {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---- 三脉卡片：边框的光跟着鼠标走 ---- */
+.ls-vein::after {
+  content: '';
+  position: absolute;
+  inset: -24px -20px -24px 0;
+  border-radius: 14px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s;
+  background: radial-gradient(260px circle at var(--gx, 50%) var(--gy, 50%), rgba(110, 231, 200, 0.09), transparent 70%);
+}
+.ls-vein + .ls-vein::after {
+  inset: -24px -20px -24px 20px;
+}
+.ls-vein:hover::after {
+  opacity: 1;
+}
+.ls-vein-char {
+  background-size: 100% 220%;
+  background-position: 0 0;
+  transition: background-position 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.ls-vein:hover .ls-vein-char {
+  background-position: 0 100%;
+}
+
+/* ---- 终端光标 ---- */
+.ls-caret {
+  display: inline-block;
+  width: 8px;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: -0.2em;
+  background: var(--jade);
+  box-shadow: 0 0 12px rgba(110, 231, 200, 0.8);
+  animation: ls-blink 1s steps(1) infinite;
+}
+.ls-caret:not(.done) {
+  animation: none;
+}
+@keyframes ls-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
 /* ---- 入场动画 ---- */
 .ls-rise {
   opacity: 0;
@@ -515,6 +603,16 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .ls-ink,
+  [data-reveal],
+  .ls-stats[data-reveal] .ls-stat,
+  .ls-veins[data-reveal] .ls-vein {
+    animation: none;
+    opacity: 1;
+    filter: none;
+    transform: none;
+    transition: none;
+  }
   .ls-rise {
     animation: none;
     opacity: 1;
