@@ -105,6 +105,7 @@
 - 服务器已有：Nginx 1.26（`conf.d/` 一站一文件 + certbot），本机 Postgres（5432）、Redis（6379）。
 - 从服务器直连上游：DeepSeek、Moonshot、OpenRouter 可达；**OpenAI 连不上，Anthropic 返回 403（地区限制）**。服务器上的 mihomo 代理（7893）不通。美国上游以后通过渠道级代理接入，MVP 不做。
 - `piqode.com` 的 ICP 备案由用户自己处理。
+- 对外地址用 `https://lingshu.focuskeeper.cn`。`lingshu.piqode.com` 保留，但从境外访问会被按域名断开（2026-10-18 实测），只适合在中国的同事用。
 
 ## 技术选型（2026-10-18）
 

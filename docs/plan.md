@@ -153,7 +153,7 @@ lingshu/
 | 2 计费 | ✅ 完成（2026-10-18） |
 | 3 路由与重试 | ✅ 完成（2026-10-18） |
 | 4 前端 | ✅ 完成（2026-10-18） |
-| 5 部署与验收 | 进行中：已上线，美国访问受阻 |
+| 5 部署与验收 | ✅ 完成（2026-10-18） |
 
 ### 阶段 1 验收记录（2026-10-18）
 
@@ -187,9 +187,14 @@ lingshu/
 - 当时本机连不上所有中国上游（Clash 规则变化），端到端改用本地模拟上游；真实上游的转发与计费已在阶段 1–3 验证。
 - 已知：服务端返回的错误提示只有中文，英文界面下错误信息仍是中文。
 
-### 阶段 5 记录（2026-10-18，进行中）
+### 阶段 5 验收记录（2026-10-18）
 
-- 已上线：`lingshu.service`（127.0.0.1:8300，常驻内存约 11MB）、PostgreSQL 库 `lingshu`、Nginx `conf.d/lingshu.conf`、证书（webroot，到期 2027-01-16，自动续期）。部署前备份 `/var/backups/nginx/nginx-before-lingshu-20261018-201508.tgz`，对比确认只新增了 `lingshu.conf`。
-- 线上验收（从服务器经公网 HTTPS + Nginx）：冒烟 21 项全部通过，余额减少与扣费合计一致；流式经 Nginx 不攒包（396 块，块间最大间隔 0.05s）。
-- 阻塞：从美国访问 `lingshu.piqode.com` 的 HTTPS 握手被断开（本机和洛杉矶 DMIT 都一样，DMIT 不经过代理）；同一 IP 用 `focuskeeper.cn` 正常，中国境内访问正常。判断为跨境链路按域名（SNI）拦截 `piqode.com`。
-- 待做：美国可访问的域名；Claude Code / Codex 从客户端验收。
+- 上线：`lingshu.service`（127.0.0.1:8300，常驻内存约 11MB）、PostgreSQL 库 `lingshu`、Nginx `conf.d/lingshu.conf` + `lingshu-common.inc`、两张证书（webroot，到期 2027-01-16，自动续期）。改 Nginx 前两次备份（`/var/backups/nginx/nginx-before-lingshu-*`、`nginx-before-focuskeeper-*`），对比确认只新增了灵枢的文件，其他站点返回码不变。
+- 域名：`lingshu.piqode.com` 从境外访问时 TLS 握手被按域名断开（本机和洛杉矶 DMIT 都一样，同 IP 换 `focuskeeper.cn` 正常，境内正常）。新增 `lingshu.focuskeeper.cn`，单独一张证书，境内外都能访问。
+- MVP 验收 4 条：
+  1. Claude Code（干净配置）经 `https://lingshu.focuskeeper.cn` 调 `qwen3.8-max`，工具调用正常，第二次请求命中 15825 token 缓存；Codex（隔离配置）经 `/v1/responses` 调 `deepseek-v4.1-flash`，执行命令读文件正常，第二次请求命中 8576 token 缓存。
+  2. 线上冒烟 21 项（从服务器经公网 HTTPS + Nginx）：每笔扣费 = 用量 × 价格 × 倍率，余额减少与扣费合计一致。
+  3. 临时加一个 key 错误、优先级更高的渠道：第 1 次请求 401 后自动切到正常渠道（attempts=2），后两次直接走正常渠道；用户三次都是 200。测完已删除临时渠道。
+  4. 中途断开（Qwen 长文收到 40 个事件后断开）：记为 client_cancelled，按估算扣费。
+- 流式经 Nginx 不攒包：396 块，块间最大间隔 0.05s。
+- 已知：Claude Code 和 Codex 都不认识非官方模型名，会提示按默认参数处理，不影响使用；以后写接入说明时要提到。

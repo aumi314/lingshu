@@ -10,8 +10,9 @@
 | 配置 | `/etc/lingshu/env`（600，root:lingshu 可读），含数据库密码 |
 | 服务 | `lingshu.service`，系统用户 `lingshu`，只监听 `127.0.0.1:8300` |
 | 数据库 | 服务器已有的 PostgreSQL，库 `lingshu`、角色 `lingshu` |
-| 站点 | `/etc/nginx/conf.d/lingshu.conf`（模板 `deploy/nginx-lingshu.conf`），域名 `lingshu.piqode.com` |
-| 证书 | certbot，`/etc/letsencrypt/live/lingshu.piqode.com/` |
+| 站点 | `/etc/nginx/conf.d/lingshu.conf` + 共用部分 `/etc/nginx/lingshu-common.inc`（模板在 `deploy/`） |
+| 域名 | `lingshu.focuskeeper.cn`（境内外都能访问，日常用这个）；`lingshu.piqode.com`（只有境内能访问，境外 TLS 握手会被按域名断开） |
+| 证书 | certbot webroot，两个域名各一张：`/etc/letsencrypt/live/<域名>/` |
 
 ## 日常发布
 
@@ -32,7 +33,7 @@ bash deploy/deploy.sh
    ```
 4. 安装 `deploy/lingshu.service`，`systemctl enable --now lingshu`（启动时自动建表）。
 5. 先备份 `/etc/nginx` 到 `/var/backups/nginx/`；装一个只有 80 端口的临时站点（ACME 路径 + 跳转），`nginx -t` 后 reload。
-6. 证书（和其他站点一样走 webroot）：`certbot certonly --webroot -w /var/www/letsencrypt -d lingshu.piqode.com`；再装完整的 `deploy/nginx-lingshu.conf`，`nginx -t` 通过后 reload。
+6. 证书（和其他站点一样走 webroot），每个域名单独一张：`certbot certonly --webroot -w /var/www/letsencrypt -d <域名>`；再装 `deploy/nginx-lingshu-common.inc` 和 `deploy/nginx-lingshu.conf`，`nginx -t` 通过后 reload。
 7. 建管理员：`sudo -u lingshu env $(cat /etc/lingshu/env | xargs) /opt/lingshu/lingshu admin create -username <名字>`。
 8. 渠道、模型、价格：本地 `scripts/seed-dev.py` 生成 SQL，经 ssh 灌进线上库。
 
