@@ -19,7 +19,7 @@ var channelTemplates = []ChannelTemplate{
 	{ID: "moonshot", Name: "Kimi（Moonshot 中国站）", BaseURLChat: "https://api.moonshot.cn/v1",
 		HasModelList: true, Note: "流式 usage 需要 include_usage，网关会自动加；也支持 messages（https://api.moonshot.cn/anthropic）"},
 	{ID: "zhipu", Name: "智谱 GLM（中国站）", BaseURLChat: "https://open.bigmodel.cn/api/paas/v4",
-		PresetModels: []string{"GLM-5.3", "GLM-5.3-Flash"}, Note: "没有模型列表接口，已预置常用模型"},
+		PresetModels: []string{"GLM-5.3", "GLM-5.3-FlashX"}, Note: "没有模型列表接口，已预置常用模型"},
 	{ID: "mimo", Name: "Xiaomi MiMo", BaseURLChat: "https://api.xiaomimimo.com/v1",
 		HasModelList: true, Note: "Token Plan 也用这个地址"},
 	{ID: "stepfun", Name: "StepFun 阶跃星辰", BaseURLChat: "https://api.stepfun.com/v1",

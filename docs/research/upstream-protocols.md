@@ -106,3 +106,15 @@
 - 阿里只给百分比：显式缓存写入 125%、显式命中 10%、隐式命中 20%。
 
 DeepSeek 高峰时段：周一到周五 UTC 01:00–04:00、06:00–10:00（中国节假日除外），其余时间低谷半价。
+
+## 补充模型（2026-10-18）
+
+用户查证，来源为官方定价页：
+- GLM-5.3-FlashX：国际站 $0.37 / $1.25，缓存命中 $0.075，缓存存储限时免费（无结束日期），无阶梯（docs.z.ai/guides/overview/pricing）；中国站 ¥2 / ¥7，命中 ¥0.57。实测 `GLM-5.3-FlashX` 和 `glm-5.3-flashx` 都能调，上游返回小写名。
+- kimi-k2.7-code：国际站 $0.95 / $4.00，缓存命中 $0.19，K2 系列无缓存写入费（platform.kimi.ai/pricing）；中国站 ¥6.50 / ¥27.00，命中 ¥1.30。只有思考模式。实测可调，流式 usage 需要 include_usage（网关会自动加）。
+- kimi-k2.8：开放平台不提供按量计费，只在 Kimi Code 订阅里（model ID `kimi-for-coding`）。
+
+### Moonshot 限流按累计充值分档（platform.moonshot.cn/docs/pricing/limits）
+
+中国站 Tier0（¥0）只有 **RPM 3、并发 1**；累计充值 ¥50 到 Tier1（RPM 100、并发 15）。国际站同样 Tier0 RPM 3，Tier1 需要累计 $10。
+2026-10-18 实测当前 Kimi 账号返回 "organization max RPM: 3"，处于 Tier0。团队同时用 Kimi 时会频繁 429。

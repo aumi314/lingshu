@@ -14,9 +14,9 @@ E = os.environ
 CHANNELS = [
     ("deepseek", "deepseek", "DEEPSEEK_API_KEY", E["DEEPSEEK_BASE_URL"], "", E["DEEPSEEK_BASE_URL"],
      [("deepseek-v4.1-flash", "deepseek-flash")]),
-    ("zhipu", "zhipu", "ZHIPU_API_KEY", E["ZHIPU_BASE_URL"], "", "", [("GLM-5.3", "")]),
+    ("zhipu", "zhipu", "ZHIPU_API_KEY", E["ZHIPU_BASE_URL"], "", "", [("GLM-5.3", ""), ("GLM-5.3-FlashX", "")]),
     ("mimo", "mimo", "MIMO_API_KEY", E["MIMO_BASE_URL"], "", "", [("mimo-v2.6-pro", "")]),
-    ("moonshot", "moonshot", "MOONSHOT_API_KEY", E["MOONSHOT_BASE_URL"], "", "", [("kimi-k3", "")]),
+    ("moonshot", "moonshot", "MOONSHOT_API_KEY", E["MOONSHOT_BASE_URL"], "", "", [("kimi-k3", ""), ("kimi-k2.7-code", "")]),
     ("stepfun", "stepfun", "STEPFUN_API_KEY", E["STEPFUN_BASE_URL"], "", "", [("step-5-preview", "")]),
     ("dashscope", "dashscope", "DASHSCOPE_API_KEY", "", E["DASHSCOPE_BASE_URL"], "",
      [("qwen3.8-max", ""), ("qwen3.8-flash", "")]),
@@ -26,8 +26,10 @@ CHANNELS = [
 PRICES = {
     "deepseek-v4.1-flash": ("0.30", "1.20", "0.006", "0"),
     "GLM-5.3": ("1.40", "4.40", "0.26", "0"),
+    "GLM-5.3-FlashX": ("0.37", "1.25", "0.075", "0"),
     "mimo-v2.6-pro": ("0.435", "0.87", "0.0036", "0"),
     "kimi-k3": ("3.00", "15.00", "0.30", "3.00"),
+    "kimi-k2.7-code": ("0.95", "4.00", "0.19", "0"),
     "step-5-preview": ("1.00", "2.70", "0.10", "0"),
     "qwen3.8-max": ("2.00", "6.00", "0.20", "2.50"),
     "qwen3.8-flash": ("0.15", "0.47", "0.015", "0.1875"),
