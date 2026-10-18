@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { StrictMode, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { App as AntApp, ConfigProvider, Spin, theme } from 'antd'
@@ -21,6 +21,16 @@ import Channels from './pages/admin/Channels'
 import System from './pages/admin/System'
 import './style.css'
 
+// 页面背景跟随主题（Ant Design 只管组件，不管 body）
+function ThemedBody({ dark }: { dark: boolean }) {
+  const { token } = theme.useToken()
+  useEffect(() => {
+    document.body.style.background = token.colorBgLayout
+    document.body.style.colorScheme = dark ? 'dark' : 'light'
+  }, [token.colorBgLayout, dark])
+  return null
+}
+
 function Root() {
   const { user, loading, dark, lang } = useApp()
   dayjs.locale(lang === 'zh' ? 'zh-cn' : 'en')
@@ -32,7 +42,8 @@ function Root() {
         token: { colorPrimary: '#4d6bfe', borderRadius: 8 },
       }}
     >
-      <AntApp>
+      <AntApp style={{ height: '100%' }}>
+        <ThemedBody dark={dark} />
         {loading ? (
           <div className="center-screen">
             <Spin size="large" />
