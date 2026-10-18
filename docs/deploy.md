@@ -31,8 +31,8 @@ bash deploy/deploy.sh
    LINGSHU_DATABASE_URL=postgres://lingshu:<密码>@127.0.0.1:5432/lingshu?sslmode=disable
    ```
 4. 安装 `deploy/lingshu.service`，`systemctl enable --now lingshu`（启动时自动建表）。
-5. 证书：先备份 `/etc/nginx`，`certbot certonly --nginx -d lingshu.piqode.com`。
-6. 安装 `deploy/nginx-lingshu.conf`，`nginx -t` 通过后 `systemctl reload nginx`。
+5. 先备份 `/etc/nginx` 到 `/var/backups/nginx/`；装一个只有 80 端口的临时站点（ACME 路径 + 跳转），`nginx -t` 后 reload。
+6. 证书（和其他站点一样走 webroot）：`certbot certonly --webroot -w /var/www/letsencrypt -d lingshu.piqode.com`；再装完整的 `deploy/nginx-lingshu.conf`，`nginx -t` 通过后 reload。
 7. 建管理员：`sudo -u lingshu env $(cat /etc/lingshu/env | xargs) /opt/lingshu/lingshu admin create -username <名字>`。
 8. 渠道、模型、价格：本地 `scripts/seed-dev.py` 生成 SQL，经 ssh 灌进线上库。
 
