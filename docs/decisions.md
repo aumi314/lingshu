@@ -85,7 +85,7 @@
 
 **MVP 上游**：只接中国厂商 —— DeepSeek、Kimi、GLM、Qwen、Xiaomi MiMo、StepFun。OpenAI、Anthropic 等美国上游以后用代理接入（腾讯云上有现成代理，以后再修通）。
 - 模型（站内标准名 → 上游模型名）：`deepseek-v4.1-flash` → `deepseek-flash`；`GLM-5.3`；`GLM-5.3-FlashX`；`mimo-v2.6-pro`；`kimi-k3`；`kimi-k2.7-code`；`step-5-preview`；`qwen3.8-max`；`qwen3.8-flash`。没写箭头的，上游名和标准名相同。`GLM-5.3-FlashX`、`kimi-k2.7-code` 于 2026-10-18 加入；kimi-k2.8 没有按量计费接口，不接。
-- Kimi 账号目前处于 Moonshot 限流 Tier0（RPM 3、并发 1），多人同时用会 429；累计充值 ¥50 升到 Tier1（RPM 100）。是否充值由用户决定。
+- Kimi 账号目前处于 Moonshot 限流 Tier0（RPM 3、并发 1），多人同时用会 429；累计充值 ¥50 升到 Tier1（RPM 100）。用户决定不单独处理，随用量充值自然升档。
 - 协议：Qwen 走 `/v1/messages`（`https://dashscope.aliyuncs.com/apps/anthropic`）；DeepSeek 同时走 `/v1/chat/completions` 和 `/v1/responses`（同一个 `https://api.deepseek.com`）；其余 4 家走 `/v1/chat/completions`。三个入口 MVP 都做，`/responses` 用 DeepSeek 验收。各家地址和坑见 `docs/research/upstream-protocols.md`。
 - 渠道按协议分别填地址（智谱三个协议的 base 不同）。
 - 上游没有 `/models` 时（智谱、阿里），模型列表由管理员手填，或由渠道模板预置。
