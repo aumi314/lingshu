@@ -125,6 +125,19 @@ func (s *Store) ModelProtocols(ctx context.Context, groupID int64, model string)
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
+// ChannelForResponse 查 responses 协议的某次响应是哪个渠道处理的，只查这个用户自己的记录。找不到返回 0。
+func (s *Store) ChannelForResponse(ctx context.Context, userID int64, responseID string) (int64, error) {
+	var id *int64
+	err := s.Pool.QueryRow(ctx, `
+		SELECT channel_id FROM request_logs
+		WHERE upstream_response_id = $1 AND user_id = $2
+		ORDER BY id DESC LIMIT 1`, responseID, userID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) || id == nil {
+		return 0, nil
+	}
+	return *id, err
+}
+
 // GroupModels 返回分组内可用的模型名，给 /v1/models 用。
 func (s *Store) GroupModels(ctx context.Context, groupID int64) ([]string, error) {
 	rows, err := s.Pool.Query(ctx, `

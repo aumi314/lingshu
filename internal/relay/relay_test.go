@@ -27,6 +27,7 @@ type env struct {
 	gateway  *httptest.Server
 	upstream http.HandlerFunc // 每个测试自己设置上游行为
 	key      string
+	handler  *Handler
 }
 
 const upstreamKey = "upstream-secret"
@@ -78,6 +79,7 @@ func newEnv(t *testing.T) *env {
 
 	mux := http.NewServeMux()
 	h := NewHandler(s)
+	e.handler = h
 	mux.Handle("POST /v1/chat/completions", h.Serve(usage.Chat))
 	mux.Handle("POST /v1/messages", h.Serve(usage.Messages))
 	mux.Handle("POST /v1/responses", h.Serve(usage.Responses))

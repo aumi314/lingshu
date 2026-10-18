@@ -8,12 +8,13 @@ import (
 	"github.com/aumi314/lingshu/internal/relay/usage"
 )
 
-// request 保留客户端请求体的全部字段，只改动网关必须改的部分。
+// request 保留客户端请求体的全部字段，只改动网关必须改的部分。解析后不再修改，重试时每次重新生成。
 type request struct {
-	fields map[string]json.RawMessage
-	body   []byte
-	model  string
-	stream bool
+	fields             map[string]json.RawMessage
+	body               []byte
+	model              string
+	stream             bool
+	previousResponseID string // responses 协议：接着哪次响应继续
 }
 
 func parseRequest(body []byte) (*request, error) {
@@ -27,34 +28,42 @@ func parseRequest(body []byte) (*request, error) {
 	if raw, ok := req.fields["stream"]; ok {
 		json.Unmarshal(raw, &req.stream)
 	}
+	if raw, ok := req.fields["previous_response_id"]; ok {
+		json.Unmarshal(raw, &req.previousResponseID)
+	}
 	return req, nil
 }
 
-// rewrite 把 model 换成上游名；chat 流式请求补上 include_usage。
+// bodyFor 生成发给某个渠道的请求体：model 换成上游名；chat 流式请求补上 include_usage。
 // 返回是否替客户端加了 include_usage（加了的话，usage 块不转发给客户端）。
-func (req *request) rewrite(proto usage.Protocol, upstreamModel string) (injected bool) {
+func (req *request) bodyFor(proto usage.Protocol, upstreamModel string) (body []byte, injected bool) {
+	fields := make(map[string]json.RawMessage, len(req.fields)+1)
+	for k, v := range req.fields {
+		fields[k] = v
+	}
 	changed := false
 	if upstreamModel != req.model {
-		req.fields["model"], _ = json.Marshal(upstreamModel)
+		fields["model"], _ = json.Marshal(upstreamModel)
 		changed = true
 	}
 	if proto == usage.Chat && req.stream {
 		opts := map[string]json.RawMessage{}
-		if raw, ok := req.fields["stream_options"]; ok {
+		if raw, ok := fields["stream_options"]; ok {
 			json.Unmarshal(raw, &opts)
 		}
 		var include bool
 		json.Unmarshal(opts["include_usage"], &include)
 		if !include {
 			opts["include_usage"] = json.RawMessage("true")
-			req.fields["stream_options"], _ = json.Marshal(opts)
+			fields["stream_options"], _ = json.Marshal(opts)
 			changed, injected = true, true
 		}
 	}
-	if changed {
-		req.body, _ = json.Marshal(req.fields)
+	if !changed {
+		return req.body, false
 	}
-	return injected
+	body, _ = json.Marshal(fields)
+	return body, injected
 }
 
 // 不转发给上游的请求头：鉴权、连接相关、可能泄露客户端信息的。

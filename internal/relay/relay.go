@@ -17,6 +17,7 @@ import (
 	"github.com/aumi314/lingshu/internal/auth"
 	"github.com/aumi314/lingshu/internal/billing"
 	"github.com/aumi314/lingshu/internal/relay/usage"
+	"github.com/aumi314/lingshu/internal/router"
 	"github.com/aumi314/lingshu/internal/store"
 )
 
@@ -39,17 +40,25 @@ var entryPaths = map[string]string{
 type Handler struct {
 	Store  *store.Store
 	Client *http.Client
+	Health *router.Health
+
+	// 等上游响应头的时限，超时就换渠道。流式请求上游通常几秒内就会回响应头；
+	// 非流式的推理模型要等全部生成完才回，所以给得长。
+	StreamHeaderTimeout time.Duration
+	BodyHeaderTimeout   time.Duration
 }
 
 func NewHandler(s *store.Store) *Handler {
 	return &Handler{
 		Store: s,
 		Client: &http.Client{Transport: &http.Transport{
-			Proxy:                 http.ProxyFromEnvironment,
-			ResponseHeaderTimeout: 5 * time.Minute, // 非流式的推理模型可能很久才返回
-			IdleConnTimeout:       90 * time.Second,
-			MaxIdleConnsPerHost:   32,
+			Proxy:               http.ProxyFromEnvironment,
+			IdleConnTimeout:     90 * time.Second,
+			MaxIdleConnsPerHost: 32,
 		}},
+		Health:              router.NewHealth(),
+		StreamHeaderTimeout: 60 * time.Second,
+		BodyHeaderTimeout:   5 * time.Minute,
 	}
 }
 
@@ -113,12 +122,32 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		h.rejectNoRoute(w, r.Context(), c, owner.GroupID, req.model)
 		return
 	}
-	route := routes[0] // 阶段 1：单渠道，不重试
-	c.log.ChannelID, c.log.UpstreamModel, c.log.Attempts = route.ChannelID, route.UpstreamModel, 1
-	c.log.Prices, c.log.GroupRatio = route.Prices, owner.GroupRatio
+	ordered := router.Order(h.Health, routes, func(rt store.Route) int64 { return rt.ChannelID })
+	if c.proto == usage.Responses && req.previousResponseID != "" {
+		// previous_response_id 引用的状态存在原上游账号里，只能发回原渠道
+		chID, err := h.Store.ChannelForResponse(r.Context(), owner.UserID, req.previousResponseID)
+		if err != nil {
+			slog.Error("查询原渠道失败", "err", err)
+		}
+		if chID != 0 {
+			ordered = onlyChannel(ordered, chID)
+			if len(ordered) == 0 {
+				c.reject(w, http.StatusServiceUnavailable, "这轮对话接着的上一次响应来自一个现在不可用的渠道，没法继续，请开启新对话")
+				return
+			}
+		}
+	}
+	c.log.GroupRatio = owner.GroupRatio
+	h.attemptAll(w, r, c, req, ordered)
+}
 
-	injected := req.rewrite(c.proto, route.UpstreamModel)
-	h.forward(w, r, c, route, req, injected)
+func onlyChannel(routes []store.Route, channelID int64) []store.Route {
+	for _, rt := range routes {
+		if rt.ChannelID == channelID {
+			return []store.Route{rt}
+		}
+	}
+	return nil
 }
 
 func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, proto usage.Protocol) (*store.KeyOwner, bool) {
@@ -169,116 +198,214 @@ func (c *call) reject(w http.ResponseWriter, status int, msg string) {
 	writeError(w, c.proto, status, msg)
 }
 
-// forward 把改写后的请求发给上游，再把响应原样转回客户端。
-func (h *Handler) forward(w http.ResponseWriter, r *http.Request, c *call, route store.Route, req *request, injected bool) {
+// failure 是一次可以换渠道重试的失败。所有渠道都失败时，把最后一次的失败返回给客户端。
+type failure struct {
+	status int
+	header http.Header // 上游的原始响应（有的话原样返回）
+	body   []byte
+	reason string // 写进日志的简短原因
+	msg    string // 没有上游原始响应时，返回给客户端的说明
+}
+
+func (f *failure) write(w http.ResponseWriter, proto usage.Protocol) {
+	if f.body != nil {
+		copyResponseHeaders(w.Header(), f.header)
+		w.WriteHeader(f.status)
+		w.Write(f.body)
+		return
+	}
+	writeError(w, proto, f.status, f.msg)
+}
+
+// attemptAll 按顺序尝试渠道，直到有一个给客户端写出了响应。
+// 只在还没给客户端写任何字节之前换渠道；失败的尝试不收钱。
+func (h *Handler) attemptAll(w http.ResponseWriter, r *http.Request, c *call, req *request, routes []store.Route) {
+	var last *failure
+	var reasons []string
+	for i, route := range routes {
+		if i >= router.MaxAttempts || (i > 0 && time.Since(c.start) > router.RetryBudget) {
+			break
+		}
+		c.useRoute(route, i+1)
+		f := h.attempt(w, r, c, route, req)
+		if f == nil {
+			return // 已经给客户端写了响应（成功、不该重试的错误），或者用户已经断开
+		}
+		last = f
+		reasons = append(reasons, route.ChannelName+": "+f.reason)
+		slog.Warn("渠道失败，换下一个", "request_id", c.log.RequestID, "channel", route.ChannelName, "reason", f.reason)
+	}
+	c.log.Status, c.log.HTTPStatus = "upstream_error", last.status
+	c.log.Error = truncate(strings.Join(reasons, "; "), 1000)
+	last.write(w, c.proto)
+}
+
+// useRoute 切换到一个渠道，重置上一次尝试留下的状态。
+func (c *call) useRoute(route store.Route, attempt int) {
+	c.log.ChannelID, c.log.UpstreamModel, c.log.Prices = route.ChannelID, route.UpstreamModel, route.Prices
+	c.log.Attempts = attempt
+	c.tracker = usage.NewTracker(c.proto)
+	c.gotResp = false
+}
+
+// attempt 向一个渠道发请求。返回 nil 表示响应已经交给客户端（或用户已断开），否则返回可重试的失败。
+func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route store.Route, req *request) *failure {
+	body, injected := req.bodyFor(c.proto, route.UpstreamModel)
 	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel() // 函数返回时（包括客户端断开）立刻取消上游请求
+	defer cancel() // 返回时（包括客户端断开）立刻取消上游请求
 
 	url := strings.TrimRight(route.BaseURL, "/") + upstreamPaths[c.proto]
 	if r.URL.RawQuery != "" {
 		url += "?" + r.URL.RawQuery // Claude Code 会带 ?beta=true
 	}
-	upReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(req.body))
+	upReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		c.fail(w, http.StatusInternalServerError, "构造上游请求失败: "+err.Error())
-		return
+		return &failure{status: http.StatusInternalServerError, reason: "构造请求失败", msg: "构造上游请求失败: " + err.Error()}
 	}
 	copyRequestHeaders(upReq.Header, r.Header)
 	setUpstreamAuth(upReq.Header, c.proto, route.APIKey)
 
+	timeout := h.BodyHeaderTimeout
+	if req.stream {
+		timeout = h.StreamHeaderTimeout
+	}
+	timer := time.AfterFunc(timeout, cancel)
 	resp, err := h.Client.Do(upReq)
+	timedOut := !timer.Stop()
+	if err == nil && timedOut {
+		resp.Body.Close()
+		err = context.DeadlineExceeded
+	}
 	if err != nil {
 		if r.Context().Err() != nil {
 			c.log.Status = "client_cancelled"
-			return
+			return nil
 		}
-		c.fail(w, http.StatusBadGateway, "上游连接失败: "+err.Error())
-		return
+		h.Health.Record(route.ChannelID, router.Failure)
+		reason := "连接失败: " + err.Error()
+		if timedOut {
+			reason = fmt.Sprintf("%v 内没有响应", timeout)
+		}
+		return &failure{status: http.StatusBadGateway, reason: reason, msg: "上游暂时连不上，已经试过所有可用渠道，请稍后重试"}
 	}
 	defer resp.Body.Close()
 	c.gotResp = true
 
-	copyResponseHeaders(w.Header(), resp.Header)
-	c.log.HTTPStatus = resp.StatusCode
-
 	if resp.StatusCode >= 400 {
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-		c.log.Status, c.log.Error = "upstream_error", truncate(string(errBody), 1000)
+		errBody = redactKey(errBody, route.APIKey) // 有的上游会在报错里回显 key，不能传给用户或写进日志
+		retry, outcome := router.Classify(resp.StatusCode)
+		h.Health.Record(route.ChannelID, outcome)
+		if retry {
+			return &failure{status: resp.StatusCode, header: resp.Header.Clone(), body: errBody,
+				reason: fmt.Sprintf("HTTP %d %s", resp.StatusCode, truncate(string(errBody), 200))}
+		}
+		// 请求本身的问题，换渠道也一样，原样返回
+		copyResponseHeaders(w.Header(), resp.Header)
+		c.log.Status, c.log.HTTPStatus, c.log.Error = "upstream_error", resp.StatusCode, truncate(string(errBody), 1000)
 		w.WriteHeader(resp.StatusCode)
 		w.Write(errBody)
-		return
+		return nil
 	}
 
 	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
-		h.relayStream(w, r, c, resp, injected)
-	} else {
-		h.relayBody(w, c, resp)
+		return h.relayStream(w, r, c, route, resp, injected)
 	}
+	return h.relayBody(w, c, route, resp)
 }
 
-func (h *Handler) relayBody(w http.ResponseWriter, c *call, resp *http.Response) {
+func (h *Handler) relayBody(w http.ResponseWriter, c *call, route store.Route, resp *http.Response) *failure {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		c.fail(w, http.StatusBadGateway, "读取上游响应失败: "+err.Error())
-		return
+		h.Health.Record(route.ChannelID, router.Failure)
+		return &failure{status: http.StatusBadGateway, reason: "读取响应失败: " + err.Error(), msg: "读取上游响应失败，请稍后重试"}
 	}
+	h.Health.Record(route.ChannelID, router.Success)
 	c.tracker.ObserveBody(body)
+	copyResponseHeaders(w.Header(), resp.Header)
+	c.log.HTTPStatus = resp.StatusCode
 	w.WriteHeader(resp.StatusCode)
 	if _, err := w.Write(body); err != nil {
 		c.log.Status = "client_cancelled"
-		return
+		return nil
 	}
 	c.markFirstByte()
 	c.log.Status = "success"
+	return nil
 }
 
-func (h *Handler) relayStream(w http.ResponseWriter, r *http.Request, c *call, resp *http.Response, injected bool) {
+func (h *Handler) relayStream(w http.ResponseWriter, r *http.Request, c *call, route store.Route, resp *http.Response, injected bool) *failure {
+	reader := usage.NewSSEReader(resp.Body)
+
+	// 先读第一个事件再给客户端回响应头：上游一开口就报错或断开时，还能换渠道
+	first, err := reader.Next()
+	if err != nil {
+		if r.Context().Err() != nil {
+			c.log.Status = "client_cancelled"
+			return nil
+		}
+		h.Health.Record(route.ChannelID, router.Failure)
+		return &failure{status: http.StatusBadGateway, reason: "返回内容前断开", msg: "上游在返回内容前断开了连接，请稍后重试"}
+	}
+	c.tracker.ObserveEvent(first.Data)
+	if c.tracker.Failed {
+		h.Health.Record(route.ChannelID, router.Failure)
+		// 所有渠道都这样时，把这个协议原生的错误事件原样交给客户端
+		return &failure{status: resp.StatusCode, header: resp.Header.Clone(), body: first.Raw,
+			reason: "流的第一个事件就是错误: " + truncate(string(first.Data), 200)}
+	}
+
+	copyResponseHeaders(w.Header(), resp.Header)
+	c.log.HTTPStatus = resp.StatusCode
 	rc := http.NewResponseController(w)
 	w.WriteHeader(resp.StatusCode)
-	reader := usage.NewSSEReader(resp.Body)
+
+	ev := first
 	for {
-		ev, err := reader.Next()
-		if err != nil {
-			switch {
-			case r.Context().Err() != nil:
+		if !(injected && usage.IsUsageOnlyChatChunk(ev.Data)) { // 客户端没要 usage、是网关替它要的，不转发
+			if _, err := w.Write(ev.Raw); err != nil {
 				c.log.Status = "client_cancelled"
-			case errors.Is(err, io.EOF) && c.tracker.Terminal && !c.tracker.Failed:
-				c.log.Status = "success"
-			case errors.Is(err, io.EOF) && c.tracker.Failed:
-				c.log.Status, c.log.Error = "upstream_error", "上游在流中报告错误"
-			case errors.Is(err, io.EOF):
-				c.log.Status, c.log.Error = "upstream_error", "上游流在正常结束前断开"
-			default:
-				c.log.Status, c.log.Error = "upstream_error", "读取上游流失败: "+err.Error()
+				return nil
 			}
-			return
+			if err := rc.Flush(); err != nil {
+				c.log.Status = "client_cancelled"
+				return nil
+			}
+			c.markFirstByte()
+		}
+
+		ev, err = reader.Next()
+		if err != nil {
+			break
 		}
 		c.tracker.ObserveEvent(ev.Data)
-		if injected && usage.IsUsageOnlyChatChunk(ev.Data) {
-			continue // 客户端没要 usage，是网关替它要的，不转发
-		}
-		if _, err := w.Write(ev.Raw); err != nil {
-			c.log.Status = "client_cancelled"
-			return
-		}
-		if err := rc.Flush(); err != nil {
-			c.log.Status = "client_cancelled"
-			return
-		}
-		c.markFirstByte()
 	}
+
+	switch {
+	case r.Context().Err() != nil:
+		c.log.Status = "client_cancelled"
+	case errors.Is(err, io.EOF) && c.tracker.Terminal && !c.tracker.Failed:
+		c.log.Status = "success"
+	case errors.Is(err, io.EOF) && c.tracker.Failed:
+		c.log.Status, c.log.Error = "upstream_error", "上游在流中报告错误"
+	case errors.Is(err, io.EOF):
+		c.log.Status, c.log.Error = "upstream_error", "上游流在正常结束前断开"
+	default:
+		c.log.Status, c.log.Error = "upstream_error", "读取上游流失败: "+err.Error()
+	}
+	switch c.log.Status {
+	case "success":
+		h.Health.Record(route.ChannelID, router.Success)
+	case "upstream_error":
+		h.Health.Record(route.ChannelID, router.Failure)
+	}
+	return nil
 }
 
 func (c *call) markFirstByte() {
 	if c.log.FirstByteMS == 0 {
 		c.log.FirstByteMS = max(int(time.Since(c.start).Milliseconds()), 1)
 	}
-}
-
-// fail 用于网关自己产生的上游错误（连接失败等）。
-func (c *call) fail(w http.ResponseWriter, status int, msg string) {
-	c.log.Status, c.log.HTTPStatus, c.log.Error = "upstream_error", status, msg
-	writeError(w, c.proto, status, msg)
 }
 
 // finish 按计费规则算出用量和扣费，结算并写日志。用独立的 context，客户端断开后也要写进去。
@@ -329,6 +456,13 @@ func (c *call) settledUsage() (usage.Usage, bool) {
 		return u, estimated
 	}
 	return u, false
+}
+
+func redactKey(b []byte, key string) []byte {
+	if len(key) < 8 {
+		return b
+	}
+	return bytes.ReplaceAll(b, []byte(key), []byte("***"))
 }
 
 func newRequestID() string {
