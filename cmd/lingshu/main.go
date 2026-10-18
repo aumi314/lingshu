@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -30,6 +31,7 @@ import (
 	"github.com/aumi314/lingshu/internal/relay"
 	"github.com/aumi314/lingshu/internal/relay/usage"
 	"github.com/aumi314/lingshu/internal/store"
+	"github.com/aumi314/lingshu/web"
 )
 
 func main() {
@@ -114,7 +116,8 @@ func serve() error {
 	mux.Handle("POST /v1/messages", h.Serve(usage.Messages))
 	mux.Handle("POST /v1/responses", h.Serve(usage.Responses))
 	mux.HandleFunc("GET /v1/models", h.ServeModels)
-	(&api.Server{Store: s, Relay: h}).Register(mux)
+	dist, _ := fs.Sub(web.Dist, "dist")
+	(&api.Server{Store: s, Relay: h, Web: dist}).Register(mux)
 
 	srv := &http.Server{Addr: cfg.Listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	errCh := make(chan error, 1)

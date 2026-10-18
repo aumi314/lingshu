@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 type Server struct {
 	Store *store.Store
 	Relay *relay.Handler // 复用网关的上游客户端和渠道健康状态
+	Web   fs.FS          // 前端构建产物，nil 时不提供页面
 }
 
 func (s *Server) Register(mux *http.ServeMux) {
@@ -67,6 +69,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "接口不存在")
 	})
+
+	// 其余路径交给前端页面
+	if s.Web != nil {
+		mux.Handle("/", Static(s.Web))
+	}
 }
 
 // ---- 通用 ----

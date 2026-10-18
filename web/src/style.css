@@ -1,0 +1,35 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.center-screen {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 40px 48px;
+}
+
+.page-title {
+  margin: 0 0 24px !important;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.muted {
+  opacity: 0.6;
+}
+
+.nowrap {
+  white-space: nowrap;
+}

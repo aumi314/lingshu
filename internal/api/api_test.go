@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -56,7 +57,11 @@ func newEnv(t *testing.T) *env {
 	}
 	mux := http.NewServeMux()
 	h := relay.NewHandler(s)
-	(&Server{Store: s, Relay: h}).Register(mux)
+	web := fstest.MapFS{
+		"index.html":      {Data: []byte("<html>lingshu</html>")},
+		"assets/app-1.js": {Data: []byte("console.log(1)")},
+	}
+	(&Server{Store: s, Relay: h, Web: web}).Register(mux)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return &env{t: t, store: s, srv: srv}
@@ -338,5 +343,34 @@ func TestUserLogsHideChannel(t *testing.T) {
 	_, raw = e.login("admin").do("GET", "/api/admin/logs", nil, nil)
 	if !strings.Contains(raw, "secret-channel") || !strings.Contains(raw, `"requests":2`) {
 		t.Errorf("管理端日志 = %s", raw)
+	}
+}
+
+func TestStaticPages(t *testing.T) {
+	e := newEnv(t)
+	get := func(path string) (*http.Response, string) {
+		resp, err := http.Get(e.srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp, string(b)
+	}
+	for _, p := range []string{"/", "/keys", "/admin/channels"} {
+		resp, body := get(p)
+		if resp.StatusCode != 200 || body != "<html>lingshu</html>" || resp.Header.Get("Cache-Control") != "no-cache" {
+			t.Errorf("%s 应返回 index.html 且不缓存: %d %q %q", p, resp.StatusCode, body, resp.Header.Get("Cache-Control"))
+		}
+	}
+	resp, _ := get("/assets/app-1.js")
+	if resp.StatusCode != 200 || !strings.Contains(resp.Header.Get("Cache-Control"), "immutable") {
+		t.Errorf("带哈希的静态文件应长期缓存: %d %q", resp.StatusCode, resp.Header.Get("Cache-Control"))
+	}
+	if resp, _ := get("/assets/missing.js"); resp.StatusCode != 404 {
+		t.Errorf("不存在的静态文件应 404，实际 %d", resp.StatusCode)
+	}
+	if resp, body := get("/api/nope"); resp.StatusCode != 404 || !strings.Contains(body, "接口不存在") {
+		t.Errorf("未知接口应返回 JSON 404: %d %s", resp.StatusCode, body)
 	}
 }

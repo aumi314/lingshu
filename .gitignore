@@ -8,3 +8,8 @@
 
 # 构建产物
 /bin/
+
+# 前端依赖和构建产物（dist/.gitkeep 保留，让 go:embed 在没构建时也能编译）
+/web/node_modules/
+/web/dist/*
+!/web/dist/.gitkeep
