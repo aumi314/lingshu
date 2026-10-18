@@ -15,6 +15,9 @@ OUT = WEB / "assets" / "fonts"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"
 
 src = "".join(p.read_text(encoding="utf-8") for p in SOURCES)
+# 注释里的字不会显示在页面上，去掉以免字体变大
+src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+src = re.sub(r"(^|\s)//.*", "", src)
 cjk = sorted(set(re.findall(r"[　-〿一-鿿＀-￯—·]", src)))
 text = "".join(cjk) + "".join(chr(c) for c in range(32, 127))
 print(f"{len(cjk)} 个汉字和全角符号")

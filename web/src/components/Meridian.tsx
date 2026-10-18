@@ -1,4 +1,5 @@
-// 首页主视觉：以浑天仪为"枢"，各家模型的粒子 logo 在两条交叉的空间轨道上运行，
+// 首页主视觉：一幅"天象 + 山水"。天上是星空和北斗（斗口第一星即"天枢"），地上是三层水墨远山和流动的雾；
+// 以浑天仪为"枢"，各家模型的粒子 logo 在两条交叉的空间轨道上运行，
 // 请求像气血一样从左侧流入中枢、再分往各家；背景是汇向中枢的"气"流。
 // 整个场景是三维投影，镜头随鼠标轻微偏转；鼠标划过 logo 会把粒子拨开，随后自己聚回。
 // 纯 canvas 2D，无依赖；"减少动态效果"时只画一帧静止画面。
@@ -56,6 +57,41 @@ type Dot = { hx: number; hy: number; x: number; y: number; vx: number; vy: numbe
 type Node = { v: Vendor; dots: Dot[]; glow: number; hover: number }
 type Pulse = { leg: 0 | 1; t: number; speed: number; client: number; target: number; color: number[] }
 type Mote = { x: number; y: number; life: number; max: number } // 背景的"气"
+type Star = { x: number; y: number; r: number; phase: number }
+type Ridge = { img: HTMLCanvasElement; top: number; depth: number } // 预先画好的一层远山
+
+// 北斗七星的相对位置（天枢、天璇、天玑、天权、玉衡、开阳、摇光），x 向右、y 向下
+const DIPPER: [number, number][] = [[0, 0], [0.02, 0.33], [0.33, 0.43], [0.38, 0.19], [0.58, 0.17], [0.76, 0.21], [1, 0.4]]
+const DIPPER_LINES = [[0, 1], [1, 2], [2, 3], [3, 0], [3, 4], [4, 5], [5, 6]]
+
+// 可复现的伪随机，保证每次打开山形一致
+function seeded(seed: number) {
+  return () => {
+    seed |= 0
+    seed = (seed + 0x6d2b79f5) | 0
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+// 一维平滑噪声，几层叠加得到起伏的山脊
+function ridgeNoise(rand: () => number) {
+  const table = Array.from({ length: 512 }, rand)
+  const smooth = (x: number) => {
+    const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f)
+    return table[i & 511] * (1 - u) + table[(i + 1) & 511] * u
+  }
+  return (x: number) => {
+    let v = 0, amp = 0.55, freq = 1
+    for (let o = 0; o < 5; o++) {
+      v += smooth(x * freq) * amp
+      amp *= 0.5
+      freq *= 2.1
+    }
+    return v
+  }
+}
 
 const rgba = (c: number[], a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a < 0 ? 0 : a > 1 ? 1 : a})`
 
@@ -92,15 +128,25 @@ async function sampleLogo(v: Vendor): Promise<{ hx: number; hy: number }[]> {
 
 export default function Meridian() {
   const ref = useRef<HTMLCanvasElement>(null)
+  const bgRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
+    // 两层画布：底层画天、山、雾、灯光，每帧整幅重画；上层画气流、光点、轨道和 logo，带拖尾。
+    // 分层是为了让静止的山和星不被拖尾反复叠加而变亮。
     const canvas = ref.current!
-    const ctx = canvas.getContext('2d')!
+    const bgCanvas = bgRef.current!
+    const fgCtx = canvas.getContext('2d')!
+    const bgCtx = bgCanvas.getContext('2d')!
+    let ctx = fgCtx
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     let w = 0, h = 0, raf = 0, last = performance.now(), time = 0, cancelled = false
     let nodes: Node[] = []
     const pulses: Pulse[] = []
     let motes: Mote[] = []
+    let stars: Star[] = []
+    let ridges: Ridge[] = []
+    let dpr = 1
+    let base: HTMLCanvasElement | null = null // 墨色底和地平线月光，尺寸变化时重画
     // 镜头：随鼠标轻微偏转（平滑跟随）
     const cam = { yaw: 0, pitch: 0, tyaw: 0, tpitch: 0 }
     const mouse = { x: -9999, y: -9999, active: false }
@@ -114,17 +160,94 @@ export default function Meridian() {
       return { x, y, life: anywhere ? Math.random() * max : 0, max }
     }
 
+    // 三层远山：远山淡、近山浓，山脊一线微光。画到离屏画布上，每帧只做平移（视差）
+    const buildRidges = () => {
+      const rand = seeded(20261018)
+      const pad = 160
+      ridges = [0, 1, 2].map((depth) => {
+        const noise = ridgeNoise(rand)
+        const base = h * (0.74 + depth * 0.075)
+        const amp = h * (0.2 - depth * 0.045)
+        const W = w + pad * 2
+        const ys: number[] = []
+        for (let x = 0; x <= W; x += 3) {
+          const n = noise(x / (w * (0.16 + depth * 0.05)) + depth * 37)
+          ys.push(base - amp * Math.pow(n, 1.7) * 1.6)
+        }
+        const top = Math.min(...ys) - 4
+        const c = document.createElement('canvas')
+        c.width = W * dpr
+        c.height = (h - top) * dpr
+        const g = c.getContext('2d')!
+        g.setTransform(dpr, 0, 0, dpr, 0, -top * dpr)
+        g.beginPath()
+        g.moveTo(0, h)
+        ys.forEach((y, i) => g.lineTo(i * 3, y))
+        g.lineTo(W, h)
+        g.closePath()
+        const grad = g.createLinearGradient(0, top, 0, h)
+        if (depth === 0) {
+          grad.addColorStop(0, rgba([70, 96, 94], 0.55))
+          grad.addColorStop(0.5, rgba([22, 30, 32], 0.7))
+          grad.addColorStop(1, rgba([10, 12, 15], 0.9))
+        } else if (depth === 1) {
+          grad.addColorStop(0, rgba([34, 46, 47], 0.95))
+          grad.addColorStop(0.4, rgba([13, 16, 19], 1))
+          grad.addColorStop(1, rgba([8, 9, 12], 1))
+        } else {
+          grad.addColorStop(0, rgba([16, 20, 22], 1))
+          grad.addColorStop(0.3, rgba([7, 8, 11], 1))
+          grad.addColorStop(1, rgba([7, 8, 11], 1))
+        }
+        g.fillStyle = grad
+        g.fill()
+        g.beginPath()
+        ys.forEach((y, i) => (i ? g.lineTo(i * 3, y) : g.moveTo(0, y)))
+        g.strokeStyle = depth === 2 ? rgba(JADE, 0.3) : rgba(depth === 0 ? JADE : PAPER, depth === 0 ? 0.12 : 0.1)
+        g.lineWidth = 1
+        g.stroke()
+        return { img: c, top, depth }
+      })
+    }
+
+    const buildBase = () => {
+      const { pivot } = geometry()
+      const c = document.createElement('canvas')
+      c.width = w * dpr
+      c.height = h * dpr
+      const g = c.getContext('2d')!
+      g.setTransform(dpr, 0, 0, dpr, 0, 0)
+      g.fillStyle = `rgb(${INK})`
+      g.fillRect(0, 0, w, h)
+      const glow = g.createRadialGradient(pivot.x, h * 0.8, 0, pivot.x, h * 0.8, w * 0.55)
+      glow.addColorStop(0, rgba(JADE, 0.1))
+      glow.addColorStop(0.4, rgba(GOLD, 0.025))
+      glow.addColorStop(1, rgba(JADE, 0))
+      g.fillStyle = glow
+      g.fillRect(0, 0, w, h)
+      base = c
+    }
+
     const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      dpr = Math.min(window.devicePixelRatio || 1, 2)
       const r = canvas.getBoundingClientRect()
       w = r.width
       h = r.height
-      canvas.width = w * dpr
-      canvas.height = h * dpr
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      ctx.fillStyle = `rgb(${INK})`
-      ctx.fillRect(0, 0, w, h)
+      for (const [c, g] of [[canvas, fgCtx], [bgCanvas, bgCtx]] as const) {
+        c.width = w * dpr
+        c.height = h * dpr
+        g.setTransform(dpr, 0, 0, dpr, 0, 0)
+      }
       motes = Array.from({ length: w < 860 ? 380 : 1100 }, () => newMote(true))
+      const rand = seeded(7)
+      stars = Array.from({ length: w < 860 ? 70 : 170 }, () => ({
+        x: rand() * w,
+        y: Math.pow(rand(), 1.4) * h * 0.72,
+        r: 0.35 + rand() * 0.9,
+        phase: rand() * Math.PI * 2,
+      }))
+      buildRidges()
+      buildBase()
     }
 
     const onMove = (e: PointerEvent) => {
@@ -187,6 +310,94 @@ export default function Meridian() {
         target: Math.floor(Math.random() * VENDORS.length),
         color: r < 0.7 ? JADE : r < 0.88 ? GOLD : CINNABAR,
       })
+    }
+
+    // ---- 天：星空和北斗。鼠标附近的星会亮起来 ----
+    const near = (x: number, y: number, r: number) => (mouse.active ? Math.max(0, 1 - Math.hypot(x - mouse.x, y - mouse.y) / r) : 0)
+    const drawSky = (narrow: boolean) => {
+      for (const st of stars) {
+        const tw = 0.5 + 0.5 * Math.sin(time * 1.7 + st.phase)
+        const a = 0.22 + 0.55 * tw + near(st.x, st.y, 160) * 0.6
+        ctx.fillStyle = rgba(PAPER, a)
+        ctx.fillRect(st.x - st.r, st.y - st.r, st.r * 2, st.r * 2)
+      }
+      // 北斗：宽屏放在左上（标题上方），窄屏放在中枢下方左侧
+      const sx = narrow ? w * 0.42 : Math.min(w * 0.2, 300)
+      const ox = narrow ? w * 0.08 : w * 0.06
+      const oy = narrow ? h * 0.5 : h * 0.12
+      const pts = DIPPER.map(([x, y]) => ({ x: ox + x * sx - cam.yaw * 18, y: oy + y * sx * 0.5 - cam.pitch * 12 }))
+      ctx.lineWidth = 1
+      ctx.strokeStyle = rgba(GOLD, 0.42)
+      ctx.beginPath()
+      for (const [a, b] of DIPPER_LINES) {
+        ctx.moveTo(pts[a].x, pts[a].y)
+        ctx.lineTo(pts[b].x, pts[b].y)
+      }
+      ctx.stroke()
+      pts.forEach((p, i) => {
+        const tianshu = i === 0 // 天枢：斗口第一星，"枢"的出处之一
+        const pulse = 0.75 + 0.25 * Math.sin(time * 2 + i)
+        const r = (tianshu ? 14 : 9) * pulse + near(p.x, p.y, 120) * 8
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r)
+        g.addColorStop(0, rgba(tianshu ? JADE : GOLD, 1))
+        g.addColorStop(0.2, rgba(tianshu ? JADE : GOLD, 0.45))
+        g.addColorStop(1, rgba(GOLD, 0))
+        ctx.fillStyle = g
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = rgba(PAPER, 0.95)
+        ctx.fillRect(p.x - 1, p.y - 1, 2, 2)
+      })
+      ctx.font = '500 13px LingshuSerif, serif'
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      ctx.fillStyle = rgba(JADE, 0.85)
+      ctx.fillText('天枢', pts[0].x + 12, pts[0].y - 2)
+      ctx.fillStyle = rgba(PAPER, 0.55)
+      ctx.fillText('北', pts[6].x + 12, pts[6].y - 8)
+      ctx.fillText('斗', pts[6].x + 12, pts[6].y + 8)
+    }
+
+    // ---- 地：三层远山（视差）和缓缓流过的雾 ----
+    const drawLand = () => {
+      for (const rg of ridges) {
+        const dx = -160 - cam.yaw * (24 + rg.depth * 46)
+        const dy = -cam.pitch * (10 + rg.depth * 22)
+        ctx.drawImage(rg.img, dx, rg.top + dy, rg.img.width / dpr, rg.img.height / dpr)
+        if (rg.depth < 2) {
+          // 山间的雾：两团扁的光在层与层之间横向漂移
+          for (let k = 0; k < 2; k++) {
+            const span = w + 800
+            const x = ((time * (10 + rg.depth * 6) + k * span * 0.5 + rg.depth * 300) % span) - 400
+            const y = h * (0.8 + rg.depth * 0.07)
+            ctx.save()
+            ctx.translate(x, y)
+            ctx.scale(1, 0.16)
+            const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 420)
+            g.addColorStop(0, rgba(PAPER, 0.05 + near(x, y, 500) * 0.05))
+            g.addColorStop(1, rgba(PAPER, 0))
+            ctx.fillStyle = g
+            ctx.beginPath()
+            ctx.arc(0, 0, 420, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.restore()
+          }
+        }
+      }
+    }
+
+    // ---- 鼠标是一盏灯，照亮附近的星、雾和山脊 ----
+    const drawLantern = () => {
+      if (!mouse.active) return
+      const g = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 280)
+      g.addColorStop(0, rgba(PAPER, 0.05))
+      g.addColorStop(0.5, rgba(JADE, 0.018))
+      g.addColorStop(1, rgba(JADE, 0))
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(mouse.x, mouse.y, 280, 0, Math.PI * 2)
+      ctx.fill()
     }
 
     // ---- 背景的"气"：沿流场漂动，整体汇向中枢，越近越绕着转 ----
@@ -333,11 +544,27 @@ export default function Meridian() {
       cam.yaw += (cam.tyaw - cam.yaw) * Math.min(1, dt * 2.2)
       cam.pitch += (cam.tpitch - cam.pitch) * Math.min(1, dt * 2.2)
 
-      // 拖尾：每帧盖一层半透明的墨色
+      // 底层：整幅重画
+      ctx = bgCtx
       ctx.globalCompositeOperation = 'source-over'
-      ctx.fillStyle = `rgba(${INK}, ${reduced ? 1 : 0.28})`
-      ctx.fillRect(0, 0, w, h)
+      if (base) ctx.drawImage(base, 0, 0, w, h)
+      ctx.globalCompositeOperation = 'lighter'
+      drawSky(narrow)
+      ctx.globalCompositeOperation = 'source-over'
+      drawLand()
+      ctx.globalCompositeOperation = 'lighter'
+      drawLantern()
+      ctx.globalCompositeOperation = 'source-over'
 
+      // 上层：拖尾——每帧把已有的内容擦淡一些，而不是盖墨，底层才能透上来
+      ctx = fgCtx
+      if (reduced) {
+        ctx.clearRect(0, 0, w, h)
+      } else {
+        ctx.globalCompositeOperation = 'destination-out'
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'
+        ctx.fillRect(0, 0, w, h)
+      }
       ctx.globalCompositeOperation = 'lighter'
       drawMotes(pivot, R, dt)
       ctx.globalCompositeOperation = 'source-over'
@@ -471,5 +698,10 @@ export default function Meridian() {
     }
   }, [])
 
-  return <canvas ref={ref} className="ls-meridian" aria-hidden="true" />
+  return (
+    <>
+      <canvas ref={bgRef} className="ls-meridian" aria-hidden="true" />
+      <canvas ref={ref} className="ls-meridian" aria-hidden="true" />
+    </>
+  )
 }

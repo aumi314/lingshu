@@ -184,7 +184,7 @@
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(7, 8, 11, 0.92) 0%, rgba(7, 8, 11, 0.55) 38%, rgba(7, 8, 11, 0) 62%),
+    linear-gradient(90deg, rgba(7, 8, 11, 0.5) 0%, rgba(7, 8, 11, 0.3) 40%, rgba(7, 8, 11, 0) 62%),
     linear-gradient(0deg, var(--ink) 0%, rgba(7, 8, 11, 0) 22%);
 }
 .ls-hero-text {
@@ -230,6 +230,7 @@
   text-shadow: 0 0 40px rgba(226, 72, 61, 0.45);
 }
 .ls-lede {
+  text-shadow: 0 0 18px rgba(7, 8, 11, 0.95), 0 0 2px rgba(7, 8, 11, 0.9);
   font-size: 18px;
   line-height: 1.8;
   color: var(--muted);
