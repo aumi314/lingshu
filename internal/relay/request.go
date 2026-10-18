@@ -1,0 +1,154 @@
+package relay
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+
+	"github.com/aumi314/lingshu/internal/relay/usage"
+)
+
+// request 保留客户端请求体的全部字段，只改动网关必须改的部分。
+type request struct {
+	fields map[string]json.RawMessage
+	body   []byte
+	model  string
+	stream bool
+}
+
+func parseRequest(body []byte) (*request, error) {
+	req := &request{body: body}
+	if err := json.Unmarshal(body, &req.fields); err != nil {
+		return nil, errors.New("请求体不是合法的 JSON 对象")
+	}
+	if err := json.Unmarshal(req.fields["model"], &req.model); err != nil || req.model == "" {
+		return nil, errors.New("请求体缺少 model 字段")
+	}
+	if raw, ok := req.fields["stream"]; ok {
+		json.Unmarshal(raw, &req.stream)
+	}
+	return req, nil
+}
+
+// rewrite 把 model 换成上游名；chat 流式请求补上 include_usage。
+// 返回是否替客户端加了 include_usage（加了的话，usage 块不转发给客户端）。
+func (req *request) rewrite(proto usage.Protocol, upstreamModel string) (injected bool) {
+	changed := false
+	if upstreamModel != req.model {
+		req.fields["model"], _ = json.Marshal(upstreamModel)
+		changed = true
+	}
+	if proto == usage.Chat && req.stream {
+		opts := map[string]json.RawMessage{}
+		if raw, ok := req.fields["stream_options"]; ok {
+			json.Unmarshal(raw, &opts)
+		}
+		var include bool
+		json.Unmarshal(opts["include_usage"], &include)
+		if !include {
+			opts["include_usage"] = json.RawMessage("true")
+			req.fields["stream_options"], _ = json.Marshal(opts)
+			changed, injected = true, true
+		}
+	}
+	if changed {
+		req.body, _ = json.Marshal(req.fields)
+	}
+	return injected
+}
+
+// 不转发给上游的请求头：鉴权、连接相关、可能泄露客户端信息的。
+var droppedRequestHeaders = map[string]bool{
+	"Authorization": true, "X-Api-Key": true, "Host": true, "Content-Length": true,
+	"Connection": true, "Keep-Alive": true, "Proxy-Connection": true, "Proxy-Authorization": true,
+	"Te": true, "Trailer": true, "Transfer-Encoding": true, "Upgrade": true,
+	"Accept-Encoding": true, // 让 Go 自己协商压缩并解压，否则没法从响应里读 usage
+	"Cookie":          true, "Forwarded": true, "X-Forwarded-For": true, "X-Forwarded-Host": true,
+	"X-Forwarded-Proto": true, "X-Real-Ip": true,
+}
+
+func copyRequestHeaders(dst, src http.Header) {
+	for k, vs := range src {
+		if droppedRequestHeaders[http.CanonicalHeaderKey(k)] {
+			continue
+		}
+		dst[k] = append([]string(nil), vs...)
+	}
+	if dst.Get("Content-Type") == "" {
+		dst.Set("Content-Type", "application/json")
+	}
+}
+
+func setUpstreamAuth(h http.Header, proto usage.Protocol, apiKey string) {
+	if proto == usage.Messages {
+		h.Set("x-api-key", apiKey)
+		if h.Get("anthropic-version") == "" {
+			h.Set("anthropic-version", "2023-06-01")
+		}
+		return
+	}
+	h.Set("Authorization", "Bearer "+apiKey)
+}
+
+// 不回传给客户端的响应头。Content-Length / Content-Encoding 因为 Go 已解压、可能删块而失效。
+var droppedResponseHeaders = map[string]bool{
+	"Content-Length": true, "Content-Encoding": true, "Connection": true, "Keep-Alive": true,
+	"Transfer-Encoding": true, "Trailer": true, "Upgrade": true, "Set-Cookie": true,
+}
+
+func copyResponseHeaders(dst, src http.Header) {
+	for k, vs := range src {
+		if droppedResponseHeaders[http.CanonicalHeaderKey(k)] {
+			continue
+		}
+		dst[k] = append([]string(nil), vs...)
+	}
+}
+
+// writeError 按入口协议的格式返回错误，客户端 SDK 才能正常解析。
+func writeError(w http.ResponseWriter, proto usage.Protocol, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	var body any
+	if proto == usage.Messages {
+		body = map[string]any{"type": "error", "error": map[string]string{"type": anthropicErrorType(status), "message": msg}}
+	} else {
+		body = map[string]any{"error": map[string]any{"message": msg, "type": openAIErrorType(status), "code": nil}}
+	}
+	json.NewEncoder(w).Encode(body)
+}
+
+func anthropicErrorType(status int) string {
+	switch status {
+	case http.StatusUnauthorized:
+		return "authentication_error"
+	case http.StatusForbidden:
+		return "permission_error"
+	case http.StatusNotFound:
+		return "not_found_error"
+	case http.StatusRequestEntityTooLarge:
+		return "request_too_large"
+	case http.StatusTooManyRequests:
+		return "rate_limit_error"
+	}
+	if status >= 500 {
+		return "api_error"
+	}
+	return "invalid_request_error"
+}
+
+func openAIErrorType(status int) string {
+	switch {
+	case status == http.StatusUnauthorized:
+		return "authentication_error"
+	case status == http.StatusForbidden:
+		return "permission_error"
+	case status == http.StatusNotFound:
+		return "not_found_error"
+	case status == http.StatusTooManyRequests:
+		return "rate_limit_error"
+	case status >= 500:
+		return "server_error"
+	}
+	return "invalid_request_error"
+}

@@ -3,6 +3,8 @@
 //	lingshu [serve]                     启动服务（启动时自动执行数据库迁移）
 //	lingshu migrate                     只执行数据库迁移
 //	lingshu admin create -username NAME 创建管理员，密码从终端输入或标准输入读取
+//	lingshu key create -username NAME -group GROUP -name KEYNAME
+//	                                    创建 API key（前端做好之前的临时入口）
 package main
 
 import (
@@ -22,7 +24,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/term"
 
+	"github.com/aumi314/lingshu/internal/auth"
 	"github.com/aumi314/lingshu/internal/config"
+	"github.com/aumi314/lingshu/internal/relay"
+	"github.com/aumi314/lingshu/internal/relay/usage"
 	"github.com/aumi314/lingshu/internal/store"
 )
 
@@ -54,8 +59,13 @@ func run(args []string) error {
 			return errors.New("用法: lingshu admin create -username NAME")
 		}
 		return adminCreate(args[1:])
+	case "key":
+		if len(args) == 0 || args[0] != "create" {
+			return errors.New("用法: lingshu key create -username NAME -group GROUP -name KEYNAME")
+		}
+		return keyCreate(args[1:])
 	default:
-		return fmt.Errorf("未知命令 %q，可用命令: serve、migrate、admin create", cmd)
+		return fmt.Errorf("未知命令 %q，可用命令: serve、migrate、admin create、key create", cmd)
 	}
 }
 
@@ -98,6 +108,11 @@ func serve() error {
 		}
 		w.Write([]byte("ok"))
 	})
+	h := relay.NewHandler(s)
+	mux.Handle("POST /v1/chat/completions", h.Serve(usage.Chat))
+	mux.Handle("POST /v1/messages", h.Serve(usage.Messages))
+	mux.Handle("POST /v1/responses", h.Serve(usage.Responses))
+	mux.HandleFunc("GET /v1/models", h.ServeModels)
 
 	srv := &http.Server{Addr: cfg.Listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	errCh := make(chan error, 1)
@@ -144,6 +159,42 @@ func adminCreate(args []string) error {
 			return err
 		}
 		fmt.Printf("管理员 %s 已创建（id=%d）\n", *username, id)
+		return nil
+	})
+}
+
+func keyCreate(args []string) error {
+	fs := flag.NewFlagSet("key create", flag.ContinueOnError)
+	username := fs.String("username", "", "key 所属用户")
+	group := fs.String("group", "default", "key 使用的分组")
+	name := fs.String("name", "", "key 名称")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *username == "" || *name == "" {
+		return errors.New("请用 -username 和 -name 指定用户和 key 名称")
+	}
+	return withStore(func(ctx context.Context, s *store.Store) error {
+		userID, err := s.UserIDByName(ctx, *username)
+		if err != nil {
+			return err
+		}
+		if userID == 0 {
+			return fmt.Errorf("用户 %s 不存在", *username)
+		}
+		groupID, err := s.GroupIDByName(ctx, *group)
+		if err != nil {
+			return err
+		}
+		if groupID == 0 {
+			return fmt.Errorf("分组 %s 不存在", *group)
+		}
+		key, hash, prefix := auth.NewAPIKey()
+		if _, err := s.CreateAPIKey(ctx, userID, *name, hash, prefix, groupID); err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stderr, "key 已创建，只显示这一次，请马上保存：")
+		fmt.Println(key)
 		return nil
 	})
 }

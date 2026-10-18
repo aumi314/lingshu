@@ -1,0 +1,63 @@
+event:ping
+data:{"type":"ping"}
+
+event:message_start
+data:{"message":{"model":"qwen3.8-max","id":"msg_7a43a945-00c6-462c-b7b3-aaa4dfc1c288","role":"assistant","type":"message","content":[],"usage":{"input_tokens":7,"output_tokens":0}},"type":"message_start"}
+
+event:content_block_start
+data:{"type":"content_block_start","content_block":{"type":"thinking","signature":"","thinking":""},"index":0}
+
+event:content_block_delta
+data:{"delta":{"type":"thinking_delta","thinking":"We"},"type":"content_block_delta","index":0}
+
+event:content_block_delta
+data:{"delta":{"type":"thinking_delta","thinking":" need respond"},"type":"content_block_delta","index":0}
+
+event:content_block_delta
+data:{"delta":{"type":"thinking_delta","thinking":" to user \""},"type":"content_block_delta","index":0}
+
+event:content_block_delta
+data:{"delta":{"type":"thinking_delta","thinking":"Count 1 to"},"type":"content_block_delta","index":0}
+
+event:content_block_delta
+data:{"delta":{"type":"thinking_delta","thinking":" 3.\" Simple"},"type":"content_block_delta","index":0}
+
+event:content_block_delta
+data:{"delta":{"type":"thinking_delta","thinking":". Need final answer"},"type":"content_block_delta","index":0}
+
+event:content_block_delta
+data:{"delta":{"type":"thinking_delta","thinking":" likely \"1,"},"type":"content_block_delta","index":0}
+
+event:content_block_delta
+data:{"delta":{"type":"thinking_delta","thinking":" 2, "},"type":"content_block_delta","index":0}
+
+event:content_block_delta
+data:{"delta":{"type":"thinking_delta","thinking":"3\". Keep concise"},"type":"content_block_delta","index":0}
+
+event:content_block_delta
+data:{"delta":{"type":"thinking_delta","thinking":"."},"type":"content_block_delta","index":0}
+
+event:content_block_delta
+data:{"delta":{"type":"signature_delta","signature":""},"type":"content_block_delta","index":0}
+
+event:content_block_stop
+data:{"type":"content_block_stop","index":0}
+
+event:content_block_start
+data:{"type":"content_block_start","content_block":{"type":"text","text":""},"index":1}
+
+event:content_block_delta
+data:{"delta":{"type":"text_delta","text":"1, "},"type":"content_block_delta","index":1}
+
+event:content_block_delta
+data:{"delta":{"type":"text_delta","text":"2, 3"},"type":"content_block_delta","index":1}
+
+event:content_block_stop
+data:{"type":"content_block_stop","index":1}
+
+event:message_delta
+data:{"delta":{"stop_reason":"end_turn"},"type":"message_delta","usage":{"output_tokens":41,"cache_creation_input_tokens":0,"input_tokens":68,"cache_read_input_tokens":0,"prompt_tokens_details":{"cached_tokens":0}}}
+
+event:message_stop
+data:{"type":"message_stop"}
+

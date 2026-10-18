@@ -80,6 +80,8 @@
 - 上游没有 `/models` 时（智谱、阿里），模型列表由管理员手填，或由渠道模板预置。
 - 结算时 usage 每个字段取流里最后出现的值，不累加，也不信开头的值（StepFun 每块都带累计值；阿里 `message_start` 的 input 不准）。实测见 `docs/research/upstream-protocols.md`。
 - coding plan 订阅 key 的使用条款风险，用户已经知道，由用户自己决定用不用，技术上不做限制。先把技术跑通；以后可能购买官方 team 席位。
+- 鉴权同时接受 `x-api-key` 和 `Authorization: Bearer`；两个都带且不同时逐个尝试（Claude Code 会同时发）。
+- 响应里的 `model` 字段不改回站内标准名，原样透传上游返回的值（改写要逐块处理，收益小）。
 - 透传时保留客户端原始的 User-Agent（Kimi Code 等订阅渠道要求真实 UA）。
 
 **验收**
