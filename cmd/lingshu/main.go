@@ -24,6 +24,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/term"
 
+	"github.com/aumi314/lingshu/internal/api"
 	"github.com/aumi314/lingshu/internal/auth"
 	"github.com/aumi314/lingshu/internal/config"
 	"github.com/aumi314/lingshu/internal/relay"
@@ -113,6 +114,7 @@ func serve() error {
 	mux.Handle("POST /v1/messages", h.Serve(usage.Messages))
 	mux.Handle("POST /v1/responses", h.Serve(usage.Responses))
 	mux.HandleFunc("GET /v1/models", h.ServeModels)
+	(&api.Server{Store: s, Relay: h}).Register(mux)
 
 	srv := &http.Server{Addr: cfg.Listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	errCh := make(chan error, 1)

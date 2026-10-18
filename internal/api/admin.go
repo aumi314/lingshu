@@ -1,0 +1,481 @@
+package api
+
+import (
+	"context"
+	"net/http"
+	"strings"
+	"sync"
+
+	"github.com/shopspring/decimal"
+
+	"github.com/aumi314/lingshu/internal/relay"
+	"github.com/aumi314/lingshu/internal/relay/usage"
+	"github.com/aumi314/lingshu/internal/store"
+)
+
+// ---- 用户 ----
+
+func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := s.Store.ListUsers(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, users)
+}
+
+func validRole(role string) bool { return role == "admin" || role == "user" }
+
+func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	in.Username = strings.TrimSpace(in.Username)
+	if in.Username == "" {
+		writeError(w, http.StatusBadRequest, "用户名不能为空")
+		return
+	}
+	if in.Role == "" {
+		in.Role = "user"
+	}
+	if !validRole(in.Role) {
+		writeError(w, http.StatusBadRequest, "角色只能是 admin 或 user")
+		return
+	}
+	hash, msg := hashPassword(in.Password)
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	id, err := s.Store.CreateUser(r.Context(), in.Username, hash, in.Role)
+	if err == store.ErrUsernameTaken {
+		writeError(w, http.StatusConflict, "用户名已存在")
+		return
+	}
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]int64{"id": id})
+}
+
+func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
+	id, okID := pathID(w, r)
+	if !okID {
+		return
+	}
+	var in struct {
+		Role     *string `json:"role"`
+		Enabled  *bool   `json:"enabled"`
+		Password *string `json:"password"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	me := currentUser(r)
+	if id == me.ID && ((in.Enabled != nil && !*in.Enabled) || (in.Role != nil && *in.Role != "admin")) {
+		writeError(w, http.StatusBadRequest, "不能停用自己或取消自己的管理员身份，避免把自己锁在外面")
+		return
+	}
+	var p store.UserPatch
+	if in.Role != nil {
+		if !validRole(*in.Role) {
+			writeError(w, http.StatusBadRequest, "角色只能是 admin 或 user")
+			return
+		}
+		p.Role = in.Role
+	}
+	p.Enabled = in.Enabled
+	if in.Password != nil {
+		hash, msg := hashPassword(*in.Password)
+		if msg != "" {
+			writeError(w, http.StatusBadRequest, msg)
+			return
+		}
+		p.PasswordHash = &hash
+	}
+	if err := s.Store.UpdateUser(r.Context(), id, p); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if (in.Enabled != nil && !*in.Enabled) || in.Password != nil {
+		s.Store.DeleteUserSessions(r.Context(), id) // 停用或重置密码后让对方重新登录
+	}
+	ok(w)
+}
+
+// adjustBalance：mode=add 在当前余额上加减 amount；mode=set 直接设为 amount。都会记一条流水。
+func (s *Server) adjustBalance(w http.ResponseWriter, r *http.Request) {
+	id, okID := pathID(w, r)
+	if !okID {
+		return
+	}
+	var in struct {
+		Mode   string          `json:"mode"`
+		Amount decimal.Decimal `json:"amount"`
+		Note   string          `json:"note"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	delta := in.Amount
+	switch in.Mode {
+	case "add", "":
+	case "set":
+		u, err := s.Store.UserByID(r.Context(), id)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		delta = in.Amount.Sub(u.Balance)
+	default:
+		writeError(w, http.StatusBadRequest, "mode 只能是 add 或 set")
+		return
+	}
+	if delta.IsZero() {
+		writeError(w, http.StatusBadRequest, "余额没有变化")
+		return
+	}
+	after, err := s.Store.AdjustBalance(r.Context(), id, delta, currentUser(r).ID, strings.TrimSpace(in.Note))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"balance": after})
+}
+
+func (s *Server) balanceHistory(w http.ResponseWriter, r *http.Request) {
+	id, okID := pathID(w, r)
+	if !okID {
+		return
+	}
+	list, err := s.Store.BalanceAdjustments(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if list == nil {
+		list = []store.BalanceAdjustment{}
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) setUserGroups(w http.ResponseWriter, r *http.Request) {
+	id, okID := pathID(w, r)
+	if !okID {
+		return
+	}
+	var in struct {
+		GroupIDs []int64 `json:"group_ids"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if in.GroupIDs == nil {
+		in.GroupIDs = []int64{}
+	}
+	if err := s.Store.SetUserGroups(r.Context(), id, in.GroupIDs); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	ok(w)
+}
+
+// ---- 分组 ----
+
+func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
+	groups, err := s.Store.ListGroups(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, groups)
+}
+
+func (s *Server) saveGroup(w http.ResponseWriter, r *http.Request) {
+	var g store.Group
+	if !readJSON(w, r, &g) {
+		return
+	}
+	if r.PathValue("id") != "" {
+		id, okID := pathID(w, r)
+		if !okID {
+			return
+		}
+		g.ID = id
+	} else {
+		g.ID = 0
+	}
+	g.Name = strings.TrimSpace(g.Name)
+	if g.Name == "" {
+		writeError(w, http.StatusBadRequest, "分组名不能为空")
+		return
+	}
+	if g.Ratio.IsNegative() {
+		writeError(w, http.StatusBadRequest, "倍率不能是负数")
+		return
+	}
+	if err := s.Store.SaveGroup(r.Context(), &g); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, g)
+}
+
+func (s *Server) deleteGroup(w http.ResponseWriter, r *http.Request) {
+	id, okID := pathID(w, r)
+	if !okID {
+		return
+	}
+	if err := s.Store.DeleteGroup(r.Context(), id); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	ok(w)
+}
+
+// ---- 模型 ----
+
+func (s *Server) listModels(w http.ResponseWriter, r *http.Request) {
+	models, err := s.Store.ListModels(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, models)
+}
+
+func (s *Server) saveModel(w http.ResponseWriter, r *http.Request) {
+	var m store.Model
+	if !readJSON(w, r, &m) {
+		return
+	}
+	m.ID = 0
+	if r.PathValue("id") != "" {
+		id, okID := pathID(w, r)
+		if !okID {
+			return
+		}
+		m.ID = id
+	}
+	m.Name = strings.TrimSpace(m.Name)
+	if m.Name == "" {
+		writeError(w, http.StatusBadRequest, "模型名不能为空")
+		return
+	}
+	for _, p := range []decimal.Decimal{m.InputPrice, m.OutputPrice, m.CacheReadPrice, m.CacheWritePrice} {
+		if p.IsNegative() {
+			writeError(w, http.StatusBadRequest, "价格不能是负数")
+			return
+		}
+	}
+	if err := s.Store.SaveModel(r.Context(), &m); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, m)
+}
+
+func (s *Server) deleteModel(w http.ResponseWriter, r *http.Request) {
+	id, okID := pathID(w, r)
+	if !okID {
+		return
+	}
+	if err := s.Store.DeleteModel(r.Context(), id); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	ok(w)
+}
+
+// ---- 渠道 ----
+
+func (s *Server) channelTemplates(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, channelTemplates)
+}
+
+type channelView struct {
+	*store.Channel
+	Cooling bool `json:"cooling"` // 连续失败被暂时停用中
+}
+
+func (s *Server) listChannels(w http.ResponseWriter, r *http.Request) {
+	channels, err := s.Store.ListChannels(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	out := make([]channelView, len(channels))
+	for i, c := range channels {
+		out[i] = channelView{Channel: c, Cooling: s.Relay.Health.Cooling(c.ID)}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) saveChannel(w http.ResponseWriter, r *http.Request) {
+	var c store.Channel
+	if !readJSON(w, r, &c) {
+		return
+	}
+	c.ID = 0
+	if r.PathValue("id") != "" {
+		id, okID := pathID(w, r)
+		if !okID {
+			return
+		}
+		c.ID = id
+	}
+	c.Name = strings.TrimSpace(c.Name)
+	c.APIKey = strings.TrimSpace(c.APIKey)
+	c.BaseURLChat = strings.TrimRight(strings.TrimSpace(c.BaseURLChat), "/")
+	c.BaseURLMessages = strings.TrimRight(strings.TrimSpace(c.BaseURLMessages), "/")
+	c.BaseURLResponses = strings.TrimRight(strings.TrimSpace(c.BaseURLResponses), "/")
+	switch {
+	case c.Name == "":
+		writeError(w, http.StatusBadRequest, "渠道名不能为空")
+		return
+	case c.BaseURLChat == "" && c.BaseURLMessages == "" && c.BaseURLResponses == "":
+		writeError(w, http.StatusBadRequest, "至少填一个协议的地址")
+		return
+	case c.ID == 0 && c.APIKey == "":
+		writeError(w, http.StatusBadRequest, "新建渠道要填 API key")
+		return
+	}
+	for _, u := range []string{c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses} {
+		if u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
+			writeError(w, http.StatusBadRequest, "地址要以 https:// 开头: "+u)
+			return
+		}
+	}
+	if c.GroupIDs == nil {
+		c.GroupIDs = []int64{}
+	}
+	if err := s.Store.SaveChannel(r.Context(), &c); err != nil {
+		if strings.HasPrefix(err.Error(), "新建渠道") {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"id": c.ID})
+}
+
+func (s *Server) deleteChannel(w http.ResponseWriter, r *http.Request) {
+	id, okID := pathID(w, r)
+	if !okID {
+		return
+	}
+	if err := s.Store.DeleteChannel(r.Context(), id); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	ok(w)
+}
+
+// channelDraft 解析拉取模型、冒烟测试用的渠道配置：可以是还没保存的新渠道；
+// 编辑已有渠道时 key 留空表示用已保存的 key。
+func (s *Server) channelDraft(ctx context.Context, d *store.Channel) (*store.Channel, string) {
+	if d.ID != 0 && strings.TrimSpace(d.APIKey) == "" {
+		saved, err := s.Store.ChannelSecret(ctx, d.ID)
+		if err != nil {
+			return nil, "渠道不存在"
+		}
+		d.APIKey = saved.APIKey
+	}
+	d.APIKey = strings.TrimSpace(d.APIKey)
+	if d.APIKey == "" {
+		return nil, "先填 API key"
+	}
+	return d, ""
+}
+
+func (s *Server) fetchModels(w http.ResponseWriter, r *http.Request) {
+	var d store.Channel
+	if !readJSON(w, r, &d) {
+		return
+	}
+	ch, msg := s.channelDraft(r.Context(), &d)
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	names, err := s.Relay.FetchModels(r.Context(), ch)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, names)
+}
+
+// probeChannel 对渠道的每个"协议 × 模型"做一次冒烟测试，并发执行。
+func (s *Server) probeChannel(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		store.Channel
+		Targets []struct {
+			Protocol string `json:"protocol"`
+			Model    string `json:"model"` // 上游模型名
+		} `json:"targets"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	ch, msg := s.channelDraft(r.Context(), &in.Channel)
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	if len(in.Targets) == 0 || len(in.Targets) > 20 {
+		writeError(w, http.StatusBadRequest, "选 1 到 20 个要测试的模型")
+		return
+	}
+	results := make([]relay.ProbeResult, len(in.Targets))
+	var wg sync.WaitGroup
+	for i, t := range in.Targets {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i] = s.Relay.Probe(r.Context(), ch, usage.Protocol(t.Protocol), t.Model)
+		}()
+	}
+	wg.Wait()
+	writeJSON(w, http.StatusOK, results)
+}
+
+// ---- 日志、设置 ----
+
+func (s *Server) adminLogs(w http.ResponseWriter, r *http.Request) {
+	f, msg := parseLogFilter(r)
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	s.writeLogs(w, r, f, true)
+}
+
+func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"cny_per_usd": s.cnyPerUSD(r)})
+}
+
+func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		CNYPerUSD decimal.Decimal `json:"cny_per_usd"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if !in.CNYPerUSD.IsPositive() {
+		writeError(w, http.StatusBadRequest, "汇率要大于 0")
+		return
+	}
+	if err := s.Store.SetSetting(r.Context(), "cny_per_usd", in.CNYPerUSD.String()); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	ok(w)
+}
