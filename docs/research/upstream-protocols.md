@@ -58,4 +58,4 @@
 - **智谱三个协议的 base 不同**：chat 是 `/api/paas/v4`，responses 是 `/api/v1`，anthropic 是 `/api/anthropic`。渠道要能按协议分别填地址。
 - **阿里百炼**：官方文档说 `dashscope.aliyuncs.com` 已迁移到 `{WorkspaceId}.cn-beijing.maas.aliyuncs.com`。旧域名现在能不能用，以冒烟测试为准。
 - **缓存计价差别大**：智谱命中约半价、自动；阿里显式缓存写入 125%、命中约 10%；MiMo 写入限时免费；StepFun 没有单独的写入价。4 个价格维度都能覆盖，写入价填 0 也合法。
-- **订阅套餐的使用条款**：GLM Coding Plan 只能在指定工具里用；Kimi Code 要求保留工具真实的 User-Agent，篡改算违规。放在团队网关后面大概率违反条款，MVP 用按量计费的 key。
+- **订阅套餐的使用条款**：GLM Coding Plan 只能在指定工具里用；Kimi Code 要求保留工具真实的 User-Agent。风险用户已知悉，是否使用由用户决定。
