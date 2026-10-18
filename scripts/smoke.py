@@ -6,10 +6,12 @@
 用法（在项目根目录，灵枢已启动）：
     LINGSHU_KEY=sk-ls-... python3 -I scripts/smoke.py
 可选：LINGSHU_URL（默认 http://127.0.0.1:8300）
-日志从本地开发库读取（docker 容器 lingshu-postgres）。
+可选：LINGSHU_PSQL，读日志用的 psql 命令（默认本地开发库容器），
+      比如线上：LINGSHU_PSQL="ssh tencent-server sudo -u postgres psql -d lingshu"
 """
 import json
 import os
+import shlex
 from decimal import Decimal
 import subprocess
 import sys
@@ -88,9 +90,13 @@ def call(proto, model, stream, include_usage=False):
     return rid, client_usage, usage_only_chunks, time.time() - t0
 
 
+PSQL = shlex.split(os.environ.get("LINGSHU_PSQL", "docker exec lingshu-postgres psql -U lingshu"))
+
+
 def sql(query):
-    return subprocess.run(["docker", "exec", "lingshu-postgres", "psql", "-U", "lingshu", "-tAF", "|", "-c", query],
-                          capture_output=True, text=True).stdout.strip()
+    if PSQL[0] == "ssh":  # 经过 ssh 时，远端 shell 会再解析一次参数
+        return subprocess.run(PSQL + ["-tAF", "'|'", "-c", shlex.quote(query)], capture_output=True, text=True).stdout.strip()
+    return subprocess.run(PSQL + ["-tAF", "|", "-c", query], capture_output=True, text=True).stdout.strip()
 
 
 def log_of(rid):
