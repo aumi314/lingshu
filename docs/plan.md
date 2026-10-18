@@ -1,6 +1,6 @@
 # 灵枢 · Lingshu MVP 实施计划
 
-状态：**草案，待用户确认**（2026-10-18）
+状态：**已确认**（2026-10-18），当前进度见第 7 节
 依据：`docs/decisions.md`（已定决策）、`docs/research/upstream-protocols.md`（上游实测）。
 本文件只写"怎么做"；"做什么、为什么"以 `decisions.md` 为准，两者冲突时先改 `decisions.md`。
 
@@ -20,7 +20,8 @@
 - Go 标准库 `net/http` 做路由；`pgx` 连 PostgreSQL；`shopspring/decimal` 算钱；`bcrypt` 存密码。依赖越少越好。
 - 数据库迁移：SQL 文件嵌入二进制，启动时按顺序执行。
 - 前端：React + TypeScript + Vite + Ant Design（管理后台以表格、表单为主，Ant Design 现成组件最全）。
-- 本地开发库：单独起一个 `lingshu-postgres` 容器，不碰本机已有的 lobe 数据库。
+- 本地开发库：单独起一个 `lingshu-postgres` 容器（端口 55432），不碰本机已有的 lobe 数据库。本机拉不到 Docker Hub，复用本机已有的 `paradedb/paradedb:latest-pg17` 镜像。
+- 本机连不上 `proxy.golang.org`，Go 依赖和校验和走 goproxy.cn（Makefile 里已设置）。
 
 ## 2. 代码目录
 
@@ -140,3 +141,14 @@ lingshu/
 - 密钥只放 `.env` 或数据库，不进 git、不进日志、不打印。日志里的 key 只显示前缀。
 - 改协议处理或计费逻辑，必须带测试；测试样本优先用真实抓到的上游数据。
 - 每个阶段完成后，更新 `decisions.md`（如有新决策）和本文件的进度。
+
+## 7. 进度
+
+| 阶段 | 状态 |
+|---|---|
+| 0 骨架 | ✅ 完成（2026-10-18） |
+| 1 透传 | 下一步 |
+| 2 计费 | 未开始 |
+| 3 路由与重试 | 未开始 |
+| 4 前端 | 未开始 |
+| 5 部署与验收 | 未开始 |

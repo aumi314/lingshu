@@ -33,7 +33,7 @@
 
 ---
 
-# 国内上游查证（MVP 用）
+# 中国上游查证（MVP 用）
 
 查证日期 2026-10-18，依据官方文档（便宜模型查证，原始报告带 URL）。
 
@@ -42,8 +42,8 @@
 | 上游 | MVP 走的协议 | Base URL（按量计费） | 有没有 `/models` |
 |---|---|---|---|
 | DeepSeek | chat + responses | `https://api.deepseek.com` | 有 |
-| Kimi（Moonshot 国内站） | chat | `https://api.moonshot.cn/v1` | 有 |
-| GLM（智谱国内站） | chat | `https://open.bigmodel.cn/api/paas/v4` | **无文档** |
+| Kimi（Moonshot 中国站） | chat | `https://api.moonshot.cn/v1` | 有 |
+| GLM（智谱中国站） | chat | `https://open.bigmodel.cn/api/paas/v4` | **无文档** |
 | Xiaomi MiMo | chat | `https://api.xiaomimimo.com/v1` | 有 |
 | StepFun | chat | `https://api.stepfun.com/v1` | 有 |
 | Qwen（阿里百炼） | **messages** | `https://dashscope.aliyuncs.com/apps/anthropic`（用户指定，避开带 WorkspaceId 的新域名） | **无**（文档明说 Anthropic 端点没有） |

@@ -73,7 +73,7 @@
 
 **不做**：接入教程、统计图表（日志能筛选、能看汇总金额就够）、真实充值、注册、邮箱、人机验证、SSO、原始内容留存、跨协议转换、安全加固。
 
-**MVP 上游**：只接国内厂商 —— DeepSeek、Kimi、GLM、Qwen、Xiaomi MiMo、StepFun。OpenAI、Anthropic 等海外上游以后用代理接入（腾讯云上有现成代理，以后再修通）。
+**MVP 上游**：只接中国厂商 —— DeepSeek、Kimi、GLM、Qwen、Xiaomi MiMo、StepFun。OpenAI、Anthropic 等美国上游以后用代理接入（腾讯云上有现成代理，以后再修通）。
 - 模型（站内标准名 → 上游模型名）：`deepseek-v4.1-flash` → `deepseek-flash`；`GLM-5.3`；`mimo-v2.6-pro`；`kimi-k3`；`step-5-preview`；`qwen3.8-max`；`qwen3.8-flash`。没写箭头的，上游名和标准名相同。
 - 协议：Qwen 走 `/v1/messages`（`https://dashscope.aliyuncs.com/apps/anthropic`）；DeepSeek 同时走 `/v1/chat/completions` 和 `/v1/responses`（同一个 `https://api.deepseek.com`）；其余 4 家走 `/v1/chat/completions`。三个入口 MVP 都做，`/responses` 用 DeepSeek 验收。各家地址和坑见 `docs/research/upstream-protocols.md`。
 - 渠道按协议分别填地址（智谱三个协议的 base 不同）。
@@ -92,7 +92,7 @@
 
 - 目标域名 `lingshu.piqode.com`，DNS 已指向腾讯云 `42.192.106.29`（上海，OpenCloudOS，4C / 3.6G 内存，可用约 0.9G）。服务器上还没有任何灵枢部署。
 - 服务器已有：Nginx 1.26（`conf.d/` 一站一文件 + certbot），本机 Postgres（5432）、Redis（6379）。
-- 从服务器直连上游：DeepSeek、Moonshot、OpenRouter 可达；**OpenAI 连不上，Anthropic 返回 403（地区限制）**。服务器上的 mihomo 代理（7893）不通。海外上游以后通过渠道级代理接入，MVP 不做。
+- 从服务器直连上游：DeepSeek、Moonshot、OpenRouter 可达；**OpenAI 连不上，Anthropic 返回 403（地区限制）**。服务器上的 mihomo 代理（7893）不通。美国上游以后通过渠道级代理接入，MVP 不做。
 - `piqode.com` 的 ICP 备案由用户自己处理。
 
 ## 技术选型（2026-10-18）
@@ -103,7 +103,7 @@
 - 数据库 PostgreSQL：复用服务器已有实例，单独建库和用户；金额用 `NUMERIC`。
 - MVP 不用 Redis：单实例部署，渠道健康状态放内存。
 - 前端 React + TypeScript + Vite，构建产物嵌入 Go 二进制，整个服务只有一个进程。
-- 部署：本地 WSL 编译 → 上传二进制 → systemd 托管 → Nginx 反代 `lingshu.piqode.com`。服务器在上海腾讯云（MVP 上游都在国内，网关放国内合适）；DMIT 洛杉矶机器性能不够，不用。
+- 部署：本地 WSL 编译 → 上传二进制 → systemd 托管 → Nginx 反代 `lingshu.piqode.com`。服务器在上海腾讯云（MVP 上游都在中国，网关放中国合适）；DMIT 洛杉矶机器性能不够，不用。
 
 ---
 

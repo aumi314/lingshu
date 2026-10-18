@@ -98,3 +98,22 @@
 
 4. 项目知识体系和文档沉淀（DOCS）
 重视长期沉淀，每个项目都应该能留下规范、结构、经验、规划、进度、思考、操作日志和可复用资产，而不是依赖单次会话的上下文记忆，确保新会话能无缝接手项目。每次执行完，询问是否进行git管理，触发neat-freak洁癖skill进行收尾（如果没安装请直接在https://github.com/KKKKhazix/khazix-skills/tree/main/neat-freak自行安装）。
+
+# 项目文档与代码约定
+
+## 新会话先读
+1. `docs/decisions.md`：已定的需求和决策（做什么、为什么）
+2. `docs/plan.md`：MVP 实施计划和进度（怎么做、做到哪了）
+3. `docs/research/`：上游协议查证和实测记录
+
+需求或方案要变，先改 `decisions.md`，再改代码。
+
+## 代码约定
+- 目录结构按 `docs/plan.md` 第 2 节，新增顶层目录要先更新计划文档。
+- 后端 Go，前端 React + TypeScript + Vite + Ant Design，数据库 PostgreSQL。
+- 金额只用 decimal（数据库 `NUMERIC`，Go 里用 `shopspring/decimal`），禁止 float。
+- 密钥只放 `.env` 或数据库，不进 git、不进日志、不打印；日志里的 key 只显示前缀。
+- 改协议处理或计费逻辑，必须带测试；测试样本优先用真实抓到的上游数据。
+- 常用命令：`make db-up`（起本地 Postgres 容器）、`make dev`、`make test`、`make build`。
+- 每个阶段完成后，更新 `docs/plan.md` 的进度；产生新决策时同步更新 `docs/decisions.md`。
+- `references/` 只读，用来参考，不改、不引用其代码。
