@@ -156,3 +156,38 @@ func TestSSEReaderEdgeCases(t *testing.T) {
 		t.Fatalf("应该返回 EOF，实际 %v", err)
 	}
 }
+
+func TestEstimates(t *testing.T) {
+	if got := EstimateText("你好世界"); got != 4 {
+		t.Errorf("中文 4 字 = %d，期望 4", got)
+	}
+	if got := EstimateText("hello world!"); got != 3 {
+		t.Errorf("12 个英文字符 = %d，期望 3", got)
+	}
+	if got := EstimateRequest([]byte(`{"model":"very-long-model-name","messages":[{"role":"user","content":"你好"}]}`)); got != 2+1 {
+		t.Errorf("请求估算 = %d，期望 3（role 的 user 算 1，你好算 2，model 不算）", got)
+	}
+
+	// 用真实样本检查输出估算的量级：和上游给的 usage 同一个数量级即可
+	for _, c := range []struct {
+		file  string
+		proto Protocol
+	}{
+		{"deepseek_chat.sse", Chat}, {"dashscope_messages.sse", Messages}, {"deepseek_responses.sse", Responses},
+	} {
+		raw, _ := os.ReadFile(filepath.Join("testdata", c.file))
+		tr := NewTracker(c.proto)
+		r := NewSSEReader(bytes.NewReader(raw))
+		for {
+			ev, err := r.Next()
+			if err != nil {
+				break
+			}
+			tr.ObserveEvent(ev.Data)
+		}
+		real, est := tr.Result().Output, tr.EstimatedOutput()
+		if est <= 0 || est > real*3 || est*3 < real {
+			t.Errorf("%s: 估算输出 %d，真实 %d，差得太远", c.file, est, real)
+		}
+	}
+}

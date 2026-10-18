@@ -6,41 +6,67 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
+
+	"github.com/aumi314/lingshu/internal/billing"
 )
 
-// KeyOwner 是网关鉴权需要的 key 和用户信息。
+// KeyOwner 是网关鉴权和准入需要的 key、用户、分组信息。
 type KeyOwner struct {
-	KeyID       int64
-	UserID      int64
-	GroupID     int64
-	KeyEnabled  bool
-	UserEnabled bool
+	KeyID        int64
+	UserID       int64
+	GroupID      int64
+	KeyEnabled   bool
+	UserEnabled  bool
+	GroupAllowed bool // 公开分组，或用户被授权了这个特殊分组
+	GroupRatio   decimal.Decimal
+	Balance      decimal.Decimal
+	QuotaLimit   *decimal.Decimal // nil 表示不限额
+	QuotaUsed    decimal.Decimal
 }
 
 // LookupKey 按 key 哈希查找，找不到返回 nil。
 func (s *Store) LookupKey(ctx context.Context, keyHash string) (*KeyOwner, error) {
 	var o KeyOwner
+	var ratio, balance, used string
+	var limit *string
 	err := s.Pool.QueryRow(ctx, `
-		SELECT k.id, k.user_id, k.group_id, k.enabled, u.enabled
-		FROM api_keys k JOIN users u ON u.id = k.user_id
+		SELECT k.id, k.user_id, k.group_id, k.enabled, u.enabled,
+		       g.is_public OR EXISTS (SELECT 1 FROM user_groups ug WHERE ug.user_id = u.id AND ug.group_id = g.id),
+		       g.ratio::text, u.balance::text, k.quota_limit::text, k.quota_used::text
+		FROM api_keys k
+		JOIN users u ON u.id = k.user_id
+		JOIN groups g ON g.id = k.group_id
 		WHERE k.key_hash = $1`, keyHash,
-	).Scan(&o.KeyID, &o.UserID, &o.GroupID, &o.KeyEnabled, &o.UserEnabled)
+	).Scan(&o.KeyID, &o.UserID, &o.GroupID, &o.KeyEnabled, &o.UserEnabled, &o.GroupAllowed,
+		&ratio, &balance, &limit, &used)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	o.GroupRatio, o.Balance, o.QuotaUsed = mustDecimal(ratio), mustDecimal(balance), mustDecimal(used)
+	if limit != nil {
+		l := mustDecimal(*limit)
+		o.QuotaLimit = &l
+	}
 	return &o, nil
 }
 
-// Route 是一个可用的上游渠道。
+// 数据库 NUMERIC 转成的文本一定是合法数字。
+func mustDecimal(s string) decimal.Decimal {
+	return decimal.RequireFromString(s)
+}
+
+// Route 是一个可用的上游渠道，带上模型的站内标价。
 type Route struct {
 	ChannelID     int64
 	ChannelName   string
 	BaseURL       string
 	APIKey        string
 	UpstreamModel string
+	Prices        billing.Prices
 }
 
 // 协议到渠道地址列的映射；列名只来自这里，不拼接外部输入。
@@ -57,7 +83,8 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 		return nil, fmt.Errorf("未知协议 %q", protocol)
 	}
 	rows, err := s.Pool.Query(ctx, fmt.Sprintf(`
-		SELECT c.id, c.name, c.%[1]s, c.api_key, COALESCE(NULLIF(cm.upstream_name, ''), m.name)
+		SELECT c.id, c.name, c.%[1]s, c.api_key, COALESCE(NULLIF(cm.upstream_name, ''), m.name),
+		       m.input_price::text, m.output_price::text, m.cache_read_price::text, m.cache_write_price::text
 		FROM models m
 		JOIN channel_models cm ON cm.model_id = m.id
 		JOIN channels c ON c.id = cm.channel_id
@@ -69,8 +96,12 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Route, error) {
 		var rt Route
-		err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.BaseURL, &rt.APIKey, &rt.UpstreamModel)
-		return rt, err
+		var in, out, cr, cw string
+		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.BaseURL, &rt.APIKey, &rt.UpstreamModel, &in, &out, &cr, &cw); err != nil {
+			return rt, err
+		}
+		rt.Prices = billing.Prices{Input: mustDecimal(in), Output: mustDecimal(out), CacheRead: mustDecimal(cr), CacheWrite: mustDecimal(cw)}
+		return rt, nil
 	})
 }
 
@@ -110,7 +141,7 @@ func (s *Store) GroupModels(ctx context.Context, groupID int64) ([]string, error
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
-// RequestLog 对应 request_logs 一行。阶段 1 还不计费，价格和 cost 为 0。
+// RequestLog 对应 request_logs 一行。
 type RequestLog struct {
 	RequestID          string
 	UserID             int64
@@ -130,36 +161,54 @@ type RequestLog struct {
 	OutputTokens       int64
 	ReasoningTokens    int64
 	UsageEstimated     bool
+	Prices             billing.Prices  // 价格快照
+	GroupRatio         decimal.Decimal // 倍率快照
+	Cost               decimal.Decimal // 实际扣费，0 表示不扣
 	Attempts           int
 	FirstByteMS        int
 	TotalMS            int
 	UpstreamResponseID string
 }
 
-func (s *Store) InsertRequestLog(ctx context.Context, l *RequestLog) error {
+// SettleRequest 在一个事务里写日志、扣用户余额、加 key 的已用额度，并更新 key 最后使用时间。
+// 一个请求只调用一次。
+func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 	var channelID *int64
 	if l.ChannelID != 0 {
 		channelID = &l.ChannelID
 	}
-	_, err := s.Pool.Exec(ctx, `
-		INSERT INTO request_logs (
-			request_id, user_id, api_key_id, group_id, protocol, model, upstream_model, channel_id,
-			stream, status, http_status, error,
-			input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, reasoning_tokens, usage_estimated,
-			attempts, first_byte_ms, total_ms, upstream_response_id
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
-		l.RequestID, l.UserID, l.APIKeyID, l.GroupID, l.Protocol, l.Model, l.UpstreamModel, channelID,
-		l.Stream, l.Status, l.HTTPStatus, l.Error,
-		l.InputTokens, l.CacheReadTokens, l.CacheWriteTokens, l.OutputTokens, l.ReasoningTokens, l.UsageEstimated,
-		l.Attempts, l.FirstByteMS, l.TotalMS, l.UpstreamResponseID,
-	)
-	return err
-}
-
-// TouchKey 更新 key 的最后使用时间。
-func (s *Store) TouchKey(ctx context.Context, keyID int64) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE api_keys SET last_used_at = now() WHERE id = $1`, keyID)
-	return err
+	ratio := l.GroupRatio
+	if ratio.IsZero() && l.Cost.IsZero() {
+		ratio = decimal.NewFromInt(1) // 没走到计费的请求（如被拒绝），倍率记 1
+	}
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO request_logs (
+				request_id, user_id, api_key_id, group_id, protocol, model, upstream_model, channel_id,
+				stream, status, http_status, error,
+				input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, reasoning_tokens, usage_estimated,
+				input_price, output_price, cache_read_price, cache_write_price, group_ratio, cost,
+				attempts, first_byte_ms, total_ms, upstream_response_id
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28)`,
+			l.RequestID, l.UserID, l.APIKeyID, l.GroupID, l.Protocol, l.Model, l.UpstreamModel, channelID,
+			l.Stream, l.Status, l.HTTPStatus, l.Error,
+			l.InputTokens, l.CacheReadTokens, l.CacheWriteTokens, l.OutputTokens, l.ReasoningTokens, l.UsageEstimated,
+			l.Prices.Input.String(), l.Prices.Output.String(), l.Prices.CacheRead.String(), l.Prices.CacheWrite.String(),
+			ratio.String(), l.Cost.String(),
+			l.Attempts, l.FirstByteMS, l.TotalMS, l.UpstreamResponseID,
+		); err != nil {
+			return fmt.Errorf("写请求日志: %w", err)
+		}
+		if l.Cost.IsPositive() {
+			if _, err := tx.Exec(ctx, `UPDATE users SET balance = balance - $1::numeric WHERE id = $2`, l.Cost.String(), l.UserID); err != nil {
+				return fmt.Errorf("扣余额: %w", err)
+			}
+		}
+		_, err := tx.Exec(ctx, `UPDATE api_keys SET quota_used = quota_used + $1::numeric, last_used_at = now() WHERE id = $2`,
+			l.Cost.String(), l.APIKeyID)
+		return err
+	})
 }
 
 // CreateAPIKey 保存新 key 的哈希。

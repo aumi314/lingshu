@@ -1,4 +1,7 @@
-"""冒烟测试：通过灵枢调用每个模型（流式 + 非流式），核对客户端收到的 usage 和日志记录是否一致。
+"""冒烟测试：通过灵枢调用每个模型（流式 + 非流式），核对：
+- 客户端收到的 usage 和日志记录一致；
+- 扣费 = 用量 × 日志里的价格快照 × 倍率；
+- 用户余额正好减少了全部扣费之和。
 
 用法（在项目根目录，灵枢已启动）：
     LINGSHU_KEY=sk-ls-... python3 -I scripts/smoke.py
@@ -7,6 +10,7 @@
 """
 import json
 import os
+from decimal import Decimal
 import subprocess
 import sys
 import time
@@ -84,19 +88,39 @@ def call(proto, model, stream, include_usage=False):
     return rid, client_usage, usage_only_chunks, time.time() - t0
 
 
+def sql(query):
+    return subprocess.run(["docker", "exec", "lingshu-postgres", "psql", "-U", "lingshu", "-tAF", "|", "-c", query],
+                          capture_output=True, text=True).stdout.strip()
+
+
 def log_of(rid):
     for _ in range(50):
-        out = subprocess.run(["docker", "exec", "lingshu-postgres", "psql", "-U", "lingshu", "-tAF", "|", "-c",
-                              f"SELECT status, input_tokens, cache_read_tokens, output_tokens, upstream_model, first_byte_ms "
-                              f"FROM request_logs WHERE request_id = '{rid}'"], capture_output=True, text=True).stdout.strip()
+        out = sql(f"SELECT status, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, first_byte_ms, "
+                  f"input_price, output_price, cache_read_price, cache_write_price, group_ratio, cost "
+                  f"FROM request_logs WHERE request_id = '{rid}'")
         if out:
-            s, i, c, o, um, fb = out.split("|")
-            return {"status": s, "input": int(i), "cache_read": int(c), "output": int(o), "upstream_model": um, "first_byte_ms": int(fb)}
+            f = out.split("|")
+            return {"status": f[0], "input": int(f[1]), "cache_read": int(f[2]), "cache_write": int(f[3]),
+                    "output": int(f[4]), "first_byte_ms": int(f[5]), "prices": [Decimal(x) for x in f[6:10]],
+                    "ratio": Decimal(f[10]), "cost": Decimal(f[11])}
         time.sleep(0.1)
     return None
 
 
+def expected_cost(log):
+    ip, op, crp, cwp = log["prices"]
+    raw = log["input"] * ip + log["output"] * op + log["cache_read"] * crp + log["cache_write"] * cwp
+    return (raw / Decimal(1_000_000) * log["ratio"]).quantize(Decimal("1e-10"))
+
+
+def balance():
+    return Decimal(sql(f"SELECT u.balance FROM users u JOIN api_keys k ON k.user_id = u.id "
+                       f"WHERE k.key_hash = encode(sha256('{KEY}'::bytea), 'hex')"))
+
+
 failed = 0
+total_cost = Decimal(0)
+start_balance = balance()
 for model, proto in CASES:
     variants = [("非流式", False, False), ("流式", True, False)]
     if proto == "chat":
@@ -125,10 +149,18 @@ for model, proto in CASES:
                 problems.append("网关没拿到 usage")
         else:
             problems.append("客户端没收到 usage")
+        if log:
+            if log["cost"] != expected_cost(log) or log["cost"] <= 0:
+                problems.append(f"扣费 {log['cost']} ≠ 用量×单价×倍率 {expected_cost(log)}")
+            total_cost += log["cost"]
         status = "FAIL" if problems else "ok  "
         failed += bool(problems)
-        detail = f"in={log['input']} out={log['output']} 首字节={log['first_byte_ms']}ms 总={secs:.1f}s" if log else ""
+        detail = (f"in={log['input']} cache={log['cache_read']} out={log['output']} ${log['cost']:.6f} "
+                  f"首字节={log['first_byte_ms']}ms 总={secs:.1f}s") if log else ""
         print(f"{status} {name} {detail} {'; '.join(problems)}")
 
-print(f"\n{'全部通过' if not failed else f'{failed} 项失败'}")
+spent = start_balance - balance()
+print(f"\n余额减少 ${spent}，日志扣费合计 ${total_cost}：{'一致' if spent == total_cost else '不一致！'}")
+failed += spent != total_cost
+print(f"{'全部通过' if not failed else f'{failed} 项失败'}")
 sys.exit(1 if failed else 0)

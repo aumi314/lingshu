@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/aumi314/lingshu/internal/auth"
 	"github.com/aumi314/lingshu/internal/relay/usage"
 	"github.com/aumi314/lingshu/internal/store"
@@ -59,9 +61,10 @@ func newEnv(t *testing.T) *env {
 		sql  string
 		args []any
 	}{
-		{`INSERT INTO users (id, username, password_hash) VALUES (1, 'alice', 'x')`, nil},
+		{`INSERT INTO users (id, username, password_hash, balance) VALUES (1, 'alice', 'x', 10)`, nil},
 		{`INSERT INTO groups (id, name) VALUES (1, 'default')`, nil},
-		{`INSERT INTO models (id, name) VALUES (1, 'std-chat'), (2, 'std-msg')`, nil},
+		// 价格：输入 $1、输出 $2、缓存读 $0.1 / 每百万 token，算起来好核对
+		{`INSERT INTO models (id, name, input_price, output_price, cache_read_price) VALUES (1, 'std-chat', 1, 2, 0.1), (2, 'std-msg', 1, 2, 0.1)`, nil},
 		{`INSERT INTO channels (id, name, api_key, base_url_chat, base_url_responses) VALUES (1, 'c-chat', $1, $2, $2)`, []any{upstreamKey, up.URL + "/v1"}},
 		{`INSERT INTO channels (id, name, api_key, base_url_messages) VALUES (2, 'c-msg', $1, $2)`, []any{upstreamKey, up.URL + "/anthropic"}},
 		{`INSERT INTO channel_groups VALUES (1, 1), (2, 1)`, nil},
@@ -376,5 +379,201 @@ func TestModelsListsGroupModels(t *testing.T) {
 	resp.Body.Close()
 	if len(list.Data) != 2 || list.Data[0].ID != "std-chat" || list.Data[1].ID != "std-msg" {
 		t.Errorf("模型列表 = %+v", list.Data)
+	}
+}
+
+// ---- 计费 ----
+
+func (e *env) exec(sql string, args ...any) {
+	e.t.Helper()
+	if _, err := e.store.Pool.Exec(context.Background(), sql, args...); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func (e *env) decimal(sql string, args ...any) decimal.Decimal {
+	e.t.Helper()
+	var s string
+	if err := e.store.Pool.QueryRow(context.Background(), sql, args...).Scan(&s); err != nil {
+		e.t.Fatal(err)
+	}
+	return decimal.RequireFromString(s)
+}
+
+func (e *env) balance() decimal.Decimal {
+	return e.decimal(`SELECT balance::text FROM users WHERE id = 1`)
+}
+
+// cost 等日志写完后返回这次请求的扣费和是否估算。
+func (e *env) cost(requestID string) (decimal.Decimal, bool) {
+	e.waitLog(requestID)
+	var estimated bool
+	e.store.Pool.QueryRow(context.Background(), `SELECT usage_estimated FROM request_logs WHERE request_id = $1`, requestID).Scan(&estimated)
+	return e.decimal(`SELECT cost::text FROM request_logs WHERE request_id = $1`, requestID), estimated
+}
+
+func okUpstream(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	io.WriteString(w, `{"choices":[{"message":{"content":"hi"}}],"usage":{"prompt_tokens":1000,"completion_tokens":500,"prompt_tokens_details":{"cached_tokens":200}}}`)
+}
+
+func TestSuccessChargesBalanceAndKeyQuota(t *testing.T) {
+	e := newEnv(t)
+	e.upstream = okUpstream
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	// (800×1 + 200×0.1 + 500×2) / 1e6 = 0.00182
+	want := decimal.RequireFromString("0.00182")
+	if got, est := e.cost(resp.Header.Get("X-Lingshu-Request-Id")); !got.Equal(want) || est {
+		t.Fatalf("cost = %s（估算 %v），期望 %s", got, est, want)
+	}
+	if got := e.balance(); !got.Equal(decimal.NewFromInt(10).Sub(want)) {
+		t.Errorf("余额 = %s", got)
+	}
+	if got := e.decimal(`SELECT quota_used::text FROM api_keys`); !got.Equal(want) {
+		t.Errorf("key 已用额度 = %s", got)
+	}
+}
+
+func TestGroupRatioApplied(t *testing.T) {
+	e := newEnv(t)
+	e.exec(`UPDATE groups SET ratio = 0.5`)
+	e.upstream = okUpstream
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	if got, _ := e.cost(resp.Header.Get("X-Lingshu-Request-Id")); !got.Equal(decimal.RequireFromString("0.00091")) {
+		t.Errorf("倍率 0.5 后 cost = %s，期望 0.00091", got)
+	}
+}
+
+func TestAdmissionRejections(t *testing.T) {
+	cases := []struct {
+		name       string
+		setup      string
+		wantStatus int
+		wantMsg    string
+	}{
+		{"余额为 0", `UPDATE users SET balance = 0`, 402, "余额不足"},
+		{"透支后余额为负", `UPDATE users SET balance = -0.01`, 402, "余额不足"},
+		{"key 额度用完", `UPDATE api_keys SET quota_limit = 1, quota_used = 1`, 402, "额度已用完"},
+		{"特殊分组没有授权", `UPDATE groups SET is_public = false`, 403, "分组"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := newEnv(t)
+			e.exec(c.setup)
+			e.upstream = func(w http.ResponseWriter, r *http.Request) { t.Error("不应该请求上游") }
+			resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode != c.wantStatus || !strings.Contains(string(body), c.wantMsg) {
+				t.Errorf("响应 %d %s", resp.StatusCode, body)
+			}
+			if l := e.waitLog(resp.Header.Get("X-Lingshu-Request-Id")); l.Status != "rejected" {
+				t.Errorf("日志状态 = %s", l.Status)
+			}
+		})
+	}
+
+	// 授权了特殊分组就能用
+	e := newEnv(t)
+	e.exec(`UPDATE groups SET is_public = false`)
+	e.exec(`INSERT INTO user_groups VALUES (1, 1)`)
+	e.upstream = okUpstream
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Errorf("授权后应该能用，实际 %d", resp.StatusCode)
+	}
+}
+
+func TestOverdraftAllowedOnce(t *testing.T) {
+	e := newEnv(t)
+	e.exec(`UPDATE users SET balance = 0.001`) // 不够这次请求的 0.00182
+	e.upstream = okUpstream
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("余额为正时应放行，实际 %d", resp.StatusCode)
+	}
+	e.cost(resp.Header.Get("X-Lingshu-Request-Id"))
+	if got := e.balance(); !got.Equal(decimal.RequireFromString("-0.00082")) {
+		t.Errorf("透支后余额 = %s，期望 -0.00082", got)
+	}
+	resp = e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	if resp.StatusCode != 402 {
+		t.Errorf("透支后下一次请求应被拒绝，实际 %d", resp.StatusCode)
+	}
+}
+
+func TestNoChargeOnUpstreamFailures(t *testing.T) {
+	cases := map[string]http.HandlerFunc{
+		"上游 429": func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(429)
+			io.WriteString(w, `{"error":{"message":"slow down"}}`)
+		},
+		"流被截断": func(w http.ResponseWriter, r *http.Request) {
+			sse(w, `{"choices":[{"delta":{"content":"partial answer"}}]}`)
+		},
+		"流里报错": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			io.WriteString(w, "data: {\"type\":\"response.failed\",\"response\":{\"id\":\"r\",\"usage\":{\"input_tokens\":100,\"output_tokens\":10}}}\n\n")
+		},
+	}
+	for name, up := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t)
+			e.upstream = up
+			path := "/v1/chat/completions"
+			if name == "流里报错" {
+				path = "/v1/responses"
+			}
+			resp := e.post(path, `{"model":"std-chat","stream":true}`, nil)
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			if got, _ := e.cost(resp.Header.Get("X-Lingshu-Request-Id")); !got.IsZero() {
+				t.Errorf("上游失败不应扣费，实际扣了 %s", got)
+			}
+			if !e.balance().Equal(decimal.NewFromInt(10)) {
+				t.Errorf("余额变了: %s", e.balance())
+			}
+		})
+	}
+}
+
+func TestClientDisconnectChargesEstimate(t *testing.T) {
+	e := newEnv(t)
+	done := make(chan struct{})
+	e.upstream = func(w http.ResponseWriter, r *http.Request) {
+		defer close(done)
+		sse(w, `{"choices":[{"delta":{"content":"`+strings.Repeat("word ", 200)+`"}}]}`) // 约 250 token
+		<-r.Context().Done()
+	}
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat","stream":true,"messages":[{"role":"user","content":"`+strings.Repeat("x", 400)+`"}]}`, nil)
+	bufio.NewReader(resp.Body).ReadString('\n')
+	resp.Body.Close()
+	<-done
+	got, estimated := e.cost(resp.Header.Get("X-Lingshu-Request-Id"))
+	if !estimated || !got.IsPositive() {
+		t.Fatalf("用户断开应按估算扣费，实际 cost=%s 估算=%v", got, estimated)
+	}
+	l := e.waitLog(resp.Header.Get("X-Lingshu-Request-Id"))
+	if l.InputTokens < 90 || l.OutputTokens < 200 {
+		t.Errorf("估算偏离太多: 输入 %d（约 101），输出 %d（约 250）", l.InputTokens, l.OutputTokens)
+	}
+}
+
+func TestSuccessWithoutUsageIsEstimated(t *testing.T) {
+	e := newEnv(t)
+	e.upstream = func(w http.ResponseWriter, r *http.Request) {
+		sse(w, `{"choices":[{"delta":{"content":"你好世界"}}]}`, "[DONE]") // 上游没给 usage
+	}
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat","stream":true,"messages":[{"role":"user","content":"hi"}]}`, nil)
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	got, estimated := e.cost(resp.Header.Get("X-Lingshu-Request-Id"))
+	if !estimated || !got.IsPositive() {
+		t.Errorf("没有 usage 时应估算扣费，实际 cost=%s 估算=%v", got, estimated)
 	}
 }

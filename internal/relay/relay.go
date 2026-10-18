@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/aumi314/lingshu/internal/auth"
+	"github.com/aumi314/lingshu/internal/billing"
 	"github.com/aumi314/lingshu/internal/relay/usage"
 	"github.com/aumi314/lingshu/internal/store"
 )
@@ -58,6 +59,8 @@ type call struct {
 	start   time.Time
 	log     store.RequestLog
 	tracker *usage.Tracker
+	body    []byte // 客户端原始请求体，上游没给 usage 时用来估算输入
+	gotResp bool   // 是否收到了上游的响应头（收到才说明上游开始处理了）
 }
 
 func (h *Handler) Serve(proto usage.Protocol) http.HandlerFunc {
@@ -89,6 +92,16 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		return
 	}
 	c.log.Model, c.log.Stream = req.model, req.stream
+	c.body = body
+
+	if !owner.GroupAllowed {
+		c.reject(w, http.StatusForbidden, "你已经没有这个 key 所在分组的使用权限，请换一个 key 或联系管理员")
+		return
+	}
+	if rej := billing.Admit(owner.Balance, owner.QuotaLimit, owner.QuotaUsed); rej != nil {
+		c.reject(w, rej.Status, rej.Message)
+		return
+	}
 
 	routes, err := h.Store.FindRoutes(r.Context(), owner.GroupID, string(c.proto), req.model)
 	if err != nil {
@@ -102,6 +115,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 	}
 	route := routes[0] // 阶段 1：单渠道，不重试
 	c.log.ChannelID, c.log.UpstreamModel, c.log.Attempts = route.ChannelID, route.UpstreamModel, 1
+	c.log.Prices, c.log.GroupRatio = route.Prices, owner.GroupRatio
 
 	injected := req.rewrite(c.proto, route.UpstreamModel)
 	h.forward(w, r, c, route, req, injected)
@@ -182,6 +196,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, c *call, route
 		return
 	}
 	defer resp.Body.Close()
+	c.gotResp = true
 
 	copyResponseHeaders(w.Header(), resp.Header)
 	c.log.HTTPStatus = resp.StatusCode
@@ -266,24 +281,54 @@ func (c *call) fail(w http.ResponseWriter, status int, msg string) {
 	writeError(w, c.proto, status, msg)
 }
 
-// finish 写日志。用独立的 context，客户端断开后也要写进去。
+// finish 按计费规则算出用量和扣费，结算并写日志。用独立的 context，客户端断开后也要写进去。
 func (h *Handler) finish(reqCtx context.Context, c *call) {
-	u := c.tracker.Result()
-	c.log.InputTokens, c.log.CacheReadTokens, c.log.CacheWriteTokens = u.Input, u.CacheRead, u.CacheWrite
-	c.log.OutputTokens, c.log.ReasoningTokens = u.Output, u.Reasoning
-	c.log.UpstreamResponseID = c.tracker.ResponseID
-	c.log.TotalMS = int(time.Since(c.start).Milliseconds())
 	if c.log.Status == "" {
 		c.log.Status = "upstream_error"
 	}
+	u, estimated := c.settledUsage()
+	c.log.InputTokens, c.log.CacheReadTokens, c.log.CacheWriteTokens = u.Input, u.CacheRead, u.CacheWrite
+	c.log.OutputTokens, c.log.ReasoningTokens, c.log.UsageEstimated = u.Output, u.Reasoning, estimated
+	c.log.UpstreamResponseID = c.tracker.ResponseID
+	c.log.TotalMS = int(time.Since(c.start).Milliseconds())
+
+	// 计费规则（docs/decisions.md）：成功和用户断开要扣；上游出错、被拒绝不扣，用量照记
+	if c.log.Status == "success" || c.log.Status == "client_cancelled" {
+		c.log.Cost = billing.Cost(u, c.log.Prices, c.log.GroupRatio)
+	}
+
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(reqCtx), 10*time.Second)
 	defer cancel()
-	if err := h.Store.InsertRequestLog(ctx, &c.log); err != nil {
-		slog.Error("写请求日志失败", "request_id", c.log.RequestID, "err", err)
+	if err := h.Store.SettleRequest(ctx, &c.log); err != nil {
+		slog.Error("结算失败", "request_id", c.log.RequestID, "cost", c.log.Cost, "err", err)
 	}
-	if err := h.Store.TouchKey(ctx, c.log.APIKeyID); err != nil {
-		slog.Error("更新 key 使用时间失败", "err", err)
+}
+
+// settledUsage 决定用哪份用量计费，返回是否用了估算值。
+func (c *call) settledUsage() (usage.Usage, bool) {
+	u := c.tracker.Result()
+	switch c.log.Status {
+	case "success":
+		if c.tracker.Seen() {
+			return u, false
+		}
+		// 上游正常结束却没给 usage：全部估算
+		return usage.Usage{Input: usage.EstimateRequest(c.body), Output: c.tracker.EstimatedOutput()}, true
+	case "client_cancelled":
+		if !c.gotResp {
+			return usage.Usage{}, false // 上游还没开始处理用户就走了，不扣
+		}
+		// 用户中途断开：上游给的用量可能不全（阿里 message_start 的输入数就不准），取上游值和估算值里大的
+		estimated := false
+		if est := usage.EstimateRequest(c.body); est > u.Input+u.CacheRead+u.CacheWrite {
+			u.Input, estimated = est-u.CacheRead-u.CacheWrite, true
+		}
+		if est := c.tracker.EstimatedOutput(); est > u.Output {
+			u.Output, estimated = est, true
+		}
+		return u, estimated
 	}
+	return u, false
 }
 
 func newRequestID() string {

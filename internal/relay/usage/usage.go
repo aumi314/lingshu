@@ -5,7 +5,10 @@
 // 阿里 messages 的 message_start 里 input_tokens 不准，以 message_delta 为准。
 package usage
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 type Protocol string
 
@@ -31,7 +34,11 @@ type Tracker struct {
 	ResponseID string // responses 协议的响应 id，用于 previous_response_id 粘渠道
 	Terminal   bool   // 是否看到了正常结束的标志
 	Failed     bool   // 上游在流里报告了失败
+	estOutput  int64  // 已收到的生成内容粗估的 token 数，上游没给 usage 时兜底
 }
+
+// EstimatedOutput 返回按已收到内容粗估的输出 token 数。
+func (t *Tracker) EstimatedOutput() int64 { return t.estOutput }
 
 func NewTracker(p Protocol) *Tracker {
 	return &Tracker{proto: p, fields: map[string]int64{}}
@@ -118,6 +125,7 @@ func (t *Tracker) ObserveBody(body []byte) {
 		return
 	}
 	t.observeUsage(v.Usage)
+	t.estOutput = estimateOutput(body)
 	if t.proto == Responses && v.ID != "" {
 		t.ResponseID = v.ID
 	}
@@ -143,6 +151,10 @@ func (t *Tracker) ObserveEvent(data []byte) {
 	}
 	if json.Unmarshal(data, &v) != nil {
 		return
+	}
+	// responses 的 *.done / response.completed 会把全文再发一遍，只统计增量事件
+	if t.proto != Responses || strings.HasSuffix(v.Type, ".delta") {
+		t.estOutput += estimateOutput(data)
 	}
 	switch t.proto {
 	case Chat:

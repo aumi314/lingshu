@@ -4,7 +4,7 @@
     set -a; source <(sed 's/\r$//' .env); set +a
     python3 -I scripts/seed-dev.py | docker exec -i lingshu-postgres psql -U lingshu -q -v ON_ERROR_STOP=1
 
-可以重复执行。前端做好之前，渠道和模型靠它配置。价格在阶段 2 再填。
+可以重复执行。前端做好之前，渠道、模型和价格靠它配置。
 """
 import os
 
@@ -22,6 +22,17 @@ CHANNELS = [
      [("qwen3.8-max", ""), ("qwen3.8-flash", "")]),
 ]
 
+# 站内价格（USD / 每百万 token）：输入、输出、缓存读、缓存写。来源见 docs/research/upstream-protocols.md
+PRICES = {
+    "deepseek-v4.1-flash": ("0.30", "1.20", "0.006", "0"),
+    "GLM-5.3": ("1.40", "4.40", "0.26", "0"),
+    "mimo-v2.6-pro": ("0.435", "0.87", "0.0036", "0"),
+    "kimi-k3": ("3.00", "15.00", "0.30", "3.00"),
+    "step-5-preview": ("1.00", "2.70", "0.10", "0"),
+    "qwen3.8-max": ("2.00", "6.00", "0.20", "2.50"),
+    "qwen3.8-flash": ("0.15", "0.47", "0.015", "0.1875"),
+}
+
 
 def q(s):
     return "'" + s.replace("'", "''") + "'"
@@ -37,7 +48,11 @@ ON CONFLICT (name) DO UPDATE SET api_key = EXCLUDED.api_key, base_url_chat = EXC
     print(f"""INSERT INTO channel_groups SELECT c.id, g.id FROM channels c, groups g
 WHERE c.name = {q(name)} AND g.name = 'default' ON CONFLICT DO NOTHING;""")
     for std, upstream in models:
-        print(f"INSERT INTO models (name) VALUES ({q(std)}) ON CONFLICT (name) DO NOTHING;")
+        ip, op, crp, cwp = PRICES[std]
+        print(f"""INSERT INTO models (name, input_price, output_price, cache_read_price, cache_write_price)
+VALUES ({q(std)}, {ip}, {op}, {crp}, {cwp})
+ON CONFLICT (name) DO UPDATE SET input_price = EXCLUDED.input_price, output_price = EXCLUDED.output_price,
+  cache_read_price = EXCLUDED.cache_read_price, cache_write_price = EXCLUDED.cache_write_price;""")
         print(f"""INSERT INTO channel_models SELECT c.id, m.id, {q(upstream)} FROM channels c, models m
 WHERE c.name = {q(name)} AND m.name = {q(std)}
 ON CONFLICT (channel_id, model_id) DO UPDATE SET upstream_name = EXCLUDED.upstream_name;""")
