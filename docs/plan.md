@@ -187,14 +187,9 @@ lingshu/
 - 当时本机连不上所有中国上游（Clash 规则变化），端到端改用本地模拟上游；真实上游的转发与计费已在阶段 1–3 验证。
 - 已知：服务端返回的错误提示只有中文，英文界面下错误信息仍是中文。
 
-### 阶段 5 进度（2026-10-18）
+### 阶段 5 记录（2026-10-18，进行中）
 
-已完成：
-- 腾讯云上海部署：系统用户 `lingshu`、`/opt/lingshu`、`/etc/lingshu/env`、PostgreSQL 库和角色、systemd 服务（常驻内存约 11MB）。
-- Nginx：部署前备份 `/var/backups/nginx/nginx-before-lingshu-20261018-201508.tgz`；新增 `conf.d/lingshu.conf`，与备份对比确认其他站点配置无变化；证书走 webroot，到期 2027-01-16，自动续期。
-- 管理员 `aumif` 已创建；6 个渠道、7 个模型和价格已导入。
-- 线上验收（在服务器上经 HTTPS + Nginx）：冒烟 21 项全部通过，余额与扣费一致；流式不攒包（396 块，块间最大间隔 0.05 秒）。
-
-受阻：
-- `lingshu.piqode.com` 从中国境外访问时 TLS 握手被重置（本机和洛杉矶 DMIT 都复现），同一 IP 换成 `focuskeeper.cn` 正常；从中国境内访问正常。判断是跨境链路按 SNI 拦截 `piqode.com`。
-- 待办：给 `focuskeeper.cn` 加子域名（如 `lingshu.focuskeeper.cn`）指向 `42.192.106.29`，再签证书、加到 Nginx 的 server_name，然后从美国完成 Claude Code / Codex 验收。
+- 已上线：`lingshu.service`（127.0.0.1:8300，常驻内存约 11MB）、PostgreSQL 库 `lingshu`、Nginx `conf.d/lingshu.conf`、证书（webroot，到期 2027-01-16，自动续期）。部署前备份 `/var/backups/nginx/nginx-before-lingshu-20261018-201508.tgz`，对比确认只新增了 `lingshu.conf`。
+- 线上验收（从服务器经公网 HTTPS + Nginx）：冒烟 21 项全部通过，余额减少与扣费合计一致；流式经 Nginx 不攒包（396 块，块间最大间隔 0.05s）。
+- 阻塞：从美国访问 `lingshu.piqode.com` 的 HTTPS 握手被断开（本机和洛杉矶 DMIT 都一样，DMIT 不经过代理）；同一 IP 用 `focuskeeper.cn` 正常，中国境内访问正常。判断为跨境链路按域名（SNI）拦截 `piqode.com`。
+- 待做：美国可访问的域名；Claude Code / Codex 从客户端验收。
