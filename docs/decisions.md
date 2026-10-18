@@ -74,7 +74,7 @@
 **不做**：接入教程、统计图表（日志能筛选、能看汇总金额就够）、真实充值、注册、邮箱、人机验证、SSO、原始内容留存、跨协议转换、安全加固。
 
 **MVP 上游**：只接国内厂商 —— DeepSeek、Kimi、GLM、Qwen、Xiaomi MiMo、StepFun。OpenAI、Anthropic 等海外上游以后用代理接入（腾讯云上有现成代理，以后再修通）。
-- 协议：Qwen 走 `/v1/messages`（`https://dashscope.aliyuncs.com/apps/anthropic`），其余 5 家走 `/v1/chat/completions`。各家地址和坑见 `docs/research/upstream-protocols.md`。
+- 协议：Qwen 走 `/v1/messages`（`https://dashscope.aliyuncs.com/apps/anthropic`）；DeepSeek 同时走 `/v1/chat/completions` 和 `/v1/responses`（同一个 `https://api.deepseek.com`）；其余 4 家走 `/v1/chat/completions`。三个入口 MVP 都做，`/responses` 用 DeepSeek 验收。各家地址和坑见 `docs/research/upstream-protocols.md`。
 - 渠道按协议分别填地址（智谱三个协议的 base 不同）。
 - 上游没有 `/models` 时（智谱、阿里），模型列表由管理员手填，或由渠道模板预置。
 - 结算只取流里最后一份 usage，不累加（StepFun 每块都带累计值）。
@@ -107,4 +107,4 @@
 
 ## 讨论中
 
-- MVP 里 `/v1/responses` 入口没有渠道可接，验收怎么测
+- MVP 实施计划：数据表、代码目录、分阶段目标与验证方式

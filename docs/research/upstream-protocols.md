@@ -41,7 +41,7 @@
 
 | 上游 | MVP 走的协议 | Base URL（按量计费） | 有没有 `/models` |
 |---|---|---|---|
-| DeepSeek | chat | `https://api.deepseek.com` | 有 |
+| DeepSeek | chat + responses | `https://api.deepseek.com` | 有 |
 | Kimi（Moonshot 国内站） | chat | `https://api.moonshot.cn/v1` | 有 |
 | GLM（智谱国内站） | chat | `https://open.bigmodel.cn/api/paas/v4` | **无文档** |
 | Xiaomi MiMo | chat | `https://api.xiaomimimo.com/v1` | 有 |
