@@ -1,10 +1,7 @@
-# 本地开发命令。本机连不上 proxy.golang.org，Go 依赖和校验和都走 goproxy.cn。
-export GOPROXY ?= https://goproxy.cn,direct
-export GOSUMDB ?= sum.golang.org https://goproxy.cn/sumdb/sum.golang.org
+# 本地开发命令。
 
 DB_CONTAINER := lingshu-postgres
-# 本机拉不到 Docker Hub，复用已有的 PostgreSQL 17 镜像；容器和数据卷都是灵枢独立的
-DB_IMAGE     := paradedb/paradedb:latest-pg17
+DB_IMAGE     := postgres:17-alpine
 DB_PORT      := 55432
 DEV_DB_URL   := postgres://lingshu:lingshu_dev@127.0.0.1:$(DB_PORT)/lingshu?sslmode=disable
 TEST_DB_URL  := postgres://lingshu:lingshu_dev@127.0.0.1:$(DB_PORT)/lingshu_test?sslmode=disable

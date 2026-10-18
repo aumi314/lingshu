@@ -20,8 +20,7 @@
 - Go 标准库 `net/http` 做路由；`pgx` 连 PostgreSQL；`shopspring/decimal` 算钱；`bcrypt` 存密码。依赖越少越好。
 - 数据库迁移：SQL 文件嵌入二进制，启动时按顺序执行。
 - 前端：React + TypeScript + Vite + Ant Design（管理后台以表格、表单为主，Ant Design 现成组件最全）。
-- 本地开发库：单独起一个 `lingshu-postgres` 容器（端口 55432），不碰本机已有的 lobe 数据库。本机拉不到 Docker Hub，复用本机已有的 `paradedb/paradedb:latest-pg17` 镜像。
-- 本机连不上 `proxy.golang.org`，Go 依赖和校验和走 goproxy.cn（Makefile 里已设置）。
+- 本地开发库：单独起一个 `lingshu-postgres` 容器（端口 55432），不碰本机已有的 lobe 数据库。镜像 `postgres:17-alpine`。
 
 ## 2. 代码目录
 
