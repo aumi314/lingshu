@@ -18,6 +18,7 @@ import claude from '../assets/logos/claude.svg?raw'
 import grok from '../assets/logos/grok.svg?raw'
 import mistral from '../assets/logos/mistral.svg?raw'
 import meta from '../assets/logos/meta.svg?raw'
+import gemini from '../assets/logos/gemini.svg?raw'
 
 type Vendor = { name: string; svg: string }
 
@@ -37,6 +38,7 @@ const OUTER: Vendor[] = [
 const INNER: Vendor[] = [
   { name: 'GPT', svg: openai },
   { name: 'Claude', svg: claude },
+  { name: 'Gemini', svg: gemini },
   { name: 'Grok', svg: grok },
   { name: 'Mistral', svg: mistral },
   { name: 'Muse', svg: meta }, // Meta 的模型

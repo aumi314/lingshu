@@ -2,3 +2,4 @@
 
 - meta.svg：Muse（Meta 的模型）用 Meta 的标志。
 - doubao.svg、hunyuan.svg：豆包 Seed（字节跳动）、腾讯混元 HY。
+- gemini.svg：Google Gemini。
