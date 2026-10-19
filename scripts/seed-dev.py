@@ -12,13 +12,13 @@ E = os.environ
 
 # (渠道名, 模板, key 变量, chat 地址, messages 地址, responses 地址, [(标准名, 上游名)])
 CHANNELS = [
-    ("deepseek", "deepseek", "DEEPSEEK_API_KEY", E["DEEPSEEK_BASE_URL"], "", E["DEEPSEEK_BASE_URL"],
+    ("deepseek", "deepseek", "DEEPSEEK_API_KEY", E["DEEPSEEK_BASE_URL"], "https://api.deepseek.com/anthropic", E["DEEPSEEK_BASE_URL"],
      [("deepseek-v4.1-flash", "deepseek-flash")]),
     ("zhipu", "zhipu", "ZHIPU_API_KEY", E["ZHIPU_BASE_URL"], "", "", [("GLM-5.3", ""), ("GLM-5.3-FlashX", "")]),
-    ("mimo", "mimo", "MIMO_API_KEY", E["MIMO_BASE_URL"], "", "", [("mimo-v2.6-pro", "")]),
-    ("moonshot", "moonshot", "MOONSHOT_API_KEY", E["MOONSHOT_BASE_URL"], "", "", [("kimi-k3", ""), ("kimi-k2.7-code", "")]),
-    ("stepfun", "stepfun", "STEPFUN_API_KEY", E["STEPFUN_BASE_URL"], "", "", [("step-5-preview", "")]),
-    ("dashscope", "dashscope", "DASHSCOPE_API_KEY", "", E["DASHSCOPE_BASE_URL"], "",
+    ("mimo", "mimo", "MIMO_API_KEY", E["MIMO_BASE_URL"], "https://api.xiaomimimo.com/anthropic", E["MIMO_BASE_URL"], [("mimo-v2.6-pro", "")]),
+    ("moonshot", "moonshot", "MOONSHOT_API_KEY", E["MOONSHOT_BASE_URL"], "https://api.moonshot.cn/anthropic", E["MOONSHOT_BASE_URL"], [("kimi-k3", ""), ("kimi-k2.7-code", "")]),
+    ("stepfun", "stepfun", "STEPFUN_API_KEY", E["STEPFUN_BASE_URL"], "https://api.stepfun.com", E["STEPFUN_BASE_URL"], [("step-5-preview", "")]),
+    ("dashscope", "dashscope", "DASHSCOPE_API_KEY", "https://dashscope.aliyuncs.com/compatible-mode/v1", E["DASHSCOPE_BASE_URL"], "https://dashscope.aliyuncs.com/compatible-mode/v1",
      [("qwen3.8-max", ""), ("qwen3.8-flash", "")]),
 ]
 

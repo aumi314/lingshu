@@ -413,7 +413,7 @@ func (s *Server) fetchModels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, names)
 }
 
-// probeChannel 对渠道的每个"协议 × 模型"做一次冒烟测试，并发执行。
+// probeChannel 对渠道的每个"协议 × 模型"做一次冒烟测试，最多同时 3 个。
 func (s *Server) probeChannel(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		store.Channel
@@ -436,10 +436,13 @@ func (s *Server) probeChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	results := make([]relay.ProbeResult, len(in.Targets))
 	var wg sync.WaitGroup
+	slots := make(chan struct{}, 3) // 最多同时 3 个：低档位账号（如 Kimi 最低档并发 1）一下子发太多会全被限流
 	for i, t := range in.Targets {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			slots <- struct{}{}
+			defer func() { <-slots }()
 			results[i] = s.Relay.Probe(r.Context(), ch, usage.Protocol(t.Protocol), t.Model)
 		}()
 	}

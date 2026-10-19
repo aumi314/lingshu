@@ -13,18 +13,24 @@ type ChannelTemplate struct {
 	Note             string   `json:"note"`
 }
 
+// 协议地址都经过 2026-10-18 实测（灵枢冒烟测试，三种协议 × 各家模型，流式 usage 都有），见 docs/research/upstream-protocols.md。
 var channelTemplates = []ChannelTemplate{
-	{ID: "deepseek", Name: "DeepSeek", BaseURLChat: "https://api.deepseek.com", BaseURLResponses: "https://api.deepseek.com",
-		HasModelList: true, Note: "按量计费，同一地址支持 chat 和 responses；也支持 messages（https://api.deepseek.com/anthropic）"},
-	{ID: "moonshot", Name: "Kimi（Moonshot 中国站）", BaseURLChat: "https://api.moonshot.cn/v1",
-		HasModelList: true, Note: "流式 usage 需要 include_usage，网关会自动加；也支持 messages（https://api.moonshot.cn/anthropic）"},
+	{ID: "deepseek", Name: "DeepSeek", BaseURLChat: "https://api.deepseek.com", BaseURLMessages: "https://api.deepseek.com/anthropic",
+		BaseURLResponses: "https://api.deepseek.com", HasModelList: true, Note: "按量计费，三种协议都支持"},
+	{ID: "moonshot", Name: "Kimi（Moonshot 中国站）", BaseURLChat: "https://api.moonshot.cn/v1", BaseURLMessages: "https://api.moonshot.cn/anthropic",
+		BaseURLResponses: "https://api.moonshot.cn/v1", HasModelList: true,
+		Note: "三种协议都支持（实测 kimi-k3、kimi-k2.7-code 都能走 responses）；限流按累计充值分档，最低档每分钟 3 次"},
 	{ID: "zhipu", Name: "智谱 GLM（中国站）", BaseURLChat: "https://open.bigmodel.cn/api/paas/v4",
-		PresetModels: []string{"GLM-5.3", "GLM-5.3-FlashX"}, Note: "没有模型列表接口，已预置常用模型"},
-	{ID: "mimo", Name: "Xiaomi MiMo", BaseURLChat: "https://api.xiaomimimo.com/v1",
-		HasModelList: true, Note: "Token Plan 也用这个地址"},
-	{ID: "stepfun", Name: "StepFun 阶跃星辰", BaseURLChat: "https://api.stepfun.com/v1",
-		HasModelList: true, Note: "Step Plan 订阅地址是 https://api.stepfun.com/step_plan/v1"},
-	{ID: "dashscope", Name: "阿里百炼 Qwen", BaseURLMessages: "https://dashscope.aliyuncs.com/apps/anthropic",
-		PresetModels: []string{"qwen3.8-max", "qwen3.8-flash"}, Note: "Anthropic 兼容地址，没有模型列表接口，已预置常用模型"},
+		PresetModels: []string{"GLM-5.3", "GLM-5.3-FlashX"},
+		Note:         "按量计费只填 chat。messages（https://open.bigmodel.cn/api/anthropic）和 responses（https://open.bigmodel.cn/api/v1）实测走 GLM Coding Plan 额度，有套餐时再填。没有模型列表接口，已预置常用模型"},
+	{ID: "mimo", Name: "Xiaomi MiMo", BaseURLChat: "https://api.xiaomimimo.com/v1", BaseURLMessages: "https://api.xiaomimimo.com/anthropic",
+		BaseURLResponses: "https://api.xiaomimimo.com/v1", HasModelList: true, Note: "三种协议都支持；Token Plan 也用这些地址"},
+	{ID: "stepfun", Name: "StepFun 阶跃星辰", BaseURLChat: "https://api.stepfun.com/v1", BaseURLMessages: "https://api.stepfun.com",
+		BaseURLResponses: "https://api.stepfun.com/v1", HasModelList: true,
+		Note: "三种协议都支持（官方文档写 responses 只支持 step-5-preview、step-3.7-flash）；Step Plan 订阅地址是 https://api.stepfun.com/step_plan/v1"},
+	{ID: "dashscope", Name: "阿里百炼 Qwen", BaseURLChat: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+		BaseURLMessages: "https://dashscope.aliyuncs.com/apps/anthropic", BaseURLResponses: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+		PresetModels: []string{"qwen3.8-max", "qwen3.8-flash"},
+		Note:         "三种协议都支持（responses 官方未写，实测可用）；没有模型列表接口，已预置常用模型"},
 	{ID: "custom", Name: "自定义", HasModelList: true, Note: "按上游文档填写各协议的地址"},
 }

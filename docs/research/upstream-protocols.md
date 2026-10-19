@@ -118,3 +118,19 @@ DeepSeek 高峰时段：周一到周五 UTC 01:00–04:00、06:00–10:00（中�
 
 中国站 Tier0（¥0）只有 **RPM 3、并发 1**；累计充值 ¥50 到 Tier1（RPM 100、并发 15）。国际站同样 Tier0 RPM 3，Tier1 需要累计 $10。
 2026-10-18 实测当前 Kimi 账号返回 "organization max RPM: 3"，处于 Tier0。团队同时用 Kimi 时会频繁 429。
+
+## 协议全量实测（2026-10-19，灵枢冒烟测试）
+
+用灵枢后台的冒烟测试接口（和网关同一套拼地址、鉴权、解析代码），流式请求：
+
+| 渠道 | chat | messages | responses | 地址（messages 填到 `/v1/messages` 之前） |
+|---|---|---|---|---|
+| DeepSeek | ✅ | ✅ | ✅ | chat/responses `https://api.deepseek.com`，messages `https://api.deepseek.com/anthropic` |
+| 智谱 | ✅ | ❌ | ❌ | messages `https://open.bigmodel.cn/api/anthropic`、responses `https://open.bigmodel.cn/api/v1` 实测走 GLM Coding Plan 额度，套餐到期返回 1309 / permission_denied |
+| MiMo | ✅ | ✅ | ✅ | chat/responses `https://api.xiaomimimo.com/v1`，messages `https://api.xiaomimimo.com/anthropic` |
+| Kimi | ✅ | ✅ | ✅ | chat/responses `https://api.moonshot.cn/v1`，messages `https://api.moonshot.cn/anthropic`；kimi-k3 和 kimi-k2.7-code 都能走 responses（文档只写了 k3） |
+| StepFun | ✅ | ✅ | ✅ | chat/responses `https://api.stepfun.com/v1`，messages `https://api.stepfun.com` |
+| 阿里百炼 | ✅ | ✅ | ✅ | chat/responses `https://dashscope.aliyuncs.com/compatible-mode/v1`（responses 文档未写），messages `.../apps/anthropic` |
+
+所有通过的组合，流式响应都带 usage。
+Kimi 在 Tier0（并发 1）时并行探测会全部 429；2026-10-19 用户已充值升到 Tier1（并发 15、RPM 100）。冒烟测试改为最多同时 3 个请求。
