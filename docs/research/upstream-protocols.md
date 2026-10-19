@@ -126,7 +126,7 @@ DeepSeek 高峰时段：周一到周五 UTC 01:00–04:00、06:00–10:00（中�
 | 渠道 | chat | messages | responses | 地址（messages 填到 `/v1/messages` 之前） |
 |---|---|---|---|---|
 | DeepSeek | ✅ | ✅ | ✅ | chat/responses `https://api.deepseek.com`，messages `https://api.deepseek.com/anthropic` |
-| 智谱 | ✅ | ❌ | ❌ | messages `https://open.bigmodel.cn/api/anthropic`、responses `https://open.bigmodel.cn/api/v1` 实测走 GLM Coding Plan 额度，套餐到期返回 1309 / permission_denied |
+| 智谱 | ✅ | ✅ | ✅ | chat `https://open.bigmodel.cn/api/paas/v4`，messages `https://open.bigmodel.cn/api/anthropic`，responses `https://open.bigmodel.cn/api/v1`（和 chat 的 base 不同）。必须用 2026-10-16 之后新建的标准 Key，见下 |
 | MiMo | ✅ | ✅ | ✅ | chat/responses `https://api.xiaomimimo.com/v1`，messages `https://api.xiaomimimo.com/anthropic` |
 | Kimi | ✅ | ✅ | ✅ | chat/responses `https://api.moonshot.cn/v1`，messages `https://api.moonshot.cn/anthropic`；kimi-k3 和 kimi-k2.7-code 都能走 responses（文档只写了 k3） |
 | StepFun | ✅ | ✅ | ✅ | chat/responses `https://api.stepfun.com/v1`，messages `https://api.stepfun.com` |
@@ -134,3 +134,11 @@ DeepSeek 高峰时段：周一到周五 UTC 01:00–04:00、06:00–10:00（中�
 
 所有通过的组合，流式响应都带 usage。
 Kimi 在 Tier0（并发 1）时并行探测会全部 429；2026-10-19 用户已充值升到 Tier1（并发 15、RPM 100）。冒烟测试改为最多同时 3 个请求。
+
+### 智谱 Key 类型（2026-10-19）
+
+用户查证官方说明（docs.bigmodel.cn/cn/coding-plan/notice/api-key-management）：`/api/anthropic` 和 `/api/v1` 是通用端点，`/api/coding/paas/v4` 才是套餐端点。
+- 2026-10-16 之后新建的 Key：按 Key 类型计费，标准 Key 调任何端点都扣按量余额。
+- 之前的老 Key（标"兼容"）：账号开过 Coding Plan 时，通用端点优先扣套餐额度，套餐到期直接失败、不会转按量。
+
+实测：老 Key 调 messages / responses / 套餐 chat 都返回"Coding Plan 套餐已到期"，只有 `paas/v4` 正常；换成新的标准 Key 后，GLM-5.3 和 GLM-5.3-FlashX 三种协议 6 项全部通过、都带 usage。线上智谱渠道已换新 Key 并开通三种协议。
