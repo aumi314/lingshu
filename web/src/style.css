@@ -34,6 +34,15 @@ body,
   white-space: nowrap;
 }
 
+/* 表格拖拽排序：被拖起来的那一行浮在上面 */
+tr.row-dragging > td {
+  background: var(--ant-color-bg-elevated) !important;
+}
+tr.row-dragging {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  cursor: grabbing;
+}
+
 /* ---- 手机（窄于 768px） ---- */
 @media (max-width: 767px) {
   .page {

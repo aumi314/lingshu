@@ -17,7 +17,7 @@ export function DragHandle({ title }: { title?: string }) {
 }
 
 export function SortableRow(props: HTMLAttributes<HTMLTableRowElement> & { 'data-row-key': string }) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: props['data-row-key'] })
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: String(props['data-row-key']) })
   const style: CSSProperties = {
     ...props.style,
     transform: CSS.Translate.toString(transform),
@@ -27,7 +27,7 @@ export function SortableRow(props: HTMLAttributes<HTMLTableRowElement> & { 'data
   const ctx = useMemo(() => ({ setActivatorNodeRef, listeners }), [setActivatorNodeRef, listeners])
   return (
     <HandleContext.Provider value={ctx}>
-      <tr {...props} ref={setNodeRef} style={style} {...attributes} />
+      <tr {...props} className={`${props.className ?? ''}${isDragging ? ' row-dragging' : ''}`} ref={setNodeRef} style={style} {...attributes} />
     </HandleContext.Provider>
   )
 }
