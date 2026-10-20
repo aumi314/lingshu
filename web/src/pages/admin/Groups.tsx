@@ -4,6 +4,7 @@ import { PlusOutlined } from '@ant-design/icons'
 import { del, get, post, put, type Group } from '../../api'
 import { useApp } from '../../app'
 
+// 放在「定价」页的标签里（pages/admin/Pricing.tsx），不单独成页
 export default function Groups() {
   const { t } = useApp()
   const { message } = App.useApp()
@@ -50,11 +51,14 @@ export default function Groups() {
   }
 
   return (
-    <div className="page">
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('分组', 'Groups')}
-        </Typography.Title>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 12 }}>
+        <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+          {t(
+            '分组决定倍率和谁能用：公开分组所有人都能用；特殊分组要在「用户」页单独授权。渠道在「渠道」页挂到分组上。',
+            'A group sets the ratio and who can use it. Public groups are open to everyone; special groups must be granted per user on the Users page. Channels are attached to groups on the Channels page.',
+          )}
+        </Typography.Paragraph>
         <Button
           type="primary"
           icon={<PlusOutlined />}
@@ -65,13 +69,7 @@ export default function Groups() {
         >
           {t('创建分组', 'Create group')}
         </Button>
-      </Space>
-      <Typography.Paragraph type="secondary">
-        {t(
-          '用户按"模型标价 × 分组倍率"付费。公开分组所有人都能用；特殊分组要在「用户」页单独授权。渠道在「渠道」页挂到分组上。',
-          'Users pay model price × group ratio. Public groups are open to everyone; special groups must be granted per user on the Users page. Channels are attached to groups on the Channels page.',
-        )}
-      </Typography.Paragraph>
+      </div>
       <Table
         rowKey="id"
         loading={loading}

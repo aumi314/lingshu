@@ -16,8 +16,7 @@ import Models from './pages/Models'
 import Logs from './pages/Logs'
 import Settings from './pages/Settings'
 import Users from './pages/admin/Users'
-import Groups from './pages/admin/Groups'
-import ModelsAdmin from './pages/admin/ModelsAdmin'
+import Pricing from './pages/admin/Pricing'
 import Channels from './pages/admin/Channels'
 import System from './pages/admin/System'
 import './style.css'
@@ -78,8 +77,9 @@ function Root() {
                 {user?.role === 'admin' && (
                   <Route path="admin">
                     <Route path="users" element={<Users />} />
-                    <Route path="groups" element={<Groups />} />
-                    <Route path="models" element={<ModelsAdmin />} />
+                    <Route path="pricing" element={<Pricing />} />
+                    <Route path="groups" element={<Navigate to="/console/admin/pricing?tab=groups" replace />} />
+                    <Route path="models" element={<Navigate to="/console/admin/pricing" replace />} />
                     <Route path="channels" element={<Channels />} />
                     <Route path="logs" element={<Logs admin />} />
                     <Route path="system" element={<System />} />

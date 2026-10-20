@@ -6,6 +6,7 @@ import { priceText, useApp } from '../../app'
 
 const priceFields = ['input_price', 'output_price', 'cache_read_price', 'cache_write_price'] as const
 
+// 放在「定价」页的标签里（pages/admin/Pricing.tsx），不单独成页
 export default function ModelsAdmin() {
   const { money, t, rate } = useApp()
   const { message } = App.useApp()
@@ -75,21 +76,18 @@ export default function ModelsAdmin() {
   const symbol = inputCurrency === 'CNY' ? '¥' : '$'
 
   return (
-    <div className="page">
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('模型', 'Models')}
-        </Typography.Title>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 12 }}>
+        <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+          {t(
+            '这里是站内标准模型名和标价（每百万 tokens），用户看到和调用的都是这些名字。渠道里的上游模型名在「渠道」页映射到这里。价格建议填厂商国际站的美元价。',
+            'Site-wide model names and list prices (per 1M tokens). Users only see and call these names; upstream names are mapped to them on the Channels page. Use the vendor\'s international USD price where possible.',
+          )}
+        </Typography.Paragraph>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => open('new')}>
           {t('添加模型', 'Add model')}
         </Button>
-      </Space>
-      <Typography.Paragraph type="secondary">
-        {t(
-          '这里是站内标准模型名和标价（每百万 tokens），用户看到和调用的都是这些名字。渠道里的上游模型名在「渠道」页映射到这里。价格建议填厂商国际站的美元价。',
-          'Site-wide model names and list prices (per 1M tokens). Users only see and call these names; upstream names are mapped to them on the Channels page. Use the vendor\'s international USD price where possible.',
-        )}
-      </Typography.Paragraph>
+      </div>
       <Table
         rowKey="id"
         loading={loading}

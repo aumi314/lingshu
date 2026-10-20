@@ -4,7 +4,6 @@ import {
   ApiOutlined,
   AppstoreOutlined,
   BarChartOutlined,
-  ClusterOutlined,
   DashboardOutlined,
   KeyOutlined,
   MenuOutlined,
@@ -42,8 +41,7 @@ export default function AppLayout() {
             label: t('管理', 'Admin'),
             children: [
               { key: '/console/admin/users', icon: <TeamOutlined />, label: t('用户', 'Users') },
-              { key: '/console/admin/groups', icon: <ClusterOutlined />, label: t('分组', 'Groups') },
-              { key: '/console/admin/models', icon: <AppstoreOutlined />, label: t('模型', 'Models') },
+              { key: '/console/admin/pricing', icon: <AppstoreOutlined />, label: t('定价', 'Pricing') },
               { key: '/console/admin/channels', icon: <ApiOutlined />, label: t('渠道', 'Channels') },
               { key: '/console/admin/logs', icon: <ProfileOutlined />, label: t('全站日志', 'All logs') },
               { key: '/console/admin/system', icon: <ToolOutlined />, label: t('系统设置', 'System') },
