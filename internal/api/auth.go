@@ -4,7 +4,10 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,27 +35,50 @@ func secureRequest(r *http.Request) bool {
 	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 }
 
+// 用户不存在时也比对一次密码，让响应时间和密码错误时一样，猜不出哪些用户名存在。
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("lingshu-dummy-password"), bcrypt.DefaultCost)
+
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username     string `json:"username"`
+		Password     string `json:"password"`
+		CaptchaToken string `json:"captcha_token"`
+		CaptchaNonce string `json:"captcha_nonce"`
 	}
 	if !readJSON(w, r, &in) {
 		return
 	}
-	id, hash, enabled, err := s.Store.UserCredentials(r.Context(), strings.TrimSpace(in.Username))
+	username, ip := strings.TrimSpace(in.Username), clientIP(r)
+	if wait := s.guard.lockedFor(username, ip); wait > 0 {
+		minutes := int(wait.Minutes()) + 1
+		slog.Warn("登录被锁定", "username", logName(username), "ip", ip)
+		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		writeError(w, http.StatusTooManyRequests, fmt.Sprintf("密码错误次数太多，请 %d 分钟后再试", minutes))
+		return
+	}
+	if s.guard.needCaptcha(username, ip) && !s.guard.checkPow(in.CaptchaToken, in.CaptchaNonce) {
+		writeJSON(w, http.StatusPreconditionRequired, map[string]any{"error": "需要人机验证，请重试", "captcha": true})
+		return
+	}
+	id, hash, enabled, err := s.Store.UserCredentials(r.Context(), username)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		writeStoreError(w, err)
 		return
 	}
-	if err != nil || bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password)) != nil {
-		writeError(w, http.StatusUnauthorized, "用户名或密码错误")
+	if err != nil {
+		hash = string(dummyHash)
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password)) != nil || err != nil {
+		captcha := s.guard.fail(username, ip)
+		slog.Warn("登录失败", "username", logName(username), "ip", ip)
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "用户名或密码错误", "captcha": captcha})
 		return
 	}
 	if !enabled {
 		writeError(w, http.StatusForbidden, "账号已被停用，请联系管理员")
 		return
 	}
+	s.guard.succeed(username)
 	token := rand.Text() + rand.Text()
 	expires := time.Now().Add(sessionTTL)
 	if err := s.Store.CreateSession(r.Context(), auth.HashAPIKey(token), id, expires); err != nil {
@@ -64,6 +90,19 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true, Secure: secureRequest(r), SameSite: http.SameSiteLaxMode,
 	})
 	ok(w)
+}
+
+// logName 截断用户名再写日志，防止有人用超长用户名刷日志。
+func logName(s string) string {
+	if r := []rune(s); len(r) > 64 {
+		return string(r[:64]) + "…"
+	}
+	return s
+}
+
+// challenge 发一道人机验证题，浏览器算出答案后随登录请求一起提交。
+func (s *Server) challenge(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"token": s.guard.newChallenge(), "difficulty": powDifficulty})
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
@@ -160,9 +199,12 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	ok(w)
 }
 
+// MinPasswordLen 只约束新设置的密码，已有密码不受影响。
+const MinPasswordLen = 12
+
 func hashPassword(p string) (hash string, problem string) {
-	if len(p) < 8 {
-		return "", "密码至少 8 位"
+	if len(p) < MinPasswordLen {
+		return "", fmt.Sprintf("密码至少 %d 位", MinPasswordLen)
 	}
 	h, err := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
 	if err != nil {

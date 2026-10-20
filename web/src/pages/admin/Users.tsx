@@ -165,7 +165,7 @@ export default function Users() {
           <Form.Item name="username" label={t('用户名', 'Username')} rules={[{ required: true }]}>
             <Input autoComplete="off" />
           </Form.Item>
-          <Form.Item name="password" label={t('初始密码', 'Initial password')} rules={[{ required: true, min: 8, message: t('至少 8 位', 'At least 8 characters') }]} extra={t('对方登录后可以在设置里自己改', 'They can change it in Settings after signing in')}>
+          <Form.Item name="password" label={t('初始密码', 'Initial password')} rules={[{ required: true, min: 12, message: t('至少 12 位', 'At least 12 characters') }]} extra={t('对方登录后可以在设置里自己改', 'They can change it in Settings after signing in')}>
             <Input.Password autoComplete="new-password" />
           </Form.Item>
           <Form.Item name="role" label={t('角色', 'Role')}>
@@ -238,7 +238,7 @@ export default function Users() {
         destroyOnHidden
       >
         <Form form={passwordForm} layout="vertical" requiredMark={false}>
-          <Form.Item name="password" label={t('新密码', 'New password')} rules={[{ required: true, min: 8, message: t('至少 8 位', 'At least 8 characters') }]}>
+          <Form.Item name="password" label={t('新密码', 'New password')} rules={[{ required: true, min: 12, message: t('至少 12 位', 'At least 12 characters') }]}>
             <Input.Password autoComplete="new-password" />
           </Form.Item>
         </Form>

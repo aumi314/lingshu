@@ -99,7 +99,7 @@ export default function Settings() {
           <Form.Item name="old_password" label={t('当前密码', 'Current password')} rules={[{ required: true }]}>
             <Input.Password autoComplete="current-password" />
           </Form.Item>
-          <Form.Item name="new_password" label={t('新密码', 'New password')} rules={[{ required: true, min: 8, message: t('至少 8 位', 'At least 8 characters') }]}>
+          <Form.Item name="new_password" label={t('新密码', 'New password')} rules={[{ required: true, min: 12, message: t('至少 12 位', 'At least 12 characters') }]}>
             <Input.Password autoComplete="new-password" />
           </Form.Item>
           <Form.Item

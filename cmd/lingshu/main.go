@@ -154,8 +154,8 @@ func adminCreate(args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(password) < 8 {
-		return errors.New("密码至少 8 位")
+	if len(password) < api.MinPasswordLen {
+		return fmt.Errorf("密码至少 %d 位", api.MinPasswordLen)
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {

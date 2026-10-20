@@ -18,11 +18,15 @@ type Server struct {
 	Store *store.Store
 	Relay *relay.Handler // 复用网关的上游客户端和渠道健康状态
 	Web   fs.FS          // 前端构建产物，nil 时不提供页面
+
+	guard *loginGuard
 }
 
 func (s *Server) Register(mux *http.ServeMux) {
 	// 登录
+	s.guard = newLoginGuard()
 	mux.HandleFunc("POST /api/auth/login", s.login)
+	mux.HandleFunc("POST /api/auth/challenge", s.challenge)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
 
 	// 当前用户

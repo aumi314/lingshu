@@ -1,7 +1,7 @@
 // 调用 /api 接口。出错时抛出带服务端提示的 Error，页面直接展示 message。
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public data?: Record<string, unknown>) {
     super(message)
   }
 }
@@ -30,7 +30,7 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
     if (resp.status === 401 && !path.startsWith('/api/auth/')) {
       window.dispatchEvent(new Event('lingshu:unauthorized'))
     }
-    throw new ApiError(resp.status, msg)
+    throw new ApiError(resp.status, msg, data as Record<string, unknown> | undefined)
   }
   return data as T
 }

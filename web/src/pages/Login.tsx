@@ -2,22 +2,41 @@ import { useState } from 'react'
 import { Alert, Button, Card, Form, Input, Typography } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
-import { post } from '../api'
+import { ApiError, post } from '../api'
+import { solveCaptcha } from '../captcha'
 import { useApp } from '../app'
 
 export default function Login() {
   const { reload, t } = useApp()
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [needCaptcha, setNeedCaptcha] = useState(false) // 失败几次后服务端会要求人机验证
   const nav = useNavigate()
+
+  const withCaptcha = async (v: { username: string; password: string }) => {
+    setVerifying(true)
+    try {
+      return { ...v, ...(await solveCaptcha()) }
+    } finally {
+      setVerifying(false)
+    }
+  }
 
   const onFinish = async (v: { username: string; password: string }) => {
     setSubmitting(true)
     setError('')
     try {
-      await post('/api/auth/login', v)
+      try {
+        await post('/api/auth/login', needCaptcha ? await withCaptcha(v) : v)
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 428)) throw e
+        setNeedCaptcha(true)
+        await post('/api/auth/login', await withCaptcha(v)) // 服务端要求验证时自动算一次再提交
+      }
       await reload() // 登录状态更新后，/login 路由会跳回原来要去的页面
     } catch (e) {
+      if (e instanceof ApiError && e.data?.captcha) setNeedCaptcha(true)
       setError((e as Error).message)
     } finally {
       setSubmitting(false)
@@ -42,7 +61,7 @@ export default function Login() {
             <Input.Password size="large" prefix={<LockOutlined />} placeholder={t('密码', 'Password')} autoComplete="current-password" />
           </Form.Item>
           <Button type="primary" htmlType="submit" size="large" block loading={submitting}>
-            {t('登录', 'Sign in')}
+            {verifying ? t('正在进行人机验证…', 'Verifying you are human…') : t('登录', 'Sign in')}
           </Button>
         </Form>
         <Button type="link" style={{ padding: 0, marginTop: 12 }} onClick={() => nav('/')}>

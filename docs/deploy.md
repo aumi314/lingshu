@@ -45,6 +45,14 @@ bash deploy/deploy.sh
 - 恢复：`sudo -u postgres pg_restore -d lingshu --clean --no-owner /var/backups/lingshu/<文件>`（先停 `lingshu.service`）。
 - 已知不足：备份和数据库在同一台服务器上，防不了整机故障；异地备份待接入。
 
+## 服务日志
+
+```bash
+ssh tencent-server 'sudo journalctl -u lingshu --since today | grep -E "登录失败|登录被锁定"'
+```
+
+登录失败、被锁定会记录用户名和访问者 IP（Nginx 转来的 `X-Real-IP`）。
+
 ## 回滚
 
 ```bash

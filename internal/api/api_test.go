@@ -258,13 +258,13 @@ func TestAdminUsersAndBalance(t *testing.T) {
 	e := newEnv(t)
 	a := e.login("admin")
 
-	if code, body := a.do("POST", "/api/admin/users", map[string]string{"username": "carol", "password": "short"}, nil); code != 400 || !strings.Contains(body, "8 位") {
+	if code, body := a.do("POST", "/api/admin/users", map[string]string{"username": "carol", "password": "short"}, nil); code != 400 || !strings.Contains(body, "12 位") {
 		t.Errorf("短密码: %d %s", code, body)
 	}
-	if code, _ := a.do("POST", "/api/admin/users", map[string]string{"username": "bob", "password": "password-1"}, nil); code != 409 {
+	if code, _ := a.do("POST", "/api/admin/users", map[string]string{"username": "bob", "password": "bob-password-1"}, nil); code != 409 {
 		t.Errorf("重名应返回 409，实际 %d", code)
 	}
-	if code, body := a.do("POST", "/api/admin/users", map[string]string{"username": "carol", "password": "password-1"}, nil); code != 201 {
+	if code, body := a.do("POST", "/api/admin/users", map[string]string{"username": "carol", "password": "carol-password-1"}, nil); code != 201 {
 		t.Fatalf("%d %s", code, body)
 	}
 
