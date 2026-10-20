@@ -172,3 +172,34 @@ export type BalanceAdjustment = {
   note: string
   created_at: string
 }
+
+// 上游账户（运维工具，金额 USD）
+export type UpstreamAccount = {
+  id: number
+  name: string
+  balance: string
+  cost_factor: string
+  alert_below: string | null
+  auto_sync: boolean
+  synced_at: string | null
+  sync_error: string
+  note: string
+  channel_ids: number[]
+  cost_7d: string
+  revenue_7d: string
+  calibrated_at: string | null
+}
+
+export type AccountEntry = {
+  id: number
+  kind: 'recharge' | 'calibrate' | 'sync'
+  amount: string
+  balance_before: string
+  balance_after: string
+  original_amount: string | null
+  original_currency: string
+  operator: string
+  note: string
+  created_at: string
+  estimated_spent?: string
+}

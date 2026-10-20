@@ -68,6 +68,8 @@ type Route struct {
 	APIKey        string
 	UpstreamModel string
 	Prices        billing.Prices
+	AccountID     int64           // 上游账户，0 表示没关联
+	CostFactor    decimal.Decimal // 上游成本 = 基础价 × 系数
 }
 
 // 协议到渠道地址列的映射；列名只来自这里，不拼接外部输入。
@@ -85,11 +87,13 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 	}
 	rows, err := s.Pool.Query(ctx, fmt.Sprintf(`
 		SELECT c.id, c.name, c.%[1]s, c.api_key, COALESCE(NULLIF(cm.upstream_name, ''), m.name),
-		       m.input_price::text, m.output_price::text, m.cache_read_price::text, m.cache_write_price::text
+		       m.input_price::text, m.output_price::text, m.cache_read_price::text, m.cache_write_price::text,
+		       COALESCE(a.id, 0), COALESCE(a.cost_factor, 1)::text
 		FROM models m
 		JOIN channel_models cm ON cm.model_id = m.id
 		JOIN channels c ON c.id = cm.channel_id
 		JOIN channel_groups cg ON cg.channel_id = c.id AND cg.group_id = $1
+		LEFT JOIN upstream_accounts a ON a.id = c.upstream_account_id
 		WHERE m.name = $2 AND m.enabled AND c.enabled AND c.%[1]s <> ''
 		ORDER BY c.priority DESC, random()`, col), groupID, model)
 	if err != nil {
@@ -97,10 +101,12 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Route, error) {
 		var rt Route
-		var in, out, cr, cw string
-		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.BaseURL, &rt.APIKey, &rt.UpstreamModel, &in, &out, &cr, &cw); err != nil {
+		var in, out, cr, cw, factor string
+		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.BaseURL, &rt.APIKey, &rt.UpstreamModel, &in, &out, &cr, &cw,
+			&rt.AccountID, &factor); err != nil {
 			return rt, err
 		}
+		rt.CostFactor = mustDecimal(factor)
 		rt.Prices = billing.Prices{Input: mustDecimal(in), Output: mustDecimal(out), CacheRead: mustDecimal(cr), CacheWrite: mustDecimal(cw)}
 		return rt, nil
 	})
@@ -180,6 +186,8 @@ type RequestLog struct {
 	Prices             billing.Prices  // 价格快照
 	GroupRatio         decimal.Decimal // 倍率快照
 	Cost               decimal.Decimal // 实际扣费，0 表示不扣
+	UpstreamAccountID  int64           // 0 表示渠道没关联上游账户
+	UpstreamCost       decimal.Decimal // 上游按真实用量收我们的钱（估算），和是否向用户收费无关
 	Attempts           int
 	FirstByteMS        int
 	TotalMS            int
@@ -189,9 +197,12 @@ type RequestLog struct {
 // SettleRequest 在一个事务里写日志、扣用户余额、加 key 的已用额度，并更新 key 最后使用时间。
 // 一个请求只调用一次。
 func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
-	var channelID *int64
+	var channelID, accountID *int64
 	if l.ChannelID != 0 {
 		channelID = &l.ChannelID
+	}
+	if l.UpstreamAccountID != 0 {
+		accountID = &l.UpstreamAccountID
 	}
 	ratio := l.GroupRatio
 	if ratio.IsZero() && l.Cost.IsZero() {
@@ -204,21 +215,30 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 				stream, status, http_status, error,
 				input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, reasoning_tokens, usage_estimated,
 				input_price, output_price, cache_read_price, cache_write_price, group_ratio, cost,
-				attempts, first_byte_ms, total_ms, upstream_response_id, channel_name, key_name
+				attempts, first_byte_ms, total_ms, upstream_response_id, channel_name, key_name,
+				upstream_account_id, upstream_cost
 			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28,$29,$30)`,
+			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28,$29,$30,
+			          $31,$32::numeric)`,
 			l.RequestID, l.UserID, l.APIKeyID, l.GroupID, l.Protocol, l.Model, l.UpstreamModel, channelID,
 			l.Stream, l.Status, l.HTTPStatus, l.Error,
 			l.InputTokens, l.CacheReadTokens, l.CacheWriteTokens, l.OutputTokens, l.ReasoningTokens, l.UsageEstimated,
 			l.Prices.Input.String(), l.Prices.Output.String(), l.Prices.CacheRead.String(), l.Prices.CacheWrite.String(),
 			ratio.String(), l.Cost.String(),
 			l.Attempts, l.FirstByteMS, l.TotalMS, l.UpstreamResponseID, l.ChannelName, l.KeyName,
+			accountID, l.UpstreamCost.String(),
 		); err != nil {
 			return fmt.Errorf("写请求日志: %w", err)
 		}
 		if l.Cost.IsPositive() {
 			if _, err := tx.Exec(ctx, `UPDATE users SET balance = balance - $1::numeric WHERE id = $2`, l.Cost.String(), l.UserID); err != nil {
 				return fmt.Errorf("扣余额: %w", err)
+			}
+		}
+		if accountID != nil && l.UpstreamCost.IsPositive() {
+			if _, err := tx.Exec(ctx, `UPDATE upstream_accounts SET balance = balance - $1::numeric WHERE id = $2`,
+				l.UpstreamCost.String(), *accountID); err != nil {
+				return fmt.Errorf("扣上游账户估算余额: %w", err)
 			}
 		}
 		_, err := tx.Exec(ctx, `UPDATE api_keys SET quota_used = quota_used + $1::numeric, last_used_at = now() WHERE id = $2`,

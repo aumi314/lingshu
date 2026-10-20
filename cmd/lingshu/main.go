@@ -118,7 +118,9 @@ func serve() error {
 	mux.Handle("POST /v1/responses", h.Serve(usage.Responses))
 	mux.HandleFunc("GET /v1/models", h.ServeModels)
 	dist, _ := fs.Sub(web.Dist, "dist")
-	(&api.Server{Store: s, Relay: h, Web: dist}).Register(mux)
+	apiServer := &api.Server{Store: s, Relay: h, Web: dist}
+	apiServer.Register(mux)
+	go apiServer.RunBalanceSync(ctx) // 每小时用厂商余额接口校准上游账户
 
 	// 先占住端口再报"已启动"，端口被占用时直接报错退出
 	ln, err := net.Listen("tcp", cfg.Listen)

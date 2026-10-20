@@ -114,15 +114,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) cnyPerUSD(r *http.Request) decimal.Decimal {
-	v, err := s.Store.Setting(r.Context(), "cny_per_usd")
-	if err != nil {
-		return decimal.RequireFromString("6.7")
-	}
-	d, err := decimal.NewFromString(v)
-	if err != nil {
-		return decimal.RequireFromString("6.7")
-	}
-	return d
+	return s.Store.CNYPerUSD(r.Context())
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {

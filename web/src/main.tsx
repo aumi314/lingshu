@@ -19,6 +19,7 @@ import Users from './pages/admin/Users'
 import Groups from './pages/admin/Groups'
 import ModelsAdmin from './pages/admin/ModelsAdmin'
 import Channels from './pages/admin/Channels'
+import Accounts from './pages/admin/Accounts'
 import System from './pages/admin/System'
 import './style.css'
 
@@ -81,6 +82,7 @@ function Root() {
                     <Route path="groups" element={<Groups />} />
                     <Route path="models" element={<ModelsAdmin />} />
                     <Route path="channels" element={<Channels />} />
+                    <Route path="accounts" element={<Accounts />} />
                     <Route path="logs" element={<Logs admin />} />
                     <Route path="system" element={<System />} />
                   </Route>
