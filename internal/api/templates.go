@@ -44,6 +44,6 @@ var channelTemplates = []ChannelTemplate{
 		Note: "腾讯云 TokenHub，三种协议都支持（2026-10-21 实测 hy4-preview，流式都带用量）；同一个账号还能调 GLM、DeepSeek、Kimi、MiniMax 等模型。新 key 刚开通时可能短暂返回 402“service ID 不存在”，过一会儿再测"},
 	{ID: "openrouter", Name: "OpenRouter", BaseURLChat: "https://openrouter.ai/api/v1", BaseURLMessages: "https://openrouter.ai/api",
 		BaseURLResponses: "https://openrouter.ai/api/v1", HasModelList: true, ProxyURL: "socks5://127.0.0.1:10808",
-		Note: "三种协议都支持，Claude、GPT 等美国模型从中国访问会被按地区拒绝（403 not available in your region），所以默认走灵枢的出境代理（DMIT 洛杉矶，见 docs/deploy.md）。模型名带厂商前缀，如 anthropic/claude-opus-5.5。价格和官方一致，充值另收约 5.5% 手续费"},
+		Note: "三种协议都支持。从中国访问 Claude、GPT 等模型会被按地区拒绝，需要走代理（已预填本机出境代理）。模型名带厂商前缀，如 anthropic/claude-opus-5.5"},
 	{ID: "custom", Name: "自定义", HasModelList: true, Note: "按上游文档填写各协议的地址"},
 }

@@ -57,6 +57,7 @@ export default function Channels() {
   const [rows, setRows] = useState<Row[]>([])
   const [fetched, setFetched] = useState<string[] | null>(null)
   const [picked, setPicked] = useState<string[]>([])
+  const [modelSearch, setModelSearch] = useState('')
   const [fetching, setFetching] = useState(false)
   const [probing, setProbing] = useState(false)
   const [probe, setProbe] = useState<ProbeResult[] | null>(null)
@@ -158,6 +159,7 @@ export default function Channels() {
       const names = await post<string[]>('/api/admin/channels/fetch-models', draft())
       const have = new Set(rows.map((r) => r.upstream))
       setPicked(names.filter((n) => have.has(n)))
+      setModelSearch('')
       setFetched(names)
     } catch (e) {
       message.error((e as Error).message)
@@ -459,11 +461,11 @@ export default function Channels() {
             label={t('代理', 'Proxy')}
             style={{ marginTop: 16 }}
             extra={t(
-              '空表示直连。在中国访问不了的上游（如 OpenRouter 上的 Claude、GPT）填灵枢的出境代理 socks5://127.0.0.1:10808（经 DMIT 洛杉矶）。转发、测试、拉取模型、查余额都走这个代理。',
-              'Empty for direct. For upstreams blocked from China (e.g. Claude/GPT on OpenRouter) use the egress proxy socks5://127.0.0.1:10808 (via DMIT LA). Requests, tests, model lists and balance checks all use it.',
+              '空表示直连。填了以后，这个渠道的所有请求（转发、测试、拉取模型、查余额）都经这个代理。支持 socks5、http、https。',
+              'Empty for direct. When set, all traffic for this channel (requests, tests, model lists, balance checks) goes through it. socks5, http and https are supported.',
             )}
           >
-            <Input className="mono" placeholder="socks5://127.0.0.1:10808" allowClear />
+            <Input className="mono" placeholder="socks5://host:port" allowClear />
           </Form.Item>
           <Form.Item name="group_ids" label={t('所属分组', 'Groups')}>
             <Select mode="multiple" options={groups.map((g) => ({ value: g.id, label: `${g.name}${g.is_public ? '' : t('（特殊）', ' (special)')}` }))} />
@@ -539,16 +541,34 @@ export default function Channels() {
           addRows(picked)
           setFetched(null)
         }}
-        okText={t('添加', 'Add')}
-        width={560}
+        okText={picked.length ? t(`添加 ${picked.length} 个`, `Add ${picked.length}`) : t('添加', 'Add')}
+        width={820}
       >
-        <Checkbox.Group value={picked} onChange={(v) => setPicked(v as string[])} style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 420, overflowY: 'auto' }}>
-          {fetched?.map((n) => (
-            <Checkbox key={n} value={n}>
-              <span className="mono">{n}</span>
-              {matchModel(n) && <Tag color="green" style={{ marginLeft: 8 }}>{t('站内已有', 'on site')}</Tag>}
-            </Checkbox>
-          ))}
+        <Input.Search
+          allowClear
+          placeholder={t('搜索模型名，例如 claude、gpt-6', 'Search, e.g. claude, gpt-6')}
+          value={modelSearch}
+          onChange={(e) => setModelSearch(e.target.value)}
+          style={{ marginBottom: 12 }}
+        />
+        <Checkbox.Group
+          className="model-pick"
+          value={picked}
+          onChange={(v) => setPicked(v as string[])}
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '6px 16px', maxHeight: 460, overflowY: 'auto', overflowX: 'hidden', alignContent: 'start' }}
+        >
+          {fetched
+            ?.filter((n) => !modelSearch.trim() || n.toLowerCase().includes(modelSearch.trim().toLowerCase()))
+            .map((n) => (
+              <Checkbox key={n} value={n} style={{ minWidth: 0 }}>
+                <span style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                  <span className="mono" title={n} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {n}
+                  </span>
+                  {matchModel(n) && <Tag color="green" style={{ marginLeft: 6, flex: 'none' }}>{t('站内已有', 'on site')}</Tag>}
+                </span>
+              </Checkbox>
+            ))}
         </Checkbox.Group>
       </Modal>
 

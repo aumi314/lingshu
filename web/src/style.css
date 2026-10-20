@@ -47,6 +47,16 @@ tr.row-settling {
   cursor: grabbing;
 }
 
+/* 拉取模型弹窗：两列，长名字截断，不压到另一列 */
+.model-pick .ant-checkbox-wrapper {
+  min-width: 0;
+  overflow: hidden;
+}
+.model-pick .ant-checkbox-wrapper > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+}
+
 /* ---- 手机（窄于 768px） ---- */
 @media (max-width: 767px) {
   .page {
