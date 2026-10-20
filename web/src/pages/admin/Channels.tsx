@@ -24,6 +24,8 @@ import { del, get, post, put, type Channel, type ChannelTemplate, type Group, ty
 import { useApp } from '../../app'
 import VendorIcon from '../../components/VendorIcon'
 import { BalanceCell, BalanceDrawer } from '../../components/ChannelBalance'
+import { DragHandle, SortableBody, SortableRow } from '../../components/SortableRows'
+import { arrayMove } from '@dnd-kit/sortable'
 
 
 type Row = { key: number; upstream: string; model_id?: number }
@@ -214,6 +216,18 @@ export default function Channels() {
     }
   }
 
+  // 拖拽排序：先在页面上换位置，再保存；失败就重新加载
+  const move = async (from: number, to: number) => {
+    const next = arrayMove(channels, from, to)
+    setChannels(next)
+    try {
+      await put('/api/admin/channels/order', { ids: next.map((c) => c.id) })
+    } catch (e) {
+      message.error((e as Error).message)
+      load()
+    }
+  }
+
   const toggle = async (c: Channel, enabled: boolean) => {
     try {
       await put(`/api/admin/channels/${c.id}`, { ...c, api_key: '', enabled })
@@ -250,16 +264,29 @@ export default function Channels() {
       </Space>
       <Typography.Paragraph type="secondary">
         {t(
-          '渠道就是一个上游厂商的地址 + key。同一模型挂多个渠道时，先用优先级最高的，同优先级随机分流，失败自动换下一个。连续失败的渠道会暂停 5 分钟。',
-          'A channel is an upstream endpoint plus key. When several channels serve a model, the highest priority is used first, ties are load-balanced, and failures fall over automatically. Channels that keep failing are paused for 5 minutes.',
+          '渠道就是一个上游厂商的地址 + key。同一模型挂多个渠道时，先用优先级最高的，同优先级随机分流，失败自动换下一个。连续失败的渠道会暂停 5 分钟。左侧把手可以拖动调整列表顺序，只影响显示，不影响优先级。',
+          'A channel is an upstream endpoint plus key. When several channels serve a model, the highest priority is used first, ties are load-balanced, and failures fall over automatically. Channels that keep failing are paused for 5 minutes. Drag the handle to reorder the list — display only, not priority.',
         )}
       </Typography.Paragraph>
+      <SortableBody ids={channels.map((c) => c.id)} onMove={move}>
       <Table
         rowKey="id"
         loading={loading}
         dataSource={channels}
         pagination={false}
+        components={{ body: { row: SortableRow } }}
         columns={[
+          {
+            key: 'sort',
+            width: 40,
+            render: () => <DragHandle title={t('拖动排序（只影响列表显示，不影响优先级）', 'Drag to reorder (display only, not routing priority)')} />,
+          },
+          {
+            title: '#',
+            dataIndex: 'id',
+            width: 48,
+            render: (v) => <span className="muted">{v}</span>,
+          },
           {
             title: t('名称', 'Name'),
             dataIndex: 'name',
@@ -338,6 +365,7 @@ export default function Channels() {
           },
         ]}
       />
+      </SortableBody>
 
       <BalanceDrawer
         key={balanceOf?.id ?? 0} // 换渠道时整个重建，表单不带上一个渠道的值

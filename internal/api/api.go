@@ -61,6 +61,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/channel-templates", s.admin(s.channelTemplates))
 	mux.HandleFunc("GET /api/admin/channels", s.admin(s.listChannels))
 	mux.HandleFunc("POST /api/admin/channels", s.admin(s.saveChannel))
+	mux.HandleFunc("PUT /api/admin/channels/order", s.admin(s.reorderChannels))
 	mux.HandleFunc("PUT /api/admin/channels/{id}", s.admin(s.saveChannel))
 	mux.HandleFunc("DELETE /api/admin/channels/{id}", s.admin(s.deleteChannel))
 	mux.HandleFunc("POST /api/admin/channels/fetch-models", s.admin(s.fetchModels))

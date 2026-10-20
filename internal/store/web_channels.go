@@ -46,7 +46,7 @@ func (s *Store) ListChannels(ctx context.Context) ([]*Channel, error) {
 		SELECT c.id, c.name, c.template, c.api_key, c.priority, c.enabled,
 		       c.base_url_chat, c.base_url_messages, c.base_url_responses,
 		       COALESCE((SELECT array_agg(group_id ORDER BY group_id) FROM channel_groups WHERE channel_id = c.id), '{}')
-		FROM channels c ORDER BY c.priority DESC, c.id`)
+		FROM channels c ORDER BY c.sort_order, c.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +108,8 @@ func (s *Store) SaveChannel(ctx context.Context, c *Channel) error {
 				return fmt.Errorf("新建渠道必须填写 API key")
 			}
 			if err := tx.QueryRow(ctx, `
-				INSERT INTO channels (name, template, api_key, priority, enabled, base_url_chat, base_url_messages, base_url_responses)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+				INSERT INTO channels (name, template, api_key, priority, enabled, base_url_chat, base_url_messages, base_url_responses, sort_order)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, (SELECT COALESCE(max(sort_order), 0) + 1 FROM channels)) RETURNING id`,
 				c.Name, c.Template, c.APIKey, c.Priority, c.Enabled, c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses,
 			).Scan(&c.ID); err != nil {
 				return translate(err)
@@ -145,6 +145,16 @@ func (s *Store) SaveChannel(ctx context.Context, c *Channel) error {
 		}
 		return nil
 	})
+}
+
+// ReorderChannels 按 ids 的顺序重排渠道列表（只影响显示）。不在 ids 里的渠道排到后面，保持原有顺序。
+func (s *Store) ReorderChannels(ctx context.Context, ids []int64) error {
+	_, err := s.Pool.Exec(ctx, `
+		UPDATE channels c SET sort_order = o.n FROM (
+			SELECT c.id, row_number() OVER (ORDER BY array_position($1::bigint[], c.id) NULLS LAST, c.sort_order, c.id) AS n
+			FROM channels c
+		) o WHERE o.id = c.id`, ids)
+	return err
 }
 
 // DeleteChannel 删除渠道，连同它的余额估算和流水（请求日志里的上游成本保留）。

@@ -182,3 +182,31 @@ func deref(s *string) string {
 	}
 	return *s
 }
+
+func TestReorderChannels(t *testing.T) {
+	e := newEnv(t)
+	a := e.login("admin")
+	e.store.Pool.Exec(context.Background(), `INSERT INTO channels (id, name, api_key, sort_order) VALUES (1, 'a', 'k', 1), (2, 'b', 'k', 2), (3, 'c', 'k', 3)`)
+	e.store.Pool.Exec(context.Background(), `SELECT setval('channels_id_seq', 3)`)
+	names := func() string {
+		var list []struct{ Name string }
+		a.do("GET", "/api/admin/channels", nil, &list)
+		var out []string
+		for _, c := range list {
+			out = append(out, c.Name)
+		}
+		return strings.Join(out, ",")
+	}
+	if code, body := a.do("PUT", "/api/admin/channels/order", map[string]any{"ids": []int64{3, 1}}, nil); code != 200 {
+		t.Fatalf("排序: %d %s", code, body)
+	}
+	if got := names(); got != "c,a,b" {
+		t.Errorf("顺序 = %s，期望 c,a,b（没提到的排后面）", got)
+	}
+	if code, body := a.do("POST", "/api/admin/channels", map[string]any{"name": "d", "api_key": "k", "base_url_chat": "https://x.test/v1", "group_ids": []int64{1}, "models": []any{}}, nil); code >= 300 {
+		t.Fatalf("新建渠道: %d %s", code, body)
+	}
+	if got := names(); got != "c,a,b,d" {
+		t.Errorf("新渠道应排最后: %s", got)
+	}
+}
