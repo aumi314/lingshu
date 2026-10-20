@@ -32,5 +32,11 @@ var channelTemplates = []ChannelTemplate{
 		BaseURLMessages: "https://dashscope.aliyuncs.com/apps/anthropic", BaseURLResponses: "https://dashscope.aliyuncs.com/compatible-mode/v1",
 		PresetModels: []string{"qwen3.8-max", "qwen3.8-flash"},
 		Note:         "三种协议都支持（responses 官方未写，实测可用）；没有模型列表接口，已预置常用模型"},
+	{ID: "minimax", Name: "MiniMax（中国站）", BaseURLChat: "https://api.minimaxi.com/v1", BaseURLMessages: "https://api.minimax.cn/anthropic",
+		BaseURLResponses: "https://api.minimaxi.com/v1", HasModelList: true,
+		Note: "三种协议都支持；注意 messages 的域名是 api.minimax.cn，和另外两个不同。MiniMax-M3.1-Flash-Preview 只在 M Plan 订阅里，按量用 MiniMax-M3.1-Flash"},
+	{ID: "volcengine", Name: "火山方舟（豆包）", BaseURLChat: "https://ark.cn-beijing.volces.com/api/v3",
+		BaseURLMessages: "https://ark.cn-beijing.volces.com/api/compatible", BaseURLResponses: "https://ark.cn-beijing.volces.com/api/v3", HasModelList: true,
+		Note: "三种协议都支持；上游模型名带版本日期（如 doubao-seed-2-1-pro-260915），建议映射成不带日期的站内名。缓存另按小时收存储费，灵枢不计"},
 	{ID: "custom", Name: "自定义", HasModelList: true, Note: "按上游文档填写各协议的地址"},
 }

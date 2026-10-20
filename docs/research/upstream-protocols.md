@@ -142,3 +142,17 @@ Kimi 在 Tier0（并发 1）时并行探测会全部 429；2026-10-19 用户已�
 - 之前的老 Key（标"兼容"）：账号开过 Coding Plan 时，通用端点优先扣套餐额度，套餐到期直接失败、不会转按量。
 
 实测：老 Key 调 messages / responses / 套餐 chat 都返回"Coding Plan 套餐已到期"，只有 `paas/v4` 正常；换成新的标准 Key 后，GLM-5.3 和 GLM-5.3-FlashX 三种协议 6 项全部通过、都带 usage。线上智谱渠道已换新 Key 并开通三种协议。
+
+## MiniMax 和火山方舟（2026-10-20）
+
+用户在线上用"自定义"建了两个渠道，灵枢冒烟测试三种协议全部通过、都带 usage：
+
+| 渠道 | chat / responses | messages | 模型 |
+|---|---|---|---|
+| MiniMax（中国站） | `https://api.minimaxi.com/v1` | `https://api.minimax.cn/anthropic`（域名不同） | MiniMax-M3.1-Flash（2026-10-19 发布）；列表里还有 MiniMax-M3 等 |
+| 火山方舟 | `https://ark.cn-beijing.volces.com/api/v3` | `https://ark.cn-beijing.volces.com/api/compatible` | doubao-seed-2-1-pro-260915 |
+
+价格（用户查证，官方来源）：
+- MiniMax-M3.1-Flash：国际站 $0.15 / $0.60，缓存读 $0.015，不分档（minimax.io/blog/minimax-m31f，2026-10-19）。中国站价格页尚未更新（媒体报道 ¥1 / ¥4 / ¥0.1）。按量模型名是 `MiniMax-M3.1-Flash`；`-Preview` 只在 M Plan 订阅里。MiniMax 会自动缓存服务端提示词，实测每次约 195 token 命中缓存。
+- MiniMax-M3（对照）：国际站永久五折后 ≤512K $0.30 / $1.20、>512K 翻倍，有 1.5 倍的 Priority 档。**灵枢目前没有接 M3**（需要阶梯计价）。
+- doubao-seed-2-1-pro：火山方舟在线推理 ¥6 / ¥30，缓存命中 ¥1.2，缓存存储 ¥0.017 / 百万 token / 小时；0–1024K 不分档（2.0-pro 是分档的）。BytePlus 国际站暂无 2.1-pro，国际站模型名通常带 `dola-` 前缀。灵枢按 ¥/6.7 换算：$0.895522 / $4.477612 / $0.179104；缓存存储费不计（按时长计费，灵枢按请求计费）。

@@ -17,6 +17,7 @@
 
 - **只算用户这一本账**：扣费 = 模型标价 × 分组倍率。上游实际成本是现实世界的账，灵枢不管；以后最多加点辅助工具。
 - **价格挂在模型上**，和走哪个渠道无关。同一个模型不管路由到哪个渠道，用户付的钱一样。
+- **价格规则（确定要做，尚未实现）**：同一模型按输入长度分档（GPT、MiniMax-M3、部分豆包）和按时段计价（DeepSeek 低谷半价），用"基础价 + 按顺序匹配的规则"实现，规则条件可以是输入长度区间、时段或两者同时；输入长度按单次请求全部输入（含缓存）算，结算时匹配，日志记下命中的规则。需要接分档模型或开 DeepSeek 低谷价时再做。
 - **价格维度**：MVP 每个模型按每百万 token 定 4 个价：输入、输出、缓存读、缓存写。图片、音频、联网搜索、长上下文阶梯价以后再加。
 - **usage 统一口径**：计费前先把各协议的 usage 换算成统一口径。Anthropic 的 `input_tokens` 不含缓存部分，OpenAI 的 `prompt_tokens` 含 `cached_tokens`。
 - **定价来源**：模型标价用厂商国际站的 USD 价格；没有国际站价时，用中国站价格按汇率换算。价格以 USD 存库，改汇率不影响已录入的价格。
@@ -84,7 +85,8 @@
 **不做**：接入教程、统计图表（日志能筛选、能看汇总金额就够）、真实充值、注册、邮箱、人机验证、SSO、原始内容留存、跨协议转换、安全加固。
 
 **MVP 上游**：只接中国厂商 —— DeepSeek、Kimi、GLM、Qwen、Xiaomi MiMo、StepFun。OpenAI、Anthropic 等美国上游以后用代理接入（腾讯云上有现成代理，以后再修通）。
-- 模型（站内标准名 → 上游模型名）：`deepseek-v4.1-flash` → `deepseek-flash`；`GLM-5.3`；`GLM-5.3-FlashX`；`mimo-v2.6-pro`；`kimi-k3`；`kimi-k2.7-code`；`step-5-preview`；`qwen3.8-max`；`qwen3.8-flash`。没写箭头的，上游名和标准名相同。`GLM-5.3-FlashX`、`kimi-k2.7-code` 于 2026-10-18 加入；kimi-k2.8 没有按量计费接口，不接。
+- 模型（站内标准名 → 上游模型名）：`deepseek-v4.1-flash` → `deepseek-flash`；`GLM-5.3`；`GLM-5.3-FlashX`；`mimo-v2.6-pro`；`kimi-k3`；`kimi-k2.7-code`；`step-5-preview`；`qwen3.8-max`；`qwen3.8-flash`。没写箭头的，上游名和标准名相同。
+- 2026-10-20 加入：`MiniMax-M3.1-Flash`（MiniMax 渠道）、`doubao-seed-2-1-pro` → `doubao-seed-2-1-pro-260915`（火山方舟渠道 volces）。豆包没有国际站价，按中国站价换算；缓存存储费（按小时）不计。`GLM-5.3-FlashX`、`kimi-k2.7-code` 于 2026-10-18 加入；kimi-k2.8 没有按量计费接口，不接。
 - Kimi 账号目前处于 Moonshot 限流 Tier0（RPM 3、并发 1），多人同时用会 429；累计充值 ¥50 升到 Tier1（RPM 100）。用户决定不单独处理，随用量充值自然升档。2026-10-19 已升到 Tier1（并发 15、RPM 100）。
 - 协议：2026-10-19 起，6 家都开通三种协议（实测通过）。智谱要用 2026-10-16 之后新建的标准 Key，老 Key 调 messages / responses 会扣 Coding Plan 额度。地址见 `docs/research/upstream-protocols.md`。各家地址和坑见 `docs/research/upstream-protocols.md`。
 - 渠道按协议分别填地址（智谱三个协议的 base 不同）。
