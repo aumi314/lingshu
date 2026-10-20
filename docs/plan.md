@@ -212,7 +212,8 @@ lingshu/
 | 标志 | ✅ | 玉琮俯视（`docs/design/`） |
 | 定价页 | ✅ | 模型定价 + 分组设置合一；"渠道负责拿到算力，定价负责怎么分发" |
 | 价格规则 | ✅ | 按输入长度、工作日 / 非工作日、北京时间段；法定节假日在系统设置维护 |
-| 美国模型价格 | ✅ | Claude Fable 5.1 / Opus 5.5 / Sonnet 5.5 / Haiku 5.5、GPT-6 Sol / 6.1 Sol / Astra / Luna，长上下文阶梯已配；Claude 和 GPT 除 cctq 的 gpt-6.1-sol 外还没有渠道 |
+| 美国模型 | ✅ | Claude、GPT、Gemini 4 Argon、Grok 4.7、Muse Wonder 共 11 个，经 OpenRouter + 渠道代理（DMIT 洛杉矶）接入；Claude / GPT 长上下文阶梯已配，后三个待查 |
+| 渠道代理 | ✅ | 每个渠道可单独配 socks5 / http 代理，出境代理 `lingshu-proxy.service` |
 | 告警通知 | 待做 | 服务宕机、上游余额低于提醒线、用量异常 → 邮件 |
 | 接入说明 | 待做 | 建 key、Claude Code / Codex / Cherry Studio 配置、常见坑 |
 | 操作记录 | 待做 | 谁在什么时候改了价格、开关、渠道、余额（kimi-k2.7-code 被停用查不到是谁） |
@@ -236,3 +237,5 @@ lingshu/
 | 10 | cctq（中转，非官方） | gpt-6.1-sol | responses |
 
 前 9 个是中国厂商官方 key；cctq 是中转渠道。
+
+**OpenRouter（#12，经出境代理）**：11 个美国模型 × 三种协议，**33 项全部通过**（2026-10-21）。第一次测试全部失败，原因是代理客户端克隆了用过的 Transport、把 HTTP/2 当 HTTP/1.1 读，已修复（`internal/relay/proxy.go`）。
