@@ -45,7 +45,7 @@ export default function Login() {
 
   return (
     <div className="center-screen">
-      <Card style={{ width: 380 }}>
+      <Card style={{ width: 380, maxWidth: 'calc(100vw - 32px)' }}>
         <Typography.Title level={3} style={{ marginTop: 0 }}>
           灵枢 <span style={{ fontWeight: 400, fontSize: 16, opacity: 0.6 }}>Lingshu</span>
         </Typography.Title>

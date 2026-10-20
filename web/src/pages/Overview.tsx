@@ -42,13 +42,13 @@ export default function Overview() {
           title={t('余额不足，调用会被拒绝。请联系管理员充值。', 'Your balance is used up, so requests will be rejected. Contact an admin to top up.')}
         />
       )}
-      <Row gutter={16}>
-        <Col span={8}>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} sm={8}>
           <Card>
             <Statistic title={t('余额', 'Balance')} value={money(balance)} styles={{ content: balance <= 0 ? { color: '#ff4d4f' } : undefined }} />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={12} sm={8}>
           <Card>
             <Statistic title={t('今日花费', 'Spent today')} value={today ? money(today.summary.cost) : '-'} />
             <Typography.Text type="secondary">
@@ -56,7 +56,7 @@ export default function Overview() {
             </Typography.Text>
           </Card>
         </Col>
-        <Col span={8}>
+        <Col xs={12} sm={8}>
           <Card>
             <Statistic title={t('本月花费', 'Spent this month')} value={month ? money(month.summary.cost) : '-'} />
             <Typography.Text type="secondary">

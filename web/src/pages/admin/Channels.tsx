@@ -365,7 +365,7 @@ export default function Channels() {
               }))}
             />
           </Form.Item>
-          <Space style={{ display: 'flex' }} align="start">
+          <Space style={{ display: 'flex' }} align="start" wrap>
             <Form.Item name="name" label={t('名称', 'Name')} rules={[{ required: true }]} style={{ width: 260 }}>
               <Input />
             </Form.Item>

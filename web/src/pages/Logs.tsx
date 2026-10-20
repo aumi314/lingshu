@@ -106,23 +106,23 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
         />
       </div>
 
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={6}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={12} md={6}>
           <Card size="small">
             <Statistic title={t('花费', 'Cost')} value={s ? money(s.cost) : '-'} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} md={6}>
           <Card size="small">
             <Statistic title={t('请求数', 'Requests')} value={s?.requests ?? '-'} suffix={s?.failed ? <Typography.Text type="danger" style={{ fontSize: 14 }}>{s.failed} {t('失败', 'failed')}</Typography.Text> : null} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} md={6}>
           <Card size="small">
             <Statistic title={t('输入 tokens', 'Input tokens')} value={s ? tokens(s.input_tokens) : '-'} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} md={6}>
           <Card size="small">
             <Statistic title={t('输出 tokens', 'Output tokens')} value={s ? tokens(s.output_tokens) : '-'} />
           </Card>
