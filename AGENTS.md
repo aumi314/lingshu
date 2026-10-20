@@ -117,3 +117,9 @@
 - 常用命令：`make db-up`（起本地 Postgres 容器）、`make dev`、`make test`、`make build`。
 - 每个阶段完成后，更新 `docs/plan.md` 的进度；产生新决策时同步更新 `docs/decisions.md`。
 - `references/` 只读，用来参考，不改、不引用其代码。
+
+## 运维约定（线上数据）
+- 改线上数据前先确认有备份：`/var/backups/lingshu/` 每天自动备份，`deploy/deploy.sh` 每次发布前也会备份。恢复：`pg_restore -d <库> --no-owner <备份文件>`。
+- 运维 SQL 一律按 id 定位，不按名字：渠道、模型、用户的名字用户随时会在后台改。先查出 id 和当前名字确认对象，再 `WHERE id = …`，改完检查影响行数，0 行就停下来。
+- 能走管理接口的操作优先走接口（有校验、会记日志），直接改库是最后手段。
+- 不把种子脚本（`scripts/seed-dev.py`）跑到线上：它按名字 upsert，会用本地 `.env` 的 key 覆盖线上渠道。

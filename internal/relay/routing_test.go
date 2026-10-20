@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+
+	"github.com/aumi314/lingshu/internal/store"
 )
 
 // withBackup 给 std-chat 加一个低优先级的兜底渠道 c-backup（id=3）。
@@ -267,5 +269,23 @@ func TestUpstreamKeyEchoIsRedacted(t *testing.T) {
 	}
 	if l := e.logRow(resp.Header.Get("X-Lingshu-Request-Id")); strings.Contains(l.errorText, upstreamKey) {
 		t.Errorf("上游 key 写进了日志: %s", l.errorText)
+	}
+}
+
+func TestLogKeepsNamesAfterChannelAndKeyDeleted(t *testing.T) {
+	e := newEnv(t)
+	e.upstream = okUpstream
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	rid := resp.Header.Get("X-Lingshu-Request-Id")
+	e.logRow(rid)
+	e.exec(`DELETE FROM channels WHERE id = 1`)
+	e.exec(`DELETE FROM api_keys`)
+	logs, _, err := e.store.ListLogs(context.Background(), store.LogFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(logs) != 1 || logs[0].ChannelName != "c-chat" || logs[0].KeyName != "k" {
+		t.Errorf("渠道和 key 删除后，日志应保留名字快照，实际 %+v", logs)
 	}
 }

@@ -37,6 +37,14 @@ bash deploy/deploy.sh
 7. 建管理员：`sudo -u lingshu env $(cat /etc/lingshu/env | xargs) /opt/lingshu/lingshu admin create -username <名字>`。
 8. 渠道、模型、价格：本地 `scripts/seed-dev.py` 生成 SQL，经 ssh 灌进线上库。
 
+## 数据库备份
+
+- `lingshu-backup.timer` 每天 04:00（随机延后 10 分钟内）执行 `/usr/local/bin/lingshu-backup`：`pg_dump -Fc` 到 `/var/backups/lingshu/`，保留最近 14 份。脚本在 `deploy/backup/`。
+- `deploy/deploy.sh` 每次发布前也会先备份一次（新版本启动时会执行数据库迁移）。
+- 2026-10-20 恢复演练：最新备份恢复到临时库，9 张表行数和余额总额都与线上一致。
+- 恢复：`sudo -u postgres pg_restore -d lingshu --clean --no-owner /var/backups/lingshu/<文件>`（先停 `lingshu.service`）。
+- 已知不足：备份和数据库在同一台服务器上，防不了整机故障；异地备份待接入。
+
 ## 回滚
 
 ```bash

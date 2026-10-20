@@ -14,6 +14,7 @@ import (
 // KeyOwner 是网关鉴权和准入需要的 key、用户、分组信息。
 type KeyOwner struct {
 	KeyID        int64
+	KeyName      string
 	UserID       int64
 	GroupID      int64
 	KeyEnabled   bool
@@ -31,14 +32,14 @@ func (s *Store) LookupKey(ctx context.Context, keyHash string) (*KeyOwner, error
 	var ratio, balance, used string
 	var limit *string
 	err := s.Pool.QueryRow(ctx, `
-		SELECT k.id, k.user_id, k.group_id, k.enabled, u.enabled,
+		SELECT k.id, k.name, k.user_id, k.group_id, k.enabled, u.enabled,
 		       g.is_public OR EXISTS (SELECT 1 FROM user_groups ug WHERE ug.user_id = u.id AND ug.group_id = g.id),
 		       g.ratio::text, u.balance::text, k.quota_limit::text, k.quota_used::text
 		FROM api_keys k
 		JOIN users u ON u.id = k.user_id
 		JOIN groups g ON g.id = k.group_id
 		WHERE k.key_hash = $1`, keyHash,
-	).Scan(&o.KeyID, &o.UserID, &o.GroupID, &o.KeyEnabled, &o.UserEnabled, &o.GroupAllowed,
+	).Scan(&o.KeyID, &o.KeyName, &o.UserID, &o.GroupID, &o.KeyEnabled, &o.UserEnabled, &o.GroupAllowed,
 		&ratio, &balance, &limit, &used)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -159,11 +160,13 @@ type RequestLog struct {
 	RequestID          string
 	UserID             int64
 	APIKeyID           int64
+	KeyName            string // 名字快照：渠道或 key 被删除后，历史日志仍能看出是谁
 	GroupID            int64
 	Protocol           string
 	Model              string
 	UpstreamModel      string
 	ChannelID          int64 // 0 表示没选到渠道
+	ChannelName        string
 	Stream             bool
 	Status             string
 	HTTPStatus         int
@@ -201,15 +204,15 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 				stream, status, http_status, error,
 				input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, reasoning_tokens, usage_estimated,
 				input_price, output_price, cache_read_price, cache_write_price, group_ratio, cost,
-				attempts, first_byte_ms, total_ms, upstream_response_id
+				attempts, first_byte_ms, total_ms, upstream_response_id, channel_name, key_name
 			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28)`,
+			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28,$29,$30)`,
 			l.RequestID, l.UserID, l.APIKeyID, l.GroupID, l.Protocol, l.Model, l.UpstreamModel, channelID,
 			l.Stream, l.Status, l.HTTPStatus, l.Error,
 			l.InputTokens, l.CacheReadTokens, l.CacheWriteTokens, l.OutputTokens, l.ReasoningTokens, l.UsageEstimated,
 			l.Prices.Input.String(), l.Prices.Output.String(), l.Prices.CacheRead.String(), l.Prices.CacheWrite.String(),
 			ratio.String(), l.Cost.String(),
-			l.Attempts, l.FirstByteMS, l.TotalMS, l.UpstreamResponseID,
+			l.Attempts, l.FirstByteMS, l.TotalMS, l.UpstreamResponseID, l.ChannelName, l.KeyName,
 		); err != nil {
 			return fmt.Errorf("写请求日志: %w", err)
 		}

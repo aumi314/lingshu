@@ -306,8 +306,8 @@ func (s *Store) ListLogs(ctx context.Context, f LogFilter) ([]LogEntry, LogSumma
 	}
 	args = append(args, limit, f.Offset)
 	rows, err := s.Pool.Query(ctx, fmt.Sprintf(`
-		SELECT l.id, l.request_id, u.username, COALESCE(k.name, ''), COALESCE(g.name, ''), l.protocol, l.model,
-		       l.upstream_model, COALESCE(c.name, ''), l.stream, l.status, l.http_status, l.error,
+		SELECT l.id, l.request_id, u.username, COALESCE(NULLIF(l.key_name, ''), k.name, ''), COALESCE(g.name, ''), l.protocol, l.model,
+		       l.upstream_model, COALESCE(NULLIF(l.channel_name, ''), c.name, ''), l.stream, l.status, l.http_status, l.error,
 		       l.input_tokens, l.cache_read_tokens, l.cache_write_tokens, l.output_tokens, l.reasoning_tokens,
 		       l.usage_estimated, l.group_ratio::text, l.cost::text, l.attempts, l.first_byte_ms, l.total_ms, l.created_at
 		FROM request_logs l

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 发布新版本到腾讯云：本地编译 → 上传 → 保留上一版 → 重启 → 健康检查，失败自动回滚。
+# 发布新版本到腾讯云：本地编译 → 上传 → 备份数据库 → 保留上一版 → 重启 → 健康检查，失败自动回滚程序。
 # 用法（项目根目录）：bash deploy/deploy.sh
 # 首次部署的一次性准备见 docs/deploy.md。
 set -euo pipefail
@@ -12,6 +12,8 @@ scp -q bin/lingshu "$HOST:/tmp/lingshu.new"
 
 ssh "$HOST" 'bash -s' <<'REMOTE'
 set -euo pipefail
+# 新版本启动时会自动执行数据库迁移，先备份一次，出问题能退回发布前的数据
+sudo /usr/local/bin/lingshu-backup
 cd /opt/lingshu
 sudo install -o root -g root -m 755 /tmp/lingshu.new lingshu.new
 rm -f /tmp/lingshu.new

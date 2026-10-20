@@ -87,7 +87,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 	if !ok {
 		return // 没认出用户，不写日志
 	}
-	c.log.UserID, c.log.APIKeyID, c.log.GroupID = owner.UserID, owner.KeyID, owner.GroupID
+	c.log.UserID, c.log.APIKeyID, c.log.GroupID, c.log.KeyName = owner.UserID, owner.KeyID, owner.GroupID, owner.KeyName
 	defer h.finish(r.Context(), c)
 
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
@@ -242,7 +242,7 @@ func (h *Handler) attemptAll(w http.ResponseWriter, r *http.Request, c *call, re
 
 // useRoute 切换到一个渠道，重置上一次尝试留下的状态。
 func (c *call) useRoute(route store.Route, attempt int) {
-	c.log.ChannelID, c.log.UpstreamModel, c.log.Prices = route.ChannelID, route.UpstreamModel, route.Prices
+	c.log.ChannelID, c.log.ChannelName, c.log.UpstreamModel, c.log.Prices = route.ChannelID, route.ChannelName, route.UpstreamModel, route.Prices
 	c.log.Attempts = attempt
 	c.tracker = usage.NewTracker(c.proto)
 	c.gotResp = false
