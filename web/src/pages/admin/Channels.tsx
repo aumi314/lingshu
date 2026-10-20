@@ -334,15 +334,24 @@ export default function Channels() {
         }
       >
         <Form form={form} layout="vertical" requiredMark={false}>
-          {editing === 'new' && (
-            <Form.Item name="template" label={t('模板', 'Template')} extra={currentTemplate?.note}>
-              <Select
-                placeholder={t('选一个厂商，自动填好地址', 'Pick a vendor to prefill the URLs')}
-                onChange={applyTemplate}
-                options={templates.map((x) => ({ value: x.id, label: x.name }))}
-              />
-            </Form.Item>
-          )}
+          <Form.Item
+            name="template"
+            label={t('模板', 'Template')}
+            extra={
+              <>
+                {currentTemplate?.note}
+                {editing !== 'new' && (
+                  <div>{t('换模板会按模板重新填写各协议地址，保存后才生效，可以先点"测试"。', 'Switching templates refills the protocol URLs; nothing changes until you save, so you can test first.')}</div>
+                )}
+              </>
+            }
+          >
+            <Select
+              placeholder={t('选一个厂商，自动填好地址', 'Pick a vendor to prefill the URLs')}
+              onChange={applyTemplate}
+              options={templates.map((x) => ({ value: x.id, label: x.name }))}
+            />
+          </Form.Item>
           <Space style={{ display: 'flex' }} align="start">
             <Form.Item name="name" label={t('名称', 'Name')} rules={[{ required: true }]} style={{ width: 260 }}>
               <Input />
