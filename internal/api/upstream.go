@@ -49,8 +49,8 @@ func (s *Server) saveUpstreamAccount(w http.ResponseWriter, r *http.Request) {
 		a.ID = id
 	}
 	a.Name, a.Note = strings.TrimSpace(a.Name), strings.TrimSpace(a.Note)
-	if a.Name == "" {
-		writeError(w, http.StatusBadRequest, "名称不能为空")
+	if len(a.ChannelIDs) > 1 {
+		writeError(w, http.StatusBadRequest, "一个上游账户只能对应一个渠道")
 		return
 	}
 	if !a.CostFactor.IsPositive() {
@@ -61,7 +61,10 @@ func (s *Server) saveUpstreamAccount(w http.ResponseWriter, r *http.Request) {
 		a.ChannelIDs = []int64{}
 	}
 	isNew := a.ID == 0
-	if err := s.Store.SaveUpstreamAccount(r.Context(), &a); err != nil {
+	if err := s.Store.SaveUpstreamAccount(r.Context(), &a); errors.Is(err, store.ErrChannelHasAccount) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	} else if err != nil {
 		writeStoreError(w, err)
 		return
 	}

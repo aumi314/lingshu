@@ -13,7 +13,6 @@ import {
   TagsOutlined,
   TeamOutlined,
   ToolOutlined,
-  WalletOutlined,
 } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../app'
@@ -45,7 +44,6 @@ export default function AppLayout() {
               { key: '/console/admin/groups', icon: <ClusterOutlined />, label: t('分组', 'Groups') },
               { key: '/console/admin/models', icon: <AppstoreOutlined />, label: t('模型', 'Models') },
               { key: '/console/admin/channels', icon: <ApiOutlined />, label: t('渠道', 'Channels') },
-              { key: '/console/admin/accounts', icon: <WalletOutlined />, label: t('上游账户', 'Upstream accounts') },
               { key: '/console/admin/logs', icon: <ProfileOutlined />, label: t('全站日志', 'All logs') },
               { key: '/console/admin/system', icon: <ToolOutlined />, label: t('系统设置', 'System') },
             ],

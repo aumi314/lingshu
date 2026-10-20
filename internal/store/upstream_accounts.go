@@ -72,6 +72,14 @@ func (s *Store) SaveUpstreamAccount(ctx context.Context, a *UpstreamAccount) err
 			a.ID, a.Name, a.CostFactor.String(), decimalArg(a.AlertBelow), a.AutoSync, a.Note); err != nil {
 			return err
 		}
+		var taken bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM channels WHERE id = ANY($2::bigint[])
+			AND upstream_account_id IS NOT NULL AND upstream_account_id <> $1)`, a.ID, a.ChannelIDs).Scan(&taken); err != nil {
+			return err
+		}
+		if taken {
+			return ErrChannelHasAccount
+		}
 		if _, err := tx.Exec(ctx, `UPDATE channels SET upstream_account_id = NULL
 			WHERE upstream_account_id = $1 AND NOT (id = ANY($2::bigint[]))`, a.ID, a.ChannelIDs); err != nil {
 			return err
@@ -100,6 +108,8 @@ type AccountEntry struct {
 	// 校准类流水：距上一次校准，估算扣了多少（用来看偏差占比）
 	EstimatedSpent *decimal.Decimal `json:"estimated_spent,omitempty"`
 }
+
+var ErrChannelHasAccount = errors.New("这个渠道已经开启了余额估算")
 
 var ErrBadEntryKind = errors.New("流水类型只能是 recharge、calibrate 或 sync")
 

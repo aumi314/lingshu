@@ -102,9 +102,34 @@ func TestUpstreamAccountLifecycle(t *testing.T) {
 		t.Errorf("不支持的币种应拒绝，实际 %d", code)
 	}
 
-	// 删除账户：流水一起删，渠道解除关联
-	if code, _ := a.do("DELETE", "/api/admin/upstream-accounts/"+itoa(id), nil, nil); code != 200 {
-		t.Errorf("删除失败 %d", code)
+	// 一个渠道只能对应一个账户
+	if code, body := a.do("POST", "/api/admin/upstream-accounts", map[string]any{"cost_factor": "1", "channel_ids": []int64{2}}, nil); code != 409 {
+		t.Errorf("渠道已有账户时应拒绝: %d %s", code, body)
+	}
+	if code, _ := a.do("POST", "/api/admin/upstream-accounts", map[string]any{"cost_factor": "1", "channel_ids": []int64{1, 2}}, nil); code != 400 {
+		t.Errorf("一个账户关联多个渠道应拒绝，实际 %d", code)
+	}
+
+	// 删除渠道：它的账户和流水一起删
+	if code, _ := a.do("DELETE", "/api/admin/channels/2", nil, nil); code != 200 {
+		t.Fatalf("删除渠道失败 %d", code)
+	}
+	var left int
+	e.store.Pool.QueryRow(ctx, `SELECT count(*) FROM upstream_accounts`).Scan(&left)
+	if left != 0 {
+		t.Errorf("删除渠道后账户应一起删除，还剩 %d", left)
+	}
+
+	// 关闭估算（删除账户）：渠道还在，只是解除关联
+	var again struct{ ID int64 }
+	a.do("POST", "/api/admin/upstream-accounts", map[string]any{"cost_factor": "1", "channel_ids": []int64{1}}, &again)
+	if code, _ := a.do("DELETE", "/api/admin/upstream-accounts/"+itoa(again.ID), nil, nil); code != 200 {
+		t.Errorf("删除账户失败 %d", code)
+	}
+	var channels int
+	e.store.Pool.QueryRow(ctx, `SELECT count(*) FROM channels WHERE id = 1 AND upstream_account_id IS NULL`).Scan(&channels)
+	if channels != 1 {
+		t.Error("删除账户后渠道应保留并解除关联")
 	}
 }
 

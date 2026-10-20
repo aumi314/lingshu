@@ -147,8 +147,14 @@ func (s *Store) SaveChannel(ctx context.Context, c *Channel) error {
 	})
 }
 
+// DeleteChannel 删除渠道，连同它的余额估算和流水（请求日志里的上游成本保留）。
 func (s *Store) DeleteChannel(ctx context.Context, id int64) error {
-	return execOne(ctx, s.Pool, `DELETE FROM channels WHERE id = $1`, id)
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `DELETE FROM upstream_accounts WHERE id = (SELECT upstream_account_id FROM channels WHERE id = $1)`, id); err != nil {
+			return err
+		}
+		return execOne(ctx, tx, `DELETE FROM channels WHERE id = $1`, id)
+	})
 }
 
 // ---- 用户的 API key ----
