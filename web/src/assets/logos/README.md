@@ -3,3 +3,4 @@
 - meta.svg：Muse（Meta 的模型）用 Meta 的标志。
 - doubao.svg、hunyuan.svg：豆包 Seed（字节跳动）、腾讯混元 HY。
 - gemini.svg：Google Gemini。
+- `*-color.svg`：同一图标包的彩色版，用在管理端渠道列表里标识模板厂商。Kimi 的彩色版含白色部分，浅色主题下看不清，仍用单色版；MiMo 的图标是一行小字，渠道列表里改用小米橙底 "Mi" 方块（代码里画的，不是官方文件）。

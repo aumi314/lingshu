@@ -22,6 +22,7 @@ import {
 import { CheckCircleFilled, CloseCircleFilled, DeleteOutlined, PlusOutlined, WarningFilled } from '@ant-design/icons'
 import { del, get, post, put, type Channel, type ChannelTemplate, type Group, type Model, type ProbeResult } from '../../api'
 import { useApp } from '../../app'
+import VendorIcon from '../../components/VendorIcon'
 
 
 type Row = { key: number; upstream: string; model_id?: number }
@@ -254,9 +255,14 @@ export default function Channels() {
             title: t('名称', 'Name'),
             dataIndex: 'name',
             render: (v, c) => (
-              <>
-                {v} {c.template && <Tag>{templates.find((x) => x.id === c.template)?.name ?? c.template}</Tag>}
-              </>
+              <Space size={8} align="center">
+                <Tooltip title={templates.find((x) => x.id === c.template)?.name ?? t('自定义', 'Custom')}>
+                  <span style={{ display: 'inline-flex', width: 20, justifyContent: 'center', alignItems: 'center' }}>
+                    <VendorIcon template={c.template} />
+                  </span>
+                </Tooltip>
+                {v}
+              </Space>
             ),
           },
           { title: t('协议', 'Protocols'), render: (_, c) => protocols(c).map((p) => <Tag key={p}>{protocolLabel[p]}</Tag>) },
@@ -281,7 +287,6 @@ export default function Channels() {
           },
           { title: t('分组', 'Groups'), dataIndex: 'group_ids', render: (ids: number[]) => ids.map((id) => <Tag key={id}>{groupByID.get(id)?.name}</Tag>) },
           { title: t('优先级', 'Priority'), dataIndex: 'priority' },
-          { title: 'Key', dataIndex: 'api_key_masked', render: (v) => <span className="mono">{v}</span> },
           {
             title: t('状态', 'Status'),
             render: (_, c) => (
@@ -349,7 +354,15 @@ export default function Channels() {
             <Select
               placeholder={t('选一个厂商，自动填好地址', 'Pick a vendor to prefill the URLs')}
               onChange={applyTemplate}
-              options={templates.map((x) => ({ value: x.id, label: x.name }))}
+              options={templates.map((x) => ({
+                value: x.id,
+                label: (
+                  <Space size={8} align="center">
+                    <VendorIcon template={x.id} size={16} />
+                    {x.name}
+                  </Space>
+                ),
+              }))}
             />
           </Form.Item>
           <Space style={{ display: 'flex' }} align="start">
