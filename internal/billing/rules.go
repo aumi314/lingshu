@@ -25,6 +25,10 @@ type PriceRule struct {
 	// Days：日期条件。"" 不限；"workday" 仅工作日（周一到周五且不是法定节假日）；
 	// "non_workday" 仅非工作日（周末和法定节假日）。调休上班的周末也算非工作日（和 DeepSeek 的规则一致）。
 	Days string `json:"days,omitempty"`
+	// DateFrom / DateTo：生效日期范围（北京时间 "YYYY-MM-DD"，两头都含），空表示不限。
+	// 用来提前配好厂商公布的涨价、降价或限时价，到日子自动切换。
+	DateFrom string `json:"date_from,omitempty"`
+	DateTo   string `json:"date_to,omitempty"`
 
 	Input      decimal.Decimal `json:"input_price"`
 	Output     decimal.Decimal `json:"output_price"`
@@ -68,6 +72,12 @@ func IsWorkday(at time.Time, holidays Holidays) bool {
 func (r PriceRule) matches(totalInput int64, at time.Time, holidays Holidays) bool {
 	if r.InputAbove != nil && totalInput <= *r.InputAbove {
 		return false
+	}
+	if r.DateFrom != "" || r.DateTo != "" {
+		day := at.In(Beijing).Format("2006-01-02")
+		if (r.DateFrom != "" && day < r.DateFrom) || (r.DateTo != "" && day > r.DateTo) {
+			return false
+		}
 	}
 	switch r.Days {
 	case "workday":
@@ -133,8 +143,21 @@ func Normalize(rules []PriceRule) ([]PriceRule, error) {
 		if r.Days != "" && r.Days != "workday" && r.Days != "non_workday" {
 			return nil, fmt.Errorf("第 %d 条规则：日期条件只能是 workday 或 non_workday", n)
 		}
-		if r.InputAbove == nil && !hasTime && r.Days == "" {
-			return nil, fmt.Errorf("第 %d 条规则：至少要有一个条件（输入长度、日期或时间段）", n)
+		r.DateFrom, r.DateTo = strings.TrimSpace(r.DateFrom), strings.TrimSpace(r.DateTo)
+		for _, d := range []string{r.DateFrom, r.DateTo} {
+			if d == "" {
+				continue
+			}
+			if _, err := time.Parse("2006-01-02", d); err != nil {
+				return nil, fmt.Errorf("第 %d 条规则：日期 %q 格式不对，应为 2026-12-01 这样", n, d)
+			}
+		}
+		if r.DateFrom != "" && r.DateTo != "" && r.DateFrom > r.DateTo {
+			return nil, fmt.Errorf("第 %d 条规则：开始日期晚于结束日期", n)
+		}
+		hasDate := r.DateFrom != "" || r.DateTo != ""
+		if r.InputAbove == nil && !hasTime && r.Days == "" && !hasDate {
+			return nil, fmt.Errorf("第 %d 条规则：至少要有一个条件（输入长度、生效日期、工作日或时间段）", n)
 		}
 		for _, p := range []decimal.Decimal{r.Input, r.Output, r.CacheRead, r.CacheWrite} {
 			if p.IsNegative() {
@@ -155,6 +178,14 @@ func Normalize(rules []PriceRule) ([]PriceRule, error) {
 // DescribeCondition 用中文描述规则的条件，例如"输入超过 272K · 工作日 · 北京时间 09:00–12:00"。
 func DescribeCondition(r PriceRule) string {
 	var parts []string
+	switch {
+	case r.DateFrom != "" && r.DateTo != "":
+		parts = append(parts, r.DateFrom+" 至 "+r.DateTo)
+	case r.DateFrom != "":
+		parts = append(parts, r.DateFrom+" 起")
+	case r.DateTo != "":
+		parts = append(parts, "截至 "+r.DateTo)
+	}
 	if r.InputAbove != nil {
 		parts = append(parts, "输入超过 "+compactTokens(*r.InputAbove))
 	}

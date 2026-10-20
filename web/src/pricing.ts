@@ -3,6 +3,9 @@ import type { PriceRule } from './api'
 // 价格规则条件的简短描述，和服务端自动命名的含义一致
 export function ruleCondition(r: PriceRule, t: (zh: string, en: string) => string) {
   const parts: string[] = []
+  if (r.date_from && r.date_to) parts.push(t(`${r.date_from} 至 ${r.date_to}`, `${r.date_from} – ${r.date_to}`))
+  else if (r.date_from) parts.push(t(`${r.date_from} 起`, `from ${r.date_from}`))
+  else if (r.date_to) parts.push(t(`截至 ${r.date_to}`, `until ${r.date_to}`))
   if (r.input_above != null) parts.push(t(`输入超过 ${r.input_above.toLocaleString()} tokens`, `input > ${r.input_above.toLocaleString()} tokens`))
   if (r.days === 'workday') parts.push(t('工作日', 'workdays'))
   if (r.days === 'non_workday') parts.push(t('周末和节假日', 'weekends & holidays'))

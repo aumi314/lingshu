@@ -65,6 +65,8 @@ export type PriceRule = {
   time_start?: string // 北京时间 HH:MM，含开始不含结束，可跨零点
   time_end?: string
   days?: '' | 'workday' | 'non_workday' // 工作日 = 周一到周五且不是法定节假日
+  date_from?: string // 生效日期（北京时间 YYYY-MM-DD，含当天）
+  date_to?: string
   input_price: string
   output_price: string
   cache_read_price: string

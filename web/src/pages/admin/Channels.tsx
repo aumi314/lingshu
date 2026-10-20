@@ -325,7 +325,9 @@ export default function Channels() {
                     </div>
                   ))}
                 >
-                  <span>{ms.map((m) => m.model_name).join(', ')}</span>
+                  <span style={{ display: 'block', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {ms.map((m) => m.model_name).join(', ')}
+                  </span>
                 </Tooltip>
               ) : (
                 <Typography.Text type="warning">{t('未配置模型', 'No models')}</Typography.Text>

@@ -6,8 +6,9 @@ import { priceText, useApp } from '../../app'
 
 const priceFields = ['input_price', 'output_price', 'cache_read_price', 'cache_write_price'] as const
 const clock = /^([01]\d|2[0-3]):[0-5]\d$/
+const ymd = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
 
-type RuleForm = { name?: string; input_above?: number | null; days?: string; time_start?: string; time_end?: string } & Partial<Record<(typeof priceFields)[number], number>>
+type RuleForm = { name?: string; input_above?: number | null; days?: string; date_from?: string; date_to?: string; time_start?: string; time_end?: string } & Partial<Record<(typeof priceFields)[number], number>>
 
 
 // 放在「定价」页的标签里（pages/admin/Pricing.tsx），不单独成页
@@ -69,6 +70,8 @@ export default function ModelsAdmin() {
         name: r.name ?? '',
         input_above: r.input_above ?? null,
         days: r.days || undefined,
+        date_from: r.date_from || undefined,
+        date_to: r.date_to || undefined,
         time_start: r.time_start || undefined,
         time_end: r.time_end || undefined,
         ...Object.fromEntries(priceFields.map((f) => [f, toUSD(r[f] ?? 0)])),
@@ -189,7 +192,7 @@ export default function ModelsAdmin() {
           </Divider>
           <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
             {t(
-              '上面是基础价。规则从上往下匹配，第一条条件全部满足的生效，都不满足用基础价。输入长度 = 输入 + 缓存命中 + 缓存写入；时间按北京时间、以请求开始时为准，可以跨零点；工作日 = 周一到周五且不是法定节假日（在「系统设置」里维护）。规则价同样乘分组倍率。',
+              '上面是基础价。规则从上往下匹配，第一条条件全部满足的生效，都不满足用基础价。输入长度 = 输入 + 缓存命中 + 缓存写入；日期和时间都按北京时间、以请求开始时为准，时间段可以跨零点；生效日期用来提前配好涨价、降价或限时价；工作日 = 周一到周五且不是法定节假日（在「系统设置」里维护）。规则价同样乘分组倍率。',
               'The prices above are the base. Rules are checked top-down; the first whose conditions all match applies, otherwise the base price. Input length = input + cache hit + cache write; time is Beijing time at request start and may wrap past midnight. Group ratios apply to rule prices too.',
             )}
           </Typography.Paragraph>
@@ -217,7 +220,18 @@ export default function ModelsAdmin() {
                       <Form.Item name={[field.name, 'input_above']} label={t('输入超过（tokens）', 'Input above (tokens)')} extra={t('例如 272000；空表示不限', 'e.g. 272000; empty for any')}>
                         <InputNumber min={0} step={1000} style={{ width: 140 }} />
                       </Form.Item>
-                      <Form.Item name={[field.name, 'days']} label={t('日期', 'Days')}>
+                      <Form.Item
+                        name={[field.name, 'date_from']}
+                        label={t('生效日期', 'From date')}
+                        rules={[{ pattern: ymd, message: 'YYYY-MM-DD' }]}
+                        extra={t('含当天；空表示不限', 'Inclusive; empty for any')}
+                      >
+                        <Input style={{ width: 120 }} placeholder="2026-12-01" />
+                      </Form.Item>
+                      <Form.Item name={[field.name, 'date_to']} label={t('截止日期', 'To date')} rules={[{ pattern: ymd, message: 'YYYY-MM-DD' }]}>
+                        <Input style={{ width: 120 }} placeholder={t('不限', 'Any')} />
+                      </Form.Item>
+                      <Form.Item name={[field.name, 'days']} label={t('工作日', 'Workdays')}>
                         <Select
                           style={{ width: 130 }}
                           options={[

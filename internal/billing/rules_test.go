@@ -124,3 +124,38 @@ func TestNormalizeHolidays(t *testing.T) {
 		t.Error("不认识的日期条件应报错")
 	}
 }
+
+// Gemini 4 Argon：限时价到 2026-11-30，12-01 起翻倍（按北京时间的日期切换）
+func TestDateRange(t *testing.T) {
+	rules := []PriceRule{{Name: "正式价", DateFrom: "2026-12-01", Input: d("4")}}
+	base := Prices{Input: d("2")}
+	for _, c := range []struct {
+		at   time.Time
+		want string
+	}{
+		{time.Date(2026, 11, 30, 23, 59, 0, 0, Beijing), "2"},
+		{time.Date(2026, 12, 1, 0, 0, 0, 0, Beijing), "4"},
+		{time.Date(2026, 11, 30, 16, 0, 0, 0, time.UTC), "4"}, // UTC 16:00 = 北京 12-01 00:00
+		{time.Date(2027, 6, 1, 12, 0, 0, 0, Beijing), "4"},
+	} {
+		if p, _ := Select(base, rules, usage.Usage{}, c.at, nil); !p.Input.Equal(d(c.want)) {
+			t.Errorf("%v: %v，期望 %s", c.at, p.Input, c.want)
+		}
+	}
+	limited := []PriceRule{{DateFrom: "2026-11-11", DateTo: "2026-11-11", Input: d("1")}}
+	if p, _ := Select(base, limited, usage.Usage{}, time.Date(2026, 11, 11, 23, 0, 0, 0, Beijing), nil); !p.Input.Equal(d("1")) {
+		t.Error("结束日期当天应包含在内")
+	}
+	if p, _ := Select(base, limited, usage.Usage{}, time.Date(2026, 11, 12, 0, 0, 0, 0, Beijing), nil); !p.Input.Equal(d("2")) {
+		t.Error("结束日期之后应回到基础价")
+	}
+	got, err := Normalize([]PriceRule{{DateFrom: "2026-12-01"}, {DateFrom: "2026-11-01", DateTo: "2026-11-30", InputAbove: i64(200_000)}})
+	if err != nil || got[0].Name != "2026-12-01 起" || got[1].Name != "2026-11-01 至 2026-11-30 · 输入超过 200K" {
+		t.Errorf("自动命名: %+v %v", got, err)
+	}
+	for _, bad := range [][]PriceRule{{{DateFrom: "2026/12/01"}}, {{DateFrom: "2026-12-02", DateTo: "2026-12-01"}}} {
+		if _, err := Normalize(bad); err == nil {
+			t.Errorf("应报错: %+v", bad)
+		}
+	}
+}
