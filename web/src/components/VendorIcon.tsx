@@ -8,6 +8,7 @@ import minimax from '../assets/logos/minimax-color.svg?raw'
 import doubao from '../assets/logos/doubao-color.svg?raw'
 import kimi from '../assets/logos/kimi.svg?raw'
 import xiaomi from '../assets/logos/xiaomi-color.svg?raw'
+import hunyuan from '../assets/logos/hunyuan-color.svg?raw'
 
 const icons: Record<string, string> = {
   deepseek,
@@ -18,6 +19,7 @@ const icons: Record<string, string> = {
   volcengine: doubao,
   moonshot: kimi,
   mimo: xiaomi,
+  hunyuan,
 }
 
 export default function VendorIcon({ template, size = 18 }: { template?: string; size?: number }) {

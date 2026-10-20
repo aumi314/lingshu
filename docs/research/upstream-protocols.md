@@ -156,3 +156,9 @@ Kimi 在 Tier0（并发 1）时并行探测会全部 429；2026-10-19 用户已�
 - MiniMax-M3.1-Flash：国际站 $0.15 / $0.60，缓存读 $0.015，不分档（minimax.io/blog/minimax-m31f，2026-10-19）。中国站价格页尚未更新（媒体报道 ¥1 / ¥4 / ¥0.1）。按量模型名是 `MiniMax-M3.1-Flash`；`-Preview` 只在 M Plan 订阅里。MiniMax 会自动缓存服务端提示词，实测每次约 195 token 命中缓存。
 - MiniMax-M3（对照）：国际站永久五折后 ≤512K $0.30 / $1.20、>512K 翻倍，有 1.5 倍的 Priority 档。**灵枢目前没有接 M3**（需要阶梯计价）。
 - doubao-seed-2-1-pro：火山方舟在线推理 ¥6 / ¥30，缓存命中 ¥1.2，缓存存储 ¥0.017 / 百万 token / 小时；0–1024K 不分档（2.0-pro 是分档的）。BytePlus 国际站暂无 2.1-pro，国际站模型名通常带 `dola-` 前缀。灵枢按 ¥/6.7 换算：$0.895522 / $4.477612 / $0.179104；缓存存储费不计（按时长计费，灵枢按请求计费）。
+
+## 腾讯混元 TokenHub（2026-10-21 实测）
+
+- 中国站地址 `https://tokenhub.tencentmaas.com`：chat `/v1/chat/completions`、messages `/v1/messages`（Bearer 和 x-api-key 都认）、responses `/v1/responses`，三种协议流式都带用量。`/v1/models` 可用，同一账号还能调 GLM、DeepSeek、Kimi、MiniMax 等模型（模型 ID 和各家官方不完全一样，如 `deepseek/deepseek-flash`）。
+- 新 key 第一次测试时 chat 和 messages 返回 402 `401006 The service ID does not exist, or the model does not match the service`，几分钟后重测全部通过，判断是开通延迟。
+- hy4-preview（腾讯混元 Hy4 preview，2026-08-28 发布，1M 上下文）价格：中国站 ¥6 / ¥18 / 缓存命中 ¥0.3；国际站 $0.834 / $2.501 / $0.042（intl.cloud.tencent.com 文档 1300/78937，2026-09-25 更新）。用户查证提供。站内按国际站美元价。

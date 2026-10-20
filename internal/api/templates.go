@@ -38,5 +38,8 @@ var channelTemplates = []ChannelTemplate{
 	{ID: "volcengine", Name: "火山方舟（豆包）", BaseURLChat: "https://ark.cn-beijing.volces.com/api/v3",
 		BaseURLMessages: "https://ark.cn-beijing.volces.com/api/compatible", BaseURLResponses: "https://ark.cn-beijing.volces.com/api/v3", HasModelList: true,
 		Note: "三种协议都支持；上游模型名带版本日期（如 doubao-seed-2-1-pro-260915），建议映射成不带日期的站内名。缓存另按小时收存储费，灵枢不计"},
+	{ID: "hunyuan", Name: "腾讯混元（TokenHub 中国站）", BaseURLChat: "https://tokenhub.tencentmaas.com/v1",
+		BaseURLMessages: "https://tokenhub.tencentmaas.com", BaseURLResponses: "https://tokenhub.tencentmaas.com/v1", HasModelList: true,
+		Note: "腾讯云 TokenHub，三种协议都支持（2026-10-21 实测 hy4-preview，流式都带用量）；同一个账号还能调 GLM、DeepSeek、Kimi、MiniMax 等模型。新 key 刚开通时可能短暂返回 402“service ID 不存在”，过一会儿再测"},
 	{ID: "custom", Name: "自定义", HasModelList: true, Note: "按上游文档填写各协议的地址"},
 }
