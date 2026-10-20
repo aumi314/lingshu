@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../app'
+import Logo from '../components/Logo'
 import Meridian from '../components/Meridian'
 import '../welcome.css'
 
@@ -213,10 +214,7 @@ resp = client.chat.completions.create(
     <div className="ls-landing">
       <header className="ls-nav">
         <div className="ls-brand">
-          <span className="ls-seal" aria-hidden="true">
-            <span>灵</span>
-            <span>枢</span>
-          </span>
+          <Logo size={34} />
           <span className="ls-brand-name">
             灵枢 <em>Lingshu</em>
           </span>

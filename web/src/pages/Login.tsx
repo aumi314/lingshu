@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { ApiError, post } from '../api'
 import { solveCaptcha } from '../captcha'
 import { useApp } from '../app'
+import Logo from '../components/Logo'
 
 export default function Login() {
   const { reload, t } = useApp()
@@ -46,7 +47,8 @@ export default function Login() {
   return (
     <div className="center-screen">
       <Card style={{ width: 380, maxWidth: 'calc(100vw - 32px)' }}>
-        <Typography.Title level={3} style={{ marginTop: 0 }}>
+        <Typography.Title level={3} style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Logo size={32} />
           灵枢 <span style={{ fontWeight: 400, fontSize: 16, opacity: 0.6 }}>Lingshu</span>
         </Typography.Title>
         <Typography.Paragraph type="secondary">

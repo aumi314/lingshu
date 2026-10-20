@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../app'
+import Logo from './Logo'
 
 export default function AppLayout() {
   const { user, t } = useApp()
@@ -54,7 +55,8 @@ export default function AppLayout() {
 
   const sidebar = (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ padding: '22px 24px 18px', cursor: 'pointer' }} onClick={() => go('/console')}>
+      <div style={{ padding: '20px 22px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }} onClick={() => go('/console')}>
+        <Logo size={28} />
         <Typography.Title level={4} style={{ margin: 0 }}>
           灵枢 <span style={{ fontWeight: 400, fontSize: 15, opacity: 0.6 }}>Lingshu</span>
         </Typography.Title>
@@ -106,9 +108,12 @@ export default function AppLayout() {
           }}
         >
           <Button type="text" icon={<MenuOutlined />} aria-label={t('菜单', 'Menu')} onClick={() => setMenuOpen(true)} />
-          <Typography.Text strong style={{ fontSize: 16, cursor: 'pointer' }} onClick={() => go('/console')}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => go('/console')}>
+            <Logo size={22} />
+          <Typography.Text strong style={{ fontSize: 16 }}>
             灵枢 <span style={{ fontWeight: 400, fontSize: 14, opacity: 0.6 }}>Lingshu</span>
           </Typography.Text>
+          </span>
         </div>
         <Drawer
           open={menuOpen}

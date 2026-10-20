@@ -60,23 +60,6 @@
   align-items: center;
   gap: 14px;
 }
-.ls-seal {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 40px;
-  border-radius: 4px;
-  background: var(--cinnabar);
-  color: #fff4ec;
-  font-family: var(--serif);
-  font-weight: 900;
-  font-size: 14px;
-  line-height: 1.05;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset, 0 6px 24px rgba(226, 72, 61, 0.35);
-  transform: rotate(-3deg);
-}
 .ls-brand-name {
   font-family: var(--serif);
   font-weight: 900;
