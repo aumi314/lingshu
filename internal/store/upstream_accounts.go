@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -236,3 +238,24 @@ func (s *Store) CNYPerUSD(ctx context.Context) decimal.Decimal {
 }
 
 var defaultCNYPerUSD = decimal.RequireFromString("6.7")
+
+// Holidays 返回系统设置里的中国法定节假日（"YYYY-MM-DD"），没设置时为空。
+func (s *Store) Holidays(ctx context.Context) ([]string, error) {
+	v, err := s.Setting(ctx, "cn_holidays")
+	if errors.Is(err, ErrNotFound) || (err == nil && v == "") {
+		return []string{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(v), &out); err != nil {
+		return nil, fmt.Errorf("节假日设置格式不对: %w", err)
+	}
+	return out, nil
+}
+
+func (s *Store) SetHolidays(ctx context.Context, dates []string) error {
+	raw, _ := json.Marshal(dates)
+	return s.SetSetting(ctx, "cn_holidays", string(raw))
+}

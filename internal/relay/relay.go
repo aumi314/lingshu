@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -48,6 +49,38 @@ type Handler struct {
 	// 非流式的推理模型要等全部生成完才回，所以给得长。
 	StreamHeaderTimeout time.Duration
 	BodyHeaderTimeout   time.Duration
+
+	holidayCache holidayCache
+}
+
+// holidayCache 缓存系统设置里的法定节假日，每分钟最多查一次库。
+type holidayCache struct {
+	mu    sync.Mutex
+	at    time.Time
+	dates billing.Holidays
+}
+
+func (h *Handler) holidays(ctx context.Context) billing.Holidays {
+	c := &h.holidayCache
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.dates != nil && time.Since(c.at) < time.Minute {
+		return c.dates
+	}
+	list, err := h.Store.Holidays(ctx)
+	if err != nil {
+		slog.Warn("读取法定节假日失败，按没有节假日计价", "err", err)
+		if c.dates != nil {
+			return c.dates
+		}
+		return billing.Holidays{}
+	}
+	m := billing.Holidays{}
+	for _, d := range list {
+		m[d] = true
+	}
+	c.dates, c.at = m, time.Now()
+	return m
 }
 
 func NewHandler(s *store.Store) *Handler {
@@ -430,7 +463,7 @@ func (h *Handler) finish(reqCtx context.Context, c *call) {
 	// 计费规则（docs/decisions.md）：成功和用户断开要扣；上游出错、被拒绝不扣，用量照记
 	// 价格规则（阶梯、分时段）：按实际用量和请求开始时间选出单价，日志记的是生效的单价和规则名
 	if c.log.ChannelID != 0 {
-		c.log.Prices, c.log.PriceRule = billing.Select(c.basePrices, c.rules, u, c.start)
+		c.log.Prices, c.log.PriceRule = billing.Select(c.basePrices, c.rules, u, c.start, h.holidays(context.WithoutCancel(reqCtx)))
 	}
 	if c.log.Status == "success" || c.log.Status == "client_cancelled" {
 		c.log.Cost = billing.Cost(u, c.log.Prices, c.log.GroupRatio)
@@ -438,7 +471,7 @@ func (h *Handler) finish(reqCtx context.Context, c *call) {
 	// 上游成本：只要上游产生了用量就算（包括上游中途出错、不向用户收费的请求）
 	if c.log.ChannelID != 0 && !c.costFactor.IsZero() {
 		up := c.upstreamUsage(u)
-		prices, _ := billing.Select(c.basePrices, c.rules, up, c.start)
+		prices, _ := billing.Select(c.basePrices, c.rules, up, c.start, h.holidays(context.WithoutCancel(reqCtx)))
 		c.log.UpstreamCost = billing.Cost(up, prices, c.costFactor)
 	}
 

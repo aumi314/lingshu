@@ -64,6 +64,7 @@ export type PriceRule = {
   input_above?: number | null // 总输入（含缓存）超过这么多 token
   time_start?: string // 北京时间 HH:MM，含开始不含结束，可跨零点
   time_end?: string
+  days?: '' | 'workday' | 'non_workday' // 工作日 = 周一到周五且不是法定节假日
   input_price: string
   output_price: string
   cache_read_price: string

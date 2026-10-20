@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Card, Divider, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Space, Switch, Table, Tag, Tooltip, Typography } from 'antd'
+import { App, Button, Card, Divider, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Switch, Table, Tag, Tooltip, Typography } from 'antd'
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { del, get, post, put, type Model, type PriceRule } from '../../api'
 import { priceText, useApp } from '../../app'
@@ -7,7 +7,7 @@ import { priceText, useApp } from '../../app'
 const priceFields = ['input_price', 'output_price', 'cache_read_price', 'cache_write_price'] as const
 const clock = /^([01]\d|2[0-3]):[0-5]\d$/
 
-type RuleForm = { name?: string; input_above?: number | null; time_start?: string; time_end?: string } & Partial<Record<(typeof priceFields)[number], number>>
+type RuleForm = { name?: string; input_above?: number | null; days?: string; time_start?: string; time_end?: string } & Partial<Record<(typeof priceFields)[number], number>>
 
 
 // 放在「定价」页的标签里（pages/admin/Pricing.tsx），不单独成页
@@ -42,7 +42,7 @@ export default function ModelsAdmin() {
         : {
             ...m,
             ...Object.fromEntries(priceFields.map((f) => [f, Number(m[f])])),
-            price_rules: (m.price_rules ?? []).map((r) => ({ ...r, ...Object.fromEntries(priceFields.map((f) => [f, Number(r[f])])) })),
+            price_rules: (m.price_rules ?? []).map((r) => ({ ...r, days: r.days ?? '', ...Object.fromEntries(priceFields.map((f) => [f, Number(r[f])])) })),
           },
     )
     setEditing(m)
@@ -68,6 +68,7 @@ export default function ModelsAdmin() {
       price_rules: ((v.price_rules ?? []) as RuleForm[]).map((r) => ({
         name: r.name ?? '',
         input_above: r.input_above ?? null,
+        days: r.days || undefined,
         time_start: r.time_start || undefined,
         time_end: r.time_end || undefined,
         ...Object.fromEntries(priceFields.map((f) => [f, toUSD(r[f] ?? 0)])),
@@ -188,7 +189,7 @@ export default function ModelsAdmin() {
           </Divider>
           <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
             {t(
-              '上面是基础价。规则从上往下匹配，第一条条件全部满足的生效，都不满足用基础价。输入长度 = 输入 + 缓存命中 + 缓存写入；时间按北京时间、以请求开始时为准，可以跨零点。规则价同样乘分组倍率。',
+              '上面是基础价。规则从上往下匹配，第一条条件全部满足的生效，都不满足用基础价。输入长度 = 输入 + 缓存命中 + 缓存写入；时间按北京时间、以请求开始时为准，可以跨零点；工作日 = 周一到周五且不是法定节假日（在「系统设置」里维护）。规则价同样乘分组倍率。',
               'The prices above are the base. Rules are checked top-down; the first whose conditions all match applies, otherwise the base price. Input length = input + cache hit + cache write; time is Beijing time at request start and may wrap past midnight. Group ratios apply to rule prices too.',
             )}
           </Typography.Paragraph>
@@ -211,10 +212,20 @@ export default function ModelsAdmin() {
                   >
                     <Space wrap align="start">
                       <Form.Item name={[field.name, 'name']} label={t('名称', 'Name')} extra={t('可不填，自动按条件命名', 'Optional; named from the condition')}>
-                        <Input style={{ width: 200 }} placeholder={t('例如：长上下文', 'e.g. Long context')} />
+                        <Input style={{ width: 170 }} placeholder={t('例如：长上下文', 'e.g. Long context')} />
                       </Form.Item>
                       <Form.Item name={[field.name, 'input_above']} label={t('输入超过（tokens）', 'Input above (tokens)')} extra={t('例如 272000；空表示不限', 'e.g. 272000; empty for any')}>
-                        <InputNumber min={0} step={1000} style={{ width: 180 }} />
+                        <InputNumber min={0} step={1000} style={{ width: 140 }} />
+                      </Form.Item>
+                      <Form.Item name={[field.name, 'days']} label={t('日期', 'Days')}>
+                        <Select
+                          style={{ width: 130 }}
+                          options={[
+                            { value: '', label: t('不限', 'Any day') },
+                            { value: 'workday', label: t('仅工作日', 'Workdays') },
+                            { value: 'non_workday', label: t('周末和节假日', 'Weekends & holidays') },
+                          ]}
+                        />
                       </Form.Item>
                       <Form.Item
                         name={[field.name, 'time_start']}
@@ -222,7 +233,7 @@ export default function ModelsAdmin() {
                         rules={[{ pattern: clock, message: 'HH:MM' }]}
                         extra={t('空表示全天', 'Empty for all day')}
                       >
-                        <Input style={{ width: 110 }} placeholder="00:30" />
+                        <Input style={{ width: 90 }} placeholder="00:30" />
                       </Form.Item>
                       <Form.Item
                         name={[field.name, 'time_end']}
@@ -238,7 +249,7 @@ export default function ModelsAdmin() {
                           }),
                         ]}
                       >
-                        <Input style={{ width: 110 }} placeholder="08:30" />
+                        <Input style={{ width: 90 }} placeholder="08:30" />
                       </Form.Item>
                     </Space>
                     <Space wrap>
@@ -260,7 +271,7 @@ export default function ModelsAdmin() {
                   type="dashed"
                   block
                   icon={<PlusOutlined />}
-                  onClick={() => add(Object.fromEntries(priceFields.map((f) => [f, form.getFieldValue(f) ?? 0])))}
+                  onClick={() => add({ days: '', ...Object.fromEntries(priceFields.map((f) => [f, form.getFieldValue(f) ?? 0])) })}
                 >
                   {t('添加规则（价格先按基础价填好，再改）', 'Add rule (prefilled with the base prices)')}
                 </Button>

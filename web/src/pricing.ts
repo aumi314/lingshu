@@ -4,6 +4,8 @@ import type { PriceRule } from './api'
 export function ruleCondition(r: PriceRule, t: (zh: string, en: string) => string) {
   const parts: string[] = []
   if (r.input_above != null) parts.push(t(`输入超过 ${r.input_above.toLocaleString()} tokens`, `input > ${r.input_above.toLocaleString()} tokens`))
+  if (r.days === 'workday') parts.push(t('工作日', 'workdays'))
+  if (r.days === 'non_workday') parts.push(t('周末和节假日', 'weekends & holidays'))
   if (r.time_start) parts.push(t(`北京时间 ${r.time_start}–${r.time_end}`, `${r.time_start}–${r.time_end} Beijing time`))
   return parts.join(' · ')
 }
