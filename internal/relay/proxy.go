@@ -48,15 +48,7 @@ func (h *Handler) clientFor(proxy string) *http.Client {
 	if err != nil {
 		return h.Client // 保存时已校验过，走不到这里
 	}
-	base, _ := h.Client.Transport.(*http.Transport)
-	var t *http.Transport
-	if base != nil {
-		t = base.Clone()
-	} else {
-		t = http.DefaultTransport.(*http.Transport).Clone()
-	}
-	t.Proxy = http.ProxyURL(u)
-	c := &http.Client{Transport: t, Timeout: h.Client.Timeout}
+	c := &http.Client{Transport: newTransport(http.ProxyURL(u)), Timeout: h.Client.Timeout}
 	if p.clients == nil {
 		p.clients = map[string]*http.Client{}
 	}

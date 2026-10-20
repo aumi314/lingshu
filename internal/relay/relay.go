@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -84,14 +85,20 @@ func (h *Handler) holidays(ctx context.Context) billing.Holidays {
 	return m
 }
 
+// newTransport 是上游请求用的连接设置。每个代理各建一个全新的 Transport，
+// 不要 Clone 用过的 Transport：克隆会带上已经协商好的 HTTP/2 设置，经代理时会把 HTTP/2 响应当 HTTP/1.1 读。
+func newTransport(proxy func(*http.Request) (*url.URL, error)) *http.Transport {
+	return &http.Transport{
+		Proxy:               proxy,
+		IdleConnTimeout:     90 * time.Second,
+		MaxIdleConnsPerHost: 32,
+	}
+}
+
 func NewHandler(s *store.Store) *Handler {
 	return &Handler{
-		Store: s,
-		Client: &http.Client{Transport: &http.Transport{
-			Proxy:               http.ProxyFromEnvironment,
-			IdleConnTimeout:     90 * time.Second,
-			MaxIdleConnsPerHost: 32,
-		}},
+		Store:               s,
+		Client:              &http.Client{Transport: newTransport(http.ProxyFromEnvironment)},
 		Health:              router.NewHealth(),
 		StreamHeaderTimeout: 60 * time.Second,
 		BodyHeaderTimeout:   5 * time.Minute,
