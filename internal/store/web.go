@@ -9,6 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
+
+	"github.com/aumi314/lingshu/internal/billing"
 )
 
 // 这个文件是管理端和用户端页面用的数据访问。金额字段以 decimal 返回，JSON 里是字符串。
@@ -274,39 +276,43 @@ func (s *Store) DeleteGroup(ctx context.Context, id int64) error {
 // ---- 模型 ----
 
 type Model struct {
-	ID              int64           `json:"id"`
-	Name            string          `json:"name"`
-	InputPrice      decimal.Decimal `json:"input_price"`
-	OutputPrice     decimal.Decimal `json:"output_price"`
-	CacheReadPrice  decimal.Decimal `json:"cache_read_price"`
-	CacheWritePrice decimal.Decimal `json:"cache_write_price"`
-	Enabled         bool            `json:"enabled"`
+	ID              int64               `json:"id"`
+	Name            string              `json:"name"`
+	InputPrice      decimal.Decimal     `json:"input_price"`
+	OutputPrice     decimal.Decimal     `json:"output_price"`
+	CacheReadPrice  decimal.Decimal     `json:"cache_read_price"`
+	CacheWritePrice decimal.Decimal     `json:"cache_write_price"`
+	PriceRules      []billing.PriceRule `json:"price_rules"`
+	Enabled         bool                `json:"enabled"`
 }
 
 func (s *Store) ListModels(ctx context.Context) ([]Model, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT id, name, input_price::text, output_price::text, cache_read_price::text,
-		cache_write_price::text, enabled FROM models ORDER BY name`)
+		cache_write_price::text, price_rules, enabled FROM models ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Model, error) {
 		var m Model
 		var in, out, cr, cw string
-		err := r.Scan(&m.ID, &m.Name, &in, &out, &cr, &cw, &m.Enabled)
+		err := r.Scan(&m.ID, &m.Name, &in, &out, &cr, &cw, &m.PriceRules, &m.Enabled)
 		m.InputPrice, m.OutputPrice, m.CacheReadPrice, m.CacheWritePrice = mustDecimal(in), mustDecimal(out), mustDecimal(cr), mustDecimal(cw)
 		return m, err
 	})
 }
 
 func (s *Store) SaveModel(ctx context.Context, m *Model) error {
-	args := []any{m.Name, m.InputPrice.String(), m.OutputPrice.String(), m.CacheReadPrice.String(), m.CacheWritePrice.String(), m.Enabled}
+	if m.PriceRules == nil {
+		m.PriceRules = []billing.PriceRule{}
+	}
+	args := []any{m.Name, m.InputPrice.String(), m.OutputPrice.String(), m.CacheReadPrice.String(), m.CacheWritePrice.String(), m.Enabled, m.PriceRules}
 	if m.ID == 0 {
-		err := s.Pool.QueryRow(ctx, `INSERT INTO models (name, input_price, output_price, cache_read_price, cache_write_price, enabled)
-			VALUES ($1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6) RETURNING id`, args...).Scan(&m.ID)
+		err := s.Pool.QueryRow(ctx, `INSERT INTO models (name, input_price, output_price, cache_read_price, cache_write_price, enabled, price_rules)
+			VALUES ($1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6, $7) RETURNING id`, args...).Scan(&m.ID)
 		return translate(err)
 	}
 	return execOne(ctx, s.Pool, `UPDATE models SET name = $2, input_price = $3::numeric, output_price = $4::numeric,
-		cache_read_price = $5::numeric, cache_write_price = $6::numeric, enabled = $7 WHERE id = $1`, append([]any{m.ID}, args...)...)
+		cache_read_price = $5::numeric, cache_write_price = $6::numeric, enabled = $7, price_rules = $8 WHERE id = $1`, append([]any{m.ID}, args...)...)
 }
 
 func (s *Store) DeleteModel(ctx context.Context, id int64) error {
@@ -315,13 +321,14 @@ func (s *Store) DeleteModel(ctx context.Context, id int64) error {
 
 // PricedModel 是用户端"模型与价格"页的一行：某个分组下能用的模型，价格已乘倍率。
 type PricedModel struct {
-	GroupID    int64           `json:"group_id"`
-	Name       string          `json:"name"`
-	Protocols  []string        `json:"protocols"`
-	Input      decimal.Decimal `json:"input_price"`
-	Output     decimal.Decimal `json:"output_price"`
-	CacheRead  decimal.Decimal `json:"cache_read_price"`
-	CacheWrite decimal.Decimal `json:"cache_write_price"`
+	GroupID    int64               `json:"group_id"`
+	Name       string              `json:"name"`
+	Protocols  []string            `json:"protocols"`
+	Input      decimal.Decimal     `json:"input_price"`
+	Output     decimal.Decimal     `json:"output_price"`
+	CacheRead  decimal.Decimal     `json:"cache_read_price"`
+	CacheWrite decimal.Decimal     `json:"cache_write_price"`
+	PriceRules []billing.PriceRule `json:"price_rules"` // 价格同样已乘倍率
 }
 
 // PricedModels 返回这些分组下可用的模型和协议，价格是分组倍率之后的实际单价。
@@ -333,7 +340,8 @@ func (s *Store) PricedModels(ctx context.Context, groupIDs []int64) ([]PricedMod
 		           CASE WHEN bool_or(c.base_url_messages <> '') THEN 'messages' END,
 		           CASE WHEN bool_or(c.base_url_responses <> '') THEN 'responses' END], NULL),
 		       (m.input_price * g.ratio)::text, (m.output_price * g.ratio)::text,
-		       (m.cache_read_price * g.ratio)::text, (m.cache_write_price * g.ratio)::text
+		       (m.cache_read_price * g.ratio)::text, (m.cache_write_price * g.ratio)::text,
+		       m.price_rules, g.ratio::text
 		FROM models m
 		JOIN channel_models cm ON cm.model_id = m.id
 		JOIN channels c ON c.id = cm.channel_id AND c.enabled
@@ -347,9 +355,17 @@ func (s *Store) PricedModels(ctx context.Context, groupIDs []int64) ([]PricedMod
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (PricedModel, error) {
 		var p PricedModel
-		var in, out, cr, cw string
-		err := r.Scan(&p.GroupID, &p.Name, &p.Protocols, &in, &out, &cr, &cw)
+		var in, out, cr, cw, ratio string
+		err := r.Scan(&p.GroupID, &p.Name, &p.Protocols, &in, &out, &cr, &cw, &p.PriceRules, &ratio)
 		p.Input, p.Output, p.CacheRead, p.CacheWrite = mustDecimal(in), mustDecimal(out), mustDecimal(cr), mustDecimal(cw)
+		if err == nil {
+			k := mustDecimal(ratio)
+			for i, rule := range p.PriceRules {
+				rule.Input, rule.Output = rule.Input.Mul(k), rule.Output.Mul(k)
+				rule.CacheRead, rule.CacheWrite = rule.CacheRead.Mul(k), rule.CacheWrite.Mul(k)
+				p.PriceRules[i] = rule
+			}
+		}
 		return p, err
 	})
 }

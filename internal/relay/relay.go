@@ -74,6 +74,8 @@ type call struct {
 	gotResp bool   // 是否收到了上游的响应头（收到才说明上游开始处理了）
 
 	costFactor decimal.Decimal // 当前渠道所属上游账户的成本系数，没关联账户时为 1
+	basePrices billing.Prices  // 模型基础价，结算时按价格规则换成实际单价
+	rules      []billing.PriceRule
 }
 
 func (h *Handler) Serve(proto usage.Protocol) http.HandlerFunc {
@@ -248,6 +250,7 @@ func (h *Handler) attemptAll(w http.ResponseWriter, r *http.Request, c *call, re
 func (c *call) useRoute(route store.Route, attempt int) {
 	c.log.ChannelID, c.log.ChannelName, c.log.UpstreamModel, c.log.Prices = route.ChannelID, route.ChannelName, route.UpstreamModel, route.Prices
 	c.log.UpstreamAccountID, c.costFactor = route.AccountID, route.CostFactor
+	c.basePrices, c.rules = route.Prices, route.PriceRules
 	c.log.Attempts = attempt
 	c.tracker = usage.NewTracker(c.proto)
 	c.gotResp = false
@@ -425,12 +428,18 @@ func (h *Handler) finish(reqCtx context.Context, c *call) {
 	c.log.TotalMS = int(time.Since(c.start).Milliseconds())
 
 	// 计费规则（docs/decisions.md）：成功和用户断开要扣；上游出错、被拒绝不扣，用量照记
+	// 价格规则（阶梯、分时段）：按实际用量和请求开始时间选出单价，日志记的是生效的单价和规则名
+	if c.log.ChannelID != 0 {
+		c.log.Prices, c.log.PriceRule = billing.Select(c.basePrices, c.rules, u, c.start)
+	}
 	if c.log.Status == "success" || c.log.Status == "client_cancelled" {
 		c.log.Cost = billing.Cost(u, c.log.Prices, c.log.GroupRatio)
 	}
 	// 上游成本：只要上游产生了用量就算（包括上游中途出错、不向用户收费的请求）
 	if c.log.ChannelID != 0 && !c.costFactor.IsZero() {
-		c.log.UpstreamCost = billing.Cost(c.upstreamUsage(u), c.log.Prices, c.costFactor)
+		up := c.upstreamUsage(u)
+		prices, _ := billing.Select(c.basePrices, c.rules, up, c.start)
+		c.log.UpstreamCost = billing.Cost(up, prices, c.costFactor)
 	}
 
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(reqCtx), 10*time.Second)

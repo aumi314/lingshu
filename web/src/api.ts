@@ -58,6 +58,18 @@ export type User = {
 
 export type Group = { id: number; name: string; ratio: string; is_public: boolean; description: string }
 
+// 价格规则（阶梯计价、分时段计价），按顺序匹配，第一条满足的生效
+export type PriceRule = {
+  name: string
+  input_above?: number | null // 总输入（含缓存）超过这么多 token
+  time_start?: string // 北京时间 HH:MM，含开始不含结束，可跨零点
+  time_end?: string
+  input_price: string
+  output_price: string
+  cache_read_price: string
+  cache_write_price: string
+}
+
 export type Model = {
   id: number
   name: string
@@ -65,6 +77,7 @@ export type Model = {
   output_price: string
   cache_read_price: string
   cache_write_price: string
+  price_rules: PriceRule[]
   enabled: boolean
 }
 
@@ -76,6 +89,7 @@ export type PricedModel = {
   output_price: string
   cache_read_price: string
   cache_write_price: string
+  price_rules: PriceRule[]
 }
 
 export type APIKey = {
@@ -112,6 +126,9 @@ export type LogEntry = {
   reasoning_tokens: number
   usage_estimated: boolean
   group_ratio: string
+  price_rule: string // 命中的价格规则，空表示基础价
+  input_price: string
+  output_price: string
   cost: string
   attempts: number
   first_byte_ms: number

@@ -8,6 +8,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/aumi314/lingshu/internal/billing"
 	"github.com/aumi314/lingshu/internal/relay"
 	"github.com/aumi314/lingshu/internal/relay/usage"
 	"github.com/aumi314/lingshu/internal/store"
@@ -274,6 +275,12 @@ func (s *Server) saveModel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	rules, err := billing.Normalize(m.PriceRules)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	m.PriceRules = rules
 	if err := s.Store.SaveModel(r.Context(), &m); err != nil {
 		writeStoreError(w, err)
 		return

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Alert, Card, Col, DatePicker, Descriptions, Drawer, Row, Select, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { get, type LogEntry, type LogsResponse, type User } from '../api'
-import { tokens, useApp } from '../app'
+import { priceText, tokens, useApp } from '../app'
 
 type Filter = { range: [Dayjs, Dayjs]; model?: string; status?: string; user_id?: number }
 
@@ -200,6 +200,12 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
               {detail.output_tokens.toLocaleString()}（{t('推理', 'reasoning')} {detail.reasoning_tokens.toLocaleString()}）
             </Descriptions.Item>
             <Descriptions.Item label={t('首字 / 总耗时', 'First byte / total')}>{detail.first_byte_ms} ms / {detail.total_ms} ms</Descriptions.Item>
+            <Descriptions.Item label={t('计价', 'Pricing')}>
+              {detail.price_rule ? <Tag color="purple">{detail.price_rule}</Tag> : t('基础价', 'Base price')}
+              <span className="muted" style={{ marginLeft: 8 }}>
+                {t('输入', 'in')} {priceText(money, detail.input_price)} · {t('输出', 'out')} {priceText(money, detail.output_price)}
+              </span>
+            </Descriptions.Item>
             <Descriptions.Item label={t('花费', 'Cost')}>
               {money(detail.cost, 8)}
               {detail.usage_estimated && <Tag style={{ marginLeft: 6 }}>{t('估算', 'est.')}</Tag>}

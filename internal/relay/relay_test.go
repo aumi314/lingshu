@@ -663,3 +663,41 @@ func TestFetchBalance(t *testing.T) {
 		t.Error("不支持的厂商应报错")
 	}
 }
+
+func TestPriceRuleAppliedAtSettlement(t *testing.T) {
+	e := newEnv(t)
+	// okUpstream 的用量：输入 800 + 缓存命中 200 = 总输入 1000
+	e.exec(`UPDATE models SET price_rules = '[{"name":"长上下文","input_above":999,"input_price":"2","output_price":"4","cache_read_price":"0.2","cache_write_price":"0"}]' WHERE name = 'std-chat'`)
+	e.exec(`INSERT INTO upstream_accounts (id, name, balance) VALUES (1, 'acc', 5)`)
+	e.exec(`UPDATE channels SET upstream_account_id = 1 WHERE id = 1`)
+	e.upstream = okUpstream
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	id := resp.Header.Get("X-Lingshu-Request-Id")
+	// (800×2 + 200×0.2 + 500×4) / 1e6 = 0.00364，是基础价 0.00182 的两倍
+	want := decimal.RequireFromString("0.00364")
+	if got, _ := e.cost(id); !got.Equal(want) {
+		t.Errorf("规则价 cost = %s，期望 %s", got, want)
+	}
+	var rule, inPrice string
+	e.store.Pool.QueryRow(context.Background(), `SELECT price_rule, input_price::text FROM request_logs WHERE request_id = $1`, id).Scan(&rule, &inPrice)
+	if rule != "长上下文" || !decimal.RequireFromString(inPrice).Equal(decimal.NewFromInt(2)) {
+		t.Errorf("日志应记命中的规则和生效单价: %q %s", rule, inPrice)
+	}
+	if got := e.decimal(`SELECT upstream_cost::text FROM request_logs WHERE request_id = $1`, id); !got.Equal(want) {
+		t.Errorf("上游成本也应按规则价: %s", got)
+	}
+
+	// 门槛调高到不触发：回到基础价，规则名为空
+	e.exec(`UPDATE models SET price_rules = '[{"name":"长上下文","input_above":1000,"input_price":"2","output_price":"4","cache_read_price":"0.2","cache_write_price":"0"}]' WHERE name = 'std-chat'`)
+	resp = e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	id = resp.Header.Get("X-Lingshu-Request-Id")
+	if got, _ := e.cost(id); !got.Equal(decimal.RequireFromString("0.00182")) {
+		t.Errorf("没触发规则应按基础价: %s", got)
+	}
+	e.store.Pool.QueryRow(context.Background(), `SELECT price_rule FROM request_logs WHERE request_id = $1`, id).Scan(&rule)
+	if rule != "" {
+		t.Errorf("基础价时规则名应为空: %q", rule)
+	}
+}

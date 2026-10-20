@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Space, Switch, Table, Typography } from 'antd'
-import { PlusOutlined } from '@ant-design/icons'
-import { del, get, post, put, type Model } from '../../api'
+import { App, Button, Card, Divider, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Space, Switch, Table, Tag, Tooltip, Typography } from 'antd'
+import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import { del, get, post, put, type Model, type PriceRule } from '../../api'
 import { priceText, useApp } from '../../app'
 
 const priceFields = ['input_price', 'output_price', 'cache_read_price', 'cache_write_price'] as const
+const clock = /^([01]\d|2[0-3]):[0-5]\d$/
+
+type RuleForm = { name?: string; input_above?: number | null; time_start?: string; time_end?: string } & Partial<Record<(typeof priceFields)[number], number>>
+
 
 // 放在「定价」页的标签里（pages/admin/Pricing.tsx），不单独成页
 export default function ModelsAdmin() {
@@ -34,8 +38,12 @@ export default function ModelsAdmin() {
     setInputCurrency('USD')
     form.setFieldsValue(
       m === 'new'
-        ? { name: '', enabled: true, input_price: 0, output_price: 0, cache_read_price: 0, cache_write_price: 0 }
-        : { ...m, ...Object.fromEntries(priceFields.map((f) => [f, Number(m[f])])) },
+        ? { name: '', enabled: true, input_price: 0, output_price: 0, cache_read_price: 0, cache_write_price: 0, price_rules: [] }
+        : {
+            ...m,
+            ...Object.fromEntries(priceFields.map((f) => [f, Number(m[f])])),
+            price_rules: (m.price_rules ?? []).map((r) => ({ ...r, ...Object.fromEntries(priceFields.map((f) => [f, Number(r[f])])) })),
+          },
     )
     setEditing(m)
   }
@@ -44,14 +52,27 @@ export default function ModelsAdmin() {
   const switchCurrency = (c: 'USD' | 'CNY') => {
     const factor = c === 'CNY' ? rate : 1 / rate
     const v = form.getFieldsValue(priceFields as unknown as string[])
-    form.setFieldsValue(Object.fromEntries(priceFields.map((f) => [f, v[f] == null ? v[f] : Number((v[f] * factor).toFixed(6))])))
+    const conv = (n: number | undefined) => (n == null ? n : Number((n * factor).toFixed(6)))
+    form.setFieldsValue(Object.fromEntries(priceFields.map((f) => [f, conv(v[f])])))
+    const rules: RuleForm[] = form.getFieldValue('price_rules') ?? []
+    form.setFieldValue('price_rules', rules.map((r) => ({ ...r, ...Object.fromEntries(priceFields.map((f) => [f, conv(r[f])])) })))
     setInputCurrency(c)
   }
 
   const save = async () => {
     const v = await form.validateFields()
     const toUSD = (n: number) => String(inputCurrency === 'CNY' ? Number((n / rate).toFixed(10)) : n)
-    const body = { ...v, ...Object.fromEntries(priceFields.map((f) => [f, toUSD(v[f] ?? 0)])) }
+    const body = {
+      ...v,
+      ...Object.fromEntries(priceFields.map((f) => [f, toUSD(v[f] ?? 0)])),
+      price_rules: ((v.price_rules ?? []) as RuleForm[]).map((r) => ({
+        name: r.name ?? '',
+        input_above: r.input_above ?? null,
+        time_start: r.time_start || undefined,
+        time_end: r.time_end || undefined,
+        ...Object.fromEntries(priceFields.map((f) => [f, toUSD(r[f] ?? 0)])),
+      })),
+    }
     try {
       if (editing === 'new') await post('/api/admin/models', body)
       else if (editing) await put(`/api/admin/models/${editing.id}`, body)
@@ -99,6 +120,24 @@ export default function ModelsAdmin() {
           { title: t('输出', 'Output'), dataIndex: 'output_price', render: price },
           { title: t('缓存命中', 'Cache hit'), dataIndex: 'cache_read_price', render: price },
           { title: t('缓存写入', 'Cache write'), dataIndex: 'cache_write_price', render: price },
+          {
+            title: t('价格规则', 'Price rules'),
+            dataIndex: 'price_rules',
+            render: (rules: PriceRule[]) =>
+              rules?.length ? (
+                <Tooltip
+                  title={rules.map((r, i) => (
+                    <div key={i}>
+                      {i + 1}. {r.name}：{price(r.input_price)} / {price(r.output_price)} · {t('缓存', 'cache')} {price(r.cache_read_price)} / {price(r.cache_write_price)}
+                    </div>
+                  ))}
+                >
+                  <Tag color="purple">{t(`${rules.length} 条规则`, `${rules.length} rule${rules.length > 1 ? 's' : ''}`)}</Tag>
+                </Tooltip>
+              ) : (
+                <span className="muted">—</span>
+              ),
+          },
           { title: t('启用', 'Enabled'), dataIndex: 'enabled', render: (v) => <Switch size="small" checked={v} disabled /> },
           {
             title: '',
@@ -118,7 +157,7 @@ export default function ModelsAdmin() {
           },
         ]}
       />
-      <Modal open={editing !== null} title={editing === 'new' ? t('添加模型', 'Add model') : t('编辑模型', 'Edit model')} onOk={save} onCancel={() => setEditing(null)} okText={t('保存', 'Save')} width={560} destroyOnHidden>
+      <Modal open={editing !== null} title={editing === 'new' ? t('添加模型', 'Add model') : t('编辑模型', 'Edit model')} onOk={save} onCancel={() => setEditing(null)} okText={t('保存', 'Save')} width={780} destroyOnHidden>
         <Form form={form} layout="vertical" requiredMark={false}>
           <Form.Item name="name" label={t('站内模型名', 'Model name')} rules={[{ required: true }]} extra={t('用户调用时填的就是这个名字', 'This is the name users put in requests')}>
             <Input className="mono" />
@@ -143,6 +182,91 @@ export default function ModelsAdmin() {
           <Form.Item name="enabled" label={t('启用', 'Enabled')} valuePropName="checked">
             <Switch />
           </Form.Item>
+
+          <Divider titlePlacement="start" style={{ marginTop: 0 }}>
+            {t('价格规则（阶梯 / 分时段）', 'Price rules (tiers / time of day)')}
+          </Divider>
+          <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
+            {t(
+              '上面是基础价。规则从上往下匹配，第一条条件全部满足的生效，都不满足用基础价。输入长度 = 输入 + 缓存命中 + 缓存写入；时间按北京时间、以请求开始时为准，可以跨零点。规则价同样乘分组倍率。',
+              'The prices above are the base. Rules are checked top-down; the first whose conditions all match applies, otherwise the base price. Input length = input + cache hit + cache write; time is Beijing time at request start and may wrap past midnight. Group ratios apply to rule prices too.',
+            )}
+          </Typography.Paragraph>
+          <Form.List name="price_rules">
+            {(fields, { add, remove, move }) => (
+              <>
+                {fields.map((field, i) => (
+                  <Card
+                    key={field.key}
+                    size="small"
+                    style={{ marginBottom: 12 }}
+                    title={t(`规则 ${i + 1}`, `Rule ${i + 1}`)}
+                    extra={
+                      <Space size={0}>
+                        <Button size="small" type="text" icon={<ArrowUpOutlined />} disabled={i === 0} onClick={() => move(i, i - 1)} aria-label={t('上移', 'Move up')} />
+                        <Button size="small" type="text" icon={<ArrowDownOutlined />} disabled={i === fields.length - 1} onClick={() => move(i, i + 1)} aria-label={t('下移', 'Move down')} />
+                        <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => remove(field.name)} aria-label={t('删除', 'Delete')} />
+                      </Space>
+                    }
+                  >
+                    <Space wrap align="start">
+                      <Form.Item name={[field.name, 'name']} label={t('名称', 'Name')} extra={t('可不填，自动按条件命名', 'Optional; named from the condition')}>
+                        <Input style={{ width: 200 }} placeholder={t('例如：长上下文', 'e.g. Long context')} />
+                      </Form.Item>
+                      <Form.Item name={[field.name, 'input_above']} label={t('输入超过（tokens）', 'Input above (tokens)')} extra={t('例如 272000；空表示不限', 'e.g. 272000; empty for any')}>
+                        <InputNumber min={0} step={1000} style={{ width: 180 }} />
+                      </Form.Item>
+                      <Form.Item
+                        name={[field.name, 'time_start']}
+                        label={t('开始（北京时间）', 'From (Beijing)')}
+                        rules={[{ pattern: clock, message: 'HH:MM' }]}
+                        extra={t('空表示全天', 'Empty for all day')}
+                      >
+                        <Input style={{ width: 110 }} placeholder="00:30" />
+                      </Form.Item>
+                      <Form.Item
+                        name={[field.name, 'time_end']}
+                        label={t('结束', 'To')}
+                        dependencies={[['price_rules', field.name, 'time_start']]}
+                        rules={[
+                          { pattern: clock, message: 'HH:MM' },
+                          ({ getFieldValue }) => ({
+                            validator: (_, v) =>
+                              !!getFieldValue(['price_rules', field.name, 'time_start']) === !!v
+                                ? Promise.resolve()
+                                : Promise.reject(new Error(t('开始和结束要一起填', 'Fill both'))),
+                          }),
+                        ]}
+                      >
+                        <Input style={{ width: 110 }} placeholder="08:30" />
+                      </Form.Item>
+                    </Space>
+                    <Space wrap>
+                      {priceFields.map((f) => (
+                        <Form.Item
+                          key={f}
+                          name={[field.name, f]}
+                          label={{ input_price: t('输入', 'Input'), output_price: t('输出', 'Output'), cache_read_price: t('缓存命中', 'Cache hit'), cache_write_price: t('缓存写入', 'Cache write') }[f]}
+                          rules={[{ required: true }]}
+                          style={{ marginBottom: 0 }}
+                        >
+                          <InputNumber min={0} step={0.1} prefix={symbol} style={{ width: 170 }} />
+                        </Form.Item>
+                      ))}
+                    </Space>
+                  </Card>
+                ))}
+                <Button
+                  type="dashed"
+                  block
+                  icon={<PlusOutlined />}
+                  onClick={() => add(Object.fromEntries(priceFields.map((f) => [f, form.getFieldValue(f) ?? 0])))}
+                >
+                  {t('添加规则（价格先按基础价填好，再改）', 'Add rule (prefilled with the base prices)')}
+                </Button>
+              </>
+            )}
+          </Form.List>
         </Form>
       </Modal>
     </div>

@@ -256,6 +256,9 @@ type LogEntry struct {
 	ReasoningTokens  int64           `json:"reasoning_tokens"`
 	UsageEstimated   bool            `json:"usage_estimated"`
 	GroupRatio       decimal.Decimal `json:"group_ratio"`
+	PriceRule        string          `json:"price_rule"` // 命中的价格规则，空表示基础价
+	InputPrice       decimal.Decimal `json:"input_price"`
+	OutputPrice      decimal.Decimal `json:"output_price"`
 	Cost             decimal.Decimal `json:"cost"`
 	Attempts         int             `json:"attempts"`
 	FirstByteMS      int             `json:"first_byte_ms"`
@@ -325,7 +328,8 @@ func (s *Store) ListLogs(ctx context.Context, f LogFilter) ([]LogEntry, LogSumma
 		SELECT l.id, l.request_id, u.username, COALESCE(NULLIF(l.key_name, ''), k.name, ''), COALESCE(g.name, ''), l.protocol, l.model,
 		       l.upstream_model, COALESCE(NULLIF(l.channel_name, ''), c.name, ''), l.stream, l.status, l.http_status, l.error,
 		       l.input_tokens, l.cache_read_tokens, l.cache_write_tokens, l.output_tokens, l.reasoning_tokens,
-		       l.usage_estimated, l.group_ratio::text, l.cost::text, l.attempts, l.first_byte_ms, l.total_ms, l.created_at
+		       l.usage_estimated, l.group_ratio::text, l.cost::text, l.attempts, l.first_byte_ms, l.total_ms, l.created_at,
+		       l.price_rule, l.input_price::text, l.output_price::text
 		FROM request_logs l
 		JOIN users u ON u.id = l.user_id
 		LEFT JOIN api_keys k ON k.id = l.api_key_id
@@ -337,12 +341,14 @@ func (s *Store) ListLogs(ctx context.Context, f LogFilter) ([]LogEntry, LogSumma
 	}
 	logs, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (LogEntry, error) {
 		var e LogEntry
-		var ratio, cost string
+		var ratio, cost, inPrice, outPrice string
 		err := r.Scan(&e.ID, &e.RequestID, &e.Username, &e.KeyName, &e.GroupName, &e.Protocol, &e.Model,
 			&e.UpstreamModel, &e.ChannelName, &e.Stream, &e.Status, &e.HTTPStatus, &e.Error,
 			&e.InputTokens, &e.CacheReadTokens, &e.CacheWriteTokens, &e.OutputTokens, &e.ReasoningTokens,
-			&e.UsageEstimated, &ratio, &cost, &e.Attempts, &e.FirstByteMS, &e.TotalMS, &e.CreatedAt)
+			&e.UsageEstimated, &ratio, &cost, &e.Attempts, &e.FirstByteMS, &e.TotalMS, &e.CreatedAt,
+			&e.PriceRule, &inPrice, &outPrice)
 		e.GroupRatio, e.Cost = mustDecimal(ratio), mustDecimal(cost)
+		e.InputPrice, e.OutputPrice = mustDecimal(inPrice), mustDecimal(outPrice)
 		return e, err
 	})
 	return logs, sum, err

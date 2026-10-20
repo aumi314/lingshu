@@ -210,3 +210,47 @@ func TestReorderChannels(t *testing.T) {
 		t.Errorf("新渠道应排最后: %s", got)
 	}
 }
+
+func TestModelPriceRules(t *testing.T) {
+	e := newEnv(t)
+	a := e.login("admin")
+	model := map[string]any{
+		"name": "gpt-x", "input_price": "2", "output_price": "10", "cache_read_price": "0.2", "cache_write_price": "2.5", "enabled": true,
+		"price_rules": []map[string]any{{"input_above": 272000, "input_price": "4", "output_price": "15", "cache_read_price": "0.4", "cache_write_price": "5"}},
+	}
+	var saved struct {
+		ID         int64 `json:"id"`
+		PriceRules []struct {
+			Name string `json:"name"`
+		} `json:"price_rules"`
+	}
+	if code, body := a.do("POST", "/api/admin/models", model, &saved); code != 200 {
+		t.Fatalf("保存: %d %s", code, body)
+	}
+	if len(saved.PriceRules) != 1 || saved.PriceRules[0].Name != "输入超过 272K" {
+		t.Errorf("规则应自动命名: %+v", saved)
+	}
+	var list []struct {
+		Name       string           `json:"name"`
+		PriceRules []map[string]any `json:"price_rules"`
+	}
+	a.do("GET", "/api/admin/models", nil, &list)
+	if len(list) != 1 || len(list[0].PriceRules) != 1 || list[0].PriceRules[0]["output_price"] != "15" {
+		t.Errorf("列表应带规则: %+v", list)
+	}
+	model["price_rules"] = []map[string]any{{"input_price": "1"}}
+	if code, body := a.do("PUT", "/api/admin/models/"+itoa(saved.ID), model, nil); code != 400 || !strings.Contains(body, "至少要有一个条件") {
+		t.Errorf("没有条件的规则应拒绝: %d %s", code, body)
+	}
+
+	// 用户端价格：规则价也乘分组倍率
+	ctx := context.Background()
+	e.store.Pool.Exec(ctx, `UPDATE groups SET ratio = 0.5 WHERE id = 1`)
+	e.store.Pool.Exec(ctx, `INSERT INTO channels (id, name, api_key, base_url_chat) VALUES (1, 'c', 'k', 'https://x.test/v1')`)
+	e.store.Pool.Exec(ctx, `INSERT INTO channel_groups VALUES (1, 1)`)
+	e.store.Pool.Exec(ctx, `INSERT INTO channel_models VALUES (1, $1, '')`, saved.ID)
+	_, raw := e.login("bob").do("GET", "/api/me/models", nil, nil)
+	if !strings.Contains(raw, `"output_price":"7.5"`) {
+		t.Errorf("用户看到的规则价应乘倍率 0.5（15 → 7.5）: %s", raw)
+	}
+}

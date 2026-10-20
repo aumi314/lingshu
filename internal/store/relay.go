@@ -68,6 +68,7 @@ type Route struct {
 	APIKey        string
 	UpstreamModel string
 	Prices        billing.Prices
+	PriceRules    []billing.PriceRule
 	AccountID     int64           // 上游账户，0 表示没关联
 	CostFactor    decimal.Decimal // 上游成本 = 基础价 × 系数
 }
@@ -88,7 +89,7 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 	rows, err := s.Pool.Query(ctx, fmt.Sprintf(`
 		SELECT c.id, c.name, c.%[1]s, c.api_key, COALESCE(NULLIF(cm.upstream_name, ''), m.name),
 		       m.input_price::text, m.output_price::text, m.cache_read_price::text, m.cache_write_price::text,
-		       COALESCE(a.id, 0), COALESCE(a.cost_factor, 1)::text
+		       COALESCE(a.id, 0), COALESCE(a.cost_factor, 1)::text, m.price_rules
 		FROM models m
 		JOIN channel_models cm ON cm.model_id = m.id
 		JOIN channels c ON c.id = cm.channel_id
@@ -103,7 +104,7 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 		var rt Route
 		var in, out, cr, cw, factor string
 		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.BaseURL, &rt.APIKey, &rt.UpstreamModel, &in, &out, &cr, &cw,
-			&rt.AccountID, &factor); err != nil {
+			&rt.AccountID, &factor, &rt.PriceRules); err != nil {
 			return rt, err
 		}
 		rt.CostFactor = mustDecimal(factor)
@@ -183,7 +184,8 @@ type RequestLog struct {
 	OutputTokens       int64
 	ReasoningTokens    int64
 	UsageEstimated     bool
-	Prices             billing.Prices  // 价格快照
+	Prices             billing.Prices  // 实际生效的单价快照（命中规则时是规则价）
+	PriceRule          string          // 命中的价格规则名，空表示基础价
 	GroupRatio         decimal.Decimal // 倍率快照
 	Cost               decimal.Decimal // 实际扣费，0 表示不扣
 	UpstreamAccountID  int64           // 0 表示渠道没关联上游账户
@@ -216,17 +218,17 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 				input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, reasoning_tokens, usage_estimated,
 				input_price, output_price, cache_read_price, cache_write_price, group_ratio, cost,
 				attempts, first_byte_ms, total_ms, upstream_response_id, channel_name, key_name,
-				upstream_account_id, upstream_cost
+				upstream_account_id, upstream_cost, price_rule
 			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
 			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28,$29,$30,
-			          $31,$32::numeric)`,
+			          $31,$32::numeric,$33)`,
 			l.RequestID, l.UserID, l.APIKeyID, l.GroupID, l.Protocol, l.Model, l.UpstreamModel, channelID,
 			l.Stream, l.Status, l.HTTPStatus, l.Error,
 			l.InputTokens, l.CacheReadTokens, l.CacheWriteTokens, l.OutputTokens, l.ReasoningTokens, l.UsageEstimated,
 			l.Prices.Input.String(), l.Prices.Output.String(), l.Prices.CacheRead.String(), l.Prices.CacheWrite.String(),
 			ratio.String(), l.Cost.String(),
 			l.Attempts, l.FirstByteMS, l.TotalMS, l.UpstreamResponseID, l.ChannelName, l.KeyName,
-			accountID, l.UpstreamCost.String(),
+			accountID, l.UpstreamCost.String(), l.PriceRule,
 		); err != nil {
 			return fmt.Errorf("写请求日志: %w", err)
 		}
