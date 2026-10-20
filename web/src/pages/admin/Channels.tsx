@@ -305,19 +305,6 @@ export default function Channels() {
             render: (_, c) => <BalanceCell account={accountOf.get(c.id)} onOpen={() => setBalanceOf(c)} />,
           },
           {
-            title: t('状态', 'Status'),
-            render: (_, c) => (
-              <Space>
-                <Switch size="small" checked={c.enabled} onChange={(v) => toggle(c, v)} />
-                {c.cooling && (
-                  <Tooltip title={t('连续失败，暂停 5 分钟后自动恢复', 'Paused after repeated failures; resumes automatically in 5 minutes')}>
-                    <Tag color="orange">{t('冷却中', 'Cooling')}</Tag>
-                  </Tooltip>
-                )}
-              </Space>
-            ),
-          },
-          {
             title: '',
             align: 'right',
             render: (_, c) => (
@@ -333,6 +320,19 @@ export default function Channels() {
                     {t('删除', 'Delete')}
                   </Button>
                 </Popconfirm>
+              </Space>
+            ),
+          },
+          {
+            title: t('启用', 'Enabled'),
+            render: (_, c) => (
+              <Space>
+                <Switch size="small" checked={c.enabled} onChange={(v) => toggle(c, v)} />
+                {c.cooling && (
+                  <Tooltip title={t('连续失败，暂停 5 分钟后自动恢复', 'Paused after repeated failures; resumes automatically in 5 minutes')}>
+                    <Tag color="orange">{t('冷却中', 'Cooling')}</Tag>
+                  </Tooltip>
+                )}
               </Space>
             ),
           },
