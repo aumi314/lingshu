@@ -194,7 +194,7 @@ func (s *Server) SyncBalances(ctx context.Context, accountID int64) (int, error)
 	n := 0
 	var lastErr error
 	for _, t := range targets {
-		bal, err := s.Relay.FetchBalance(ctx, t.Template, t.BaseURL, t.APIKey)
+		bal, err := s.Relay.FetchBalance(ctx, t.Template, t.BaseURL, t.APIKey, t.ProxyURL)
 		if err != nil {
 			slog.Warn("查询上游余额失败", "account_id", t.AccountID, "err", err)
 			s.Store.SetSyncError(ctx, t.AccountID, err.Error())

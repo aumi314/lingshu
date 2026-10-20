@@ -66,6 +66,7 @@ type Route struct {
 	ChannelName   string
 	BaseURL       string
 	APIKey        string
+	ProxyURL      string // 空表示直连
 	UpstreamModel string
 	Prices        billing.Prices
 	PriceRules    []billing.PriceRule
@@ -87,7 +88,7 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 		return nil, fmt.Errorf("未知协议 %q", protocol)
 	}
 	rows, err := s.Pool.Query(ctx, fmt.Sprintf(`
-		SELECT c.id, c.name, c.%[1]s, c.api_key, COALESCE(NULLIF(cm.upstream_name, ''), m.name),
+		SELECT c.id, c.name, c.%[1]s, c.api_key, c.proxy_url, COALESCE(NULLIF(cm.upstream_name, ''), m.name),
 		       m.input_price::text, m.output_price::text, m.cache_read_price::text, m.cache_write_price::text,
 		       COALESCE(a.id, 0), COALESCE(a.cost_factor, 1)::text, m.price_rules
 		FROM models m
@@ -103,7 +104,7 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Route, error) {
 		var rt Route
 		var in, out, cr, cw, factor string
-		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.BaseURL, &rt.APIKey, &rt.UpstreamModel, &in, &out, &cr, &cw,
+		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.BaseURL, &rt.APIKey, &rt.ProxyURL, &rt.UpstreamModel, &in, &out, &cr, &cw,
 			&rt.AccountID, &factor, &rt.PriceRules); err != nil {
 			return rt, err
 		}

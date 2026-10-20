@@ -153,6 +153,7 @@ export type Channel = {
   base_url_chat: string
   base_url_messages: string
   base_url_responses: string
+  proxy_url: string
   group_ids: number[]
   models: ChannelModel[]
   cooling?: boolean
@@ -166,6 +167,7 @@ export type ChannelTemplate = {
   base_url_responses: string
   has_model_list: boolean
   preset_models: string[] | null
+  proxy_url: string
   note: string
 }
 

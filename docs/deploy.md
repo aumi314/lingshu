@@ -45,6 +45,21 @@ bash deploy/deploy.sh
 - 恢复：`sudo -u postgres pg_restore -d lingshu --clean --no-owner /var/backups/lingshu/<文件>`（先停 `lingshu.service`）。
 - 已知不足：备份和数据库在同一台服务器上，防不了整机故障；异地备份待接入。
 
+## 出境代理（2026-10-21）
+
+部分上游从中国访问会被按地区拒绝（OpenRouter 上的 Claude、GPT 返回 403 not available in your region），这类渠道在后台填「代理」走出境代理，其他渠道直连。
+
+| 项 | 位置 |
+|---|---|
+| 程序 | `/opt/lingshu-proxy/xray`（Xray-core v26.3.27，官方发布包，SHA256 已核对） |
+| 配置 | `/etc/lingshu-proxy/config.json`（640 root:lingshu-proxy，含节点密钥，不进 git；模板 `deploy/proxy/config.example.json`） |
+| 服务 | `lingshu-proxy.service`（系统用户 `lingshu-proxy`），只监听 `127.0.0.1:10808`（SOCKS5） |
+| 出口 | DMIT 洛杉矶 `node.piqode.com:8443`（PiQode 的 VLESS Reality 节点，见 infra `servers/dmit-lax.md`），出口 IP 136.175.178.126 |
+
+- 检查：`curl --socks5-hostname 127.0.0.1:10808 https://api.ipify.org` 应返回 DMIT 的 IP。
+- 服务器上原有的 mihomo（127.0.0.1:7893，别的用途）和它无关，不要混用。
+- 回滚：`systemctl disable --now lingshu-proxy`，删除上面三处文件和 `lingshu-proxy` 用户；渠道的代理字段清空即恢复直连。
+
 ## 服务日志
 
 ```bash

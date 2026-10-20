@@ -10,6 +10,7 @@ type ChannelTemplate struct {
 	BaseURLResponses string   `json:"base_url_responses"`
 	HasModelList     bool     `json:"has_model_list"` // 上游有没有 /models 接口
 	PresetModels     []string `json:"preset_models"`  // 没有 /models 接口时预置的模型名
+	ProxyURL         string   `json:"proxy_url"`      // 需要走代理的上游，套模板时自动填上
 	Note             string   `json:"note"`
 }
 
@@ -41,5 +42,8 @@ var channelTemplates = []ChannelTemplate{
 	{ID: "hunyuan", Name: "腾讯混元（TokenHub 中国站）", BaseURLChat: "https://tokenhub.tencentmaas.com/v1",
 		BaseURLMessages: "https://tokenhub.tencentmaas.com", BaseURLResponses: "https://tokenhub.tencentmaas.com/v1", HasModelList: true,
 		Note: "腾讯云 TokenHub，三种协议都支持（2026-10-21 实测 hy4-preview，流式都带用量）；同一个账号还能调 GLM、DeepSeek、Kimi、MiniMax 等模型。新 key 刚开通时可能短暂返回 402“service ID 不存在”，过一会儿再测"},
+	{ID: "openrouter", Name: "OpenRouter", BaseURLChat: "https://openrouter.ai/api/v1", BaseURLMessages: "https://openrouter.ai/api",
+		BaseURLResponses: "https://openrouter.ai/api/v1", HasModelList: true, ProxyURL: "socks5://127.0.0.1:10808",
+		Note: "三种协议都支持，Claude、GPT 等美国模型从中国访问会被按地区拒绝（403 not available in your region），所以默认走灵枢的出境代理（DMIT 洛杉矶，见 docs/deploy.md）。模型名带厂商前缀，如 anthropic/claude-opus-5.5。价格和官方一致，充值另收约 5.5% 手续费"},
 	{ID: "custom", Name: "自定义", HasModelList: true, Note: "按上游文档填写各协议的地址"},
 }

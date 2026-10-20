@@ -9,6 +9,7 @@ import doubao from '../assets/logos/doubao-color.svg?raw'
 import kimi from '../assets/logos/kimi.svg?raw'
 import xiaomi from '../assets/logos/xiaomi-color.svg?raw'
 import hunyuan from '../assets/logos/hunyuan-color.svg?raw'
+import openrouter from '../assets/logos/openrouter.svg?raw'
 
 const icons: Record<string, string> = {
   deepseek,
@@ -20,6 +21,7 @@ const icons: Record<string, string> = {
   moonshot: kimi,
   mimo: xiaomi,
   hunyuan,
+  openrouter,
 }
 
 export default function VendorIcon({ template, size = 18 }: { template?: string; size?: number }) {

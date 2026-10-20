@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -648,18 +649,18 @@ func TestFetchBalance(t *testing.T) {
 	}))
 	defer up.Close()
 	h := NewHandler(nil)
-	b, err := h.FetchBalance(context.Background(), "deepseek", up.URL, "sk-test")
+	b, err := h.FetchBalance(context.Background(), "deepseek", up.URL, "sk-test", "")
 	if err != nil || !b["CNY"].Equal(decimal.RequireFromString("12.19")) || !b["USD"].Equal(decimal.RequireFromString("1.5")) {
 		t.Errorf("deepseek: %v %v", b, err)
 	}
-	b, err = h.FetchBalance(context.Background(), "moonshot", up.URL+"/v1", "sk-test")
+	b, err = h.FetchBalance(context.Background(), "moonshot", up.URL+"/v1", "sk-test", "")
 	if err != nil || !b["USD"].Equal(decimal.RequireFromString("71.43")) {
 		t.Errorf("moonshot（非 .cn 域名记美元）: %v %v", b, err)
 	}
-	if _, err := h.FetchBalance(context.Background(), "deepseek", up.URL, "sk-wrong"); err == nil || !strings.Contains(err.Error(), "401") {
+	if _, err := h.FetchBalance(context.Background(), "deepseek", up.URL, "sk-wrong", ""); err == nil || !strings.Contains(err.Error(), "401") {
 		t.Errorf("key 不对应报错: %v", err)
 	}
-	if _, err := h.FetchBalance(context.Background(), "zhipu", up.URL, "sk-test"); err == nil {
+	if _, err := h.FetchBalance(context.Background(), "zhipu", up.URL, "sk-test", ""); err == nil {
 		t.Error("不支持的厂商应报错")
 	}
 }
@@ -699,5 +700,72 @@ func TestPriceRuleAppliedAtSettlement(t *testing.T) {
 	e.store.Pool.QueryRow(context.Background(), `SELECT price_rule FROM request_logs WHERE request_id = $1`, id).Scan(&rule)
 	if rule != "" {
 		t.Errorf("基础价时规则名应为空: %q", rule)
+	}
+}
+
+func TestChannelProxy(t *testing.T) {
+	e := newEnv(t)
+	e.upstream = okUpstream
+	// 一个最简单的 HTTP 正向代理：记下经过的请求，再转给真正的上游
+	var proxied int32
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&proxied, 1)
+		out, _ := http.NewRequest(r.Method, r.URL.String(), r.Body)
+		out.Header = r.Header.Clone()
+		resp, err := http.DefaultTransport.RoundTrip(out)
+		if err != nil {
+			w.WriteHeader(502)
+			return
+		}
+		defer resp.Body.Close()
+		for k, v := range resp.Header {
+			w.Header()[k] = v
+		}
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+	}))
+	defer proxy.Close()
+
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	e.cost(resp.Header.Get("X-Lingshu-Request-Id"))
+	if atomic.LoadInt32(&proxied) != 0 {
+		t.Fatal("没配代理的渠道不应走代理")
+	}
+
+	e.exec(`UPDATE channels SET proxy_url = $1 WHERE id = 1`, proxy.URL)
+	resp = e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("经代理请求失败: %d", resp.StatusCode)
+	}
+	e.cost(resp.Header.Get("X-Lingshu-Request-Id"))
+	if atomic.LoadInt32(&proxied) != 1 {
+		t.Errorf("配了代理的渠道应经过代理，实际经过 %d 次", proxied)
+	}
+
+	// 冒烟测试也走渠道代理（冒烟测试发的是流式请求）
+	e.upstream = func(w http.ResponseWriter, r *http.Request) {
+		sse(w, `{"choices":[{"delta":{"content":"ok"}}]}`, `{"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":1}}`, `[DONE]`)
+	}
+	ch, _ := e.store.ChannelSecret(context.Background(), 1)
+	if r := e.handler.Probe(context.Background(), ch, usage.Chat, "up-chat"); !r.OK {
+		t.Fatalf("经代理冒烟测试失败: %+v", r)
+	}
+	if atomic.LoadInt32(&proxied) != 2 {
+		t.Errorf("冒烟测试应经过代理，累计 %d 次", proxied)
+	}
+}
+
+func TestValidateProxyURL(t *testing.T) {
+	for _, ok := range []string{"", "socks5://127.0.0.1:10808", "socks5h://127.0.0.1:1080", "http://127.0.0.1:8080"} {
+		if err := ValidateProxyURL(ok); err != nil {
+			t.Errorf("%q 应通过: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"127.0.0.1:10808", "vless://x@y:1", "socks5://"} {
+		if err := ValidateProxyURL(bad); err == nil {
+			t.Errorf("%q 应拒绝", bad)
+		}
 	}
 }

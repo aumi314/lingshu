@@ -1,0 +1,25 @@
+# 灵枢的出境代理：只给配置了代理的渠道（如 OpenRouter）用，经 DMIT 洛杉矶的 VLESS Reality 节点出去。
+# 只监听 127.0.0.1:10808（SOCKS5）。配置含节点密钥，放 /etc/lingshu-proxy/config.json（640 root:lingshu-proxy），不进 git。
+[Unit]
+Description=Lingshu egress proxy (Xray client to DMIT LAX)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=lingshu-proxy
+Group=lingshu-proxy
+ExecStart=/opt/lingshu-proxy/xray run -c /etc/lingshu-proxy/config.json
+Restart=always
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

@@ -51,6 +51,7 @@ type Handler struct {
 	BodyHeaderTimeout   time.Duration
 
 	holidayCache holidayCache
+	proxies      proxyClients
 }
 
 // holidayCache 缓存系统设置里的法定节假日，每分钟最多查一次库。
@@ -311,7 +312,7 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 		timeout = h.StreamHeaderTimeout
 	}
 	timer := time.AfterFunc(timeout, cancel)
-	resp, err := h.Client.Do(upReq)
+	resp, err := h.clientFor(route.ProxyURL).Do(upReq)
 	timedOut := !timer.Stop()
 	if err == nil && timedOut {
 		resp.Body.Close()

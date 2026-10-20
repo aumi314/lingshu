@@ -198,13 +198,14 @@ type SyncTarget struct {
 	Template  string
 	BaseURL   string
 	APIKey    string
+	ProxyURL  string
 }
 
 // SyncTargets 返回开了自动校准的账户；每个账户取一个已启用、模板支持查余额的渠道。
 // accountID 为 0 时返回全部，否则只返回这一个（不要求开了自动校准，用于手动"立即同步"）。
 func (s *Store) SyncTargets(ctx context.Context, accountID int64, templates []string) ([]SyncTarget, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT DISTINCT ON (a.id) a.id, c.template, c.base_url_chat, c.api_key
+		SELECT DISTINCT ON (a.id) a.id, c.template, c.base_url_chat, c.api_key, c.proxy_url
 		FROM upstream_accounts a
 		JOIN channels c ON c.upstream_account_id = a.id AND c.enabled AND c.template = ANY($2::text[]) AND c.base_url_chat <> ''
 		WHERE ($1 = 0 AND a.auto_sync) OR a.id = $1
@@ -214,7 +215,7 @@ func (s *Store) SyncTargets(ctx context.Context, accountID int64, templates []st
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (SyncTarget, error) {
 		var t SyncTarget
-		err := r.Scan(&t.AccountID, &t.Template, &t.BaseURL, &t.APIKey)
+		err := r.Scan(&t.AccountID, &t.Template, &t.BaseURL, &t.APIKey, &t.ProxyURL)
 		return t, err
 	})
 }

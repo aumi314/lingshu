@@ -65,7 +65,7 @@ func (h *Handler) Probe(ctx context.Context, ch *store.Channel, proto usage.Prot
 	setUpstreamAuth(req.Header, proto, ch.APIKey)
 
 	start := time.Now()
-	resp, err := h.Client.Do(req)
+	resp, err := h.clientFor(ch.ProxyURL).Do(req)
 	if err != nil {
 		res.Error = "连接失败: " + err.Error()
 		return res
@@ -133,7 +133,7 @@ func (h *Handler) FetchModels(ctx context.Context, ch *store.Channel) ([]string,
 		} else {
 			setUpstreamAuth(req.Header, usage.Chat, ch.APIKey)
 		}
-		resp, err := h.Client.Do(req)
+		resp, err := h.clientFor(ch.ProxyURL).Do(req)
 		if err != nil {
 			lastErr = err
 			continue

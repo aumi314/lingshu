@@ -342,6 +342,11 @@ func (s *Server) saveChannel(w http.ResponseWriter, r *http.Request) {
 	c.BaseURLChat = strings.TrimRight(strings.TrimSpace(c.BaseURLChat), "/")
 	c.BaseURLMessages = strings.TrimRight(strings.TrimSpace(c.BaseURLMessages), "/")
 	c.BaseURLResponses = strings.TrimRight(strings.TrimSpace(c.BaseURLResponses), "/")
+	c.ProxyURL = strings.TrimSpace(c.ProxyURL)
+	if err := relay.ValidateProxyURL(c.ProxyURL); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	switch {
 	case c.Name == "":
 		writeError(w, http.StatusBadRequest, "渠道名不能为空")
@@ -413,6 +418,10 @@ func (s *Server) channelDraft(ctx context.Context, d *store.Channel) (*store.Cha
 	d.APIKey = strings.TrimSpace(d.APIKey)
 	if d.APIKey == "" {
 		return nil, "先填 API key"
+	}
+	d.ProxyURL = strings.TrimSpace(d.ProxyURL)
+	if err := relay.ValidateProxyURL(d.ProxyURL); err != nil {
+		return nil, err.Error()
 	}
 	return d, ""
 }

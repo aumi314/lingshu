@@ -36,6 +36,7 @@ type FormValues = {
   base_url_chat: string
   base_url_messages: string
   base_url_responses: string
+  proxy_url: string
   priority: number
   enabled: boolean
   group_ids: number[]
@@ -133,6 +134,7 @@ export default function Channels() {
       base_url_chat: tpl.base_url_chat,
       base_url_messages: tpl.base_url_messages,
       base_url_responses: tpl.base_url_responses,
+      proxy_url: tpl.proxy_url ?? '',
     })
     if (tpl.preset_models?.length) addRows(tpl.preset_models)
   }
@@ -146,6 +148,7 @@ export default function Channels() {
       base_url_chat: v.base_url_chat ?? '',
       base_url_messages: v.base_url_messages ?? '',
       base_url_responses: v.base_url_responses ?? '',
+      proxy_url: v.proxy_url ?? '',
     }
   }
 
@@ -298,6 +301,11 @@ export default function Channels() {
                   </span>
                 </Tooltip>
                 {v}
+                {c.proxy_url && (
+                  <Tooltip title={`${t('经代理', 'Via proxy')} ${c.proxy_url}`}>
+                    <Tag color="geekblue">{t('代理', 'Proxy')}</Tag>
+                  </Tooltip>
+                )}
               </Space>
             ),
           },
@@ -336,7 +344,7 @@ export default function Channels() {
             align: 'right',
             render: (_, c) => (
               <Space>
-                <Button size="small" type="link" onClick={() => runProbe({ id: c.id, api_key: '', base_url_chat: c.base_url_chat, base_url_messages: c.base_url_messages, base_url_responses: c.base_url_responses }, c.models.map((m) => m.upstream_name || m.model_name))}>
+                <Button size="small" type="link" onClick={() => runProbe({ id: c.id, api_key: '', base_url_chat: c.base_url_chat, base_url_messages: c.base_url_messages, base_url_responses: c.base_url_responses, proxy_url: c.proxy_url }, c.models.map((m) => m.upstream_name || m.model_name))}>
                   {t('测试', 'Test')}
                 </Button>
                 <Button size="small" type="link" onClick={() => openEdit(c)}>
@@ -446,7 +454,18 @@ export default function Channels() {
               </Form.Item>
             ))}
           </div>
-          <Form.Item name="group_ids" label={t('所属分组', 'Groups')} style={{ marginTop: 16 }}>
+          <Form.Item
+            name="proxy_url"
+            label={t('代理', 'Proxy')}
+            style={{ marginTop: 16 }}
+            extra={t(
+              '空表示直连。在中国访问不了的上游（如 OpenRouter 上的 Claude、GPT）填灵枢的出境代理 socks5://127.0.0.1:10808（经 DMIT 洛杉矶）。转发、测试、拉取模型、查余额都走这个代理。',
+              'Empty for direct. For upstreams blocked from China (e.g. Claude/GPT on OpenRouter) use the egress proxy socks5://127.0.0.1:10808 (via DMIT LA). Requests, tests, model lists and balance checks all use it.',
+            )}
+          >
+            <Input className="mono" placeholder="socks5://127.0.0.1:10808" allowClear />
+          </Form.Item>
+          <Form.Item name="group_ids" label={t('所属分组', 'Groups')}>
             <Select mode="multiple" options={groups.map((g) => ({ value: g.id, label: `${g.name}${g.is_public ? '' : t('（特殊）', ' (special)')}` }))} />
           </Form.Item>
         </Form>

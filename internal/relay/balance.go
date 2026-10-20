@@ -20,7 +20,7 @@ var BalanceTemplates = []string{"deepseek", "moonshot"}
 type Balance map[string]decimal.Decimal
 
 // FetchBalance 查上游账户的可用余额。baseURL 用渠道的 chat 地址，只取其中的域名部分。
-func (h *Handler) FetchBalance(ctx context.Context, template, baseURL, apiKey string) (Balance, error) {
+func (h *Handler) FetchBalance(ctx context.Context, template, baseURL, apiKey, proxy string) (Balance, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil || u.Host == "" {
 		return nil, fmt.Errorf("渠道地址不对: %q", baseURL)
@@ -43,7 +43,7 @@ func (h *Handler) FetchBalance(ctx context.Context, template, baseURL, apiKey st
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
-	resp, err := h.Client.Do(req)
+	resp, err := h.clientFor(proxy).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("连不上 %s: %v", u.Host, err)
 	}
