@@ -5,12 +5,20 @@
 
 ---
 
+## DMIT 独立副本（2026-10-23 确认）
+
+- 将 UM580D 一致性数据库快照复制到个人 DMIT，入口为 `https://gateway.piqode.com`；UM 原服务继续运行，团队原入口保持不变。
+- 两端数据库、余额、日志、配置独立，复制后不自动同步。DMIT 副本先供用户验证和使用。
+- DMIT 复用现有 Caddy 的 HTTPS 入口；Lingshu 独立服务与 PostgreSQL 18 实例，不改 PiQode 的 PostgreSQL 15。构建仍在本机 WSL 完成。
+- 仅在 DMIT 副本调整原本指向 UM 本机的渠道代理配置。用户随后要求统一 WSL、UM 和 DMIT 的 Git 基线：System One 提交 `4bef2a1` 已推送 GitHub；从干净 worktree 构建一次，将同一成品发布到两端，各自备份并验证。两端数据库独立，只统一应用版本。
+- 验收：快照逐表行数、程序 SHA-256、登录、真实模型调用与流式、精确计费、数据库备份与恢复、PiQode 原服务回归检查。操作与回滚记录见 `docs/dmit-copy-20261023.md`。
+
 ## 范围与方向（2026-10-18）
 
 - **定位**：只给团队内部用。不考虑对外服务、许可证合规和真实支付。
 - **自研**：不 fork 现有项目。`references/` 下的仓库只作为设计参考，代码不继承。
 - **协议**：MVP 支持三个入口 `/v1/messages`、`/v1/chat/completions`、`/v1/responses`。
-- **System One（2026-10-22 确认，本地实现并验证）**：新增 `/v1/systemone` 原生 JSON 透传，接入 TypeSafe 与 Nace 两个渠道模板。渠道独立保存 System One 地址，不复用聊天协议字段。支持拉取 `{ "models": [{ "name": "…" }] }` 上游模型列表，冒烟测试发送 `state` 与 `questions`；正式请求沿用现有鉴权、模型映射、分组、路由重试、计费和日志。用量读取 `usage.input_tokens` / `output_tokens`，价格仍由管理员按官方价录入（两家当前输出免费），不做聊天协议转换。仅支持非流式调用，显式拒绝 `stream: true`。实测及边界见 [System One 接入记录](research/systemone.md)。本阶段只做本地实现及验证，不部署、不改线上配置。
+- **System One（2026-10-22 确认，本地实现并验证）**：新增 `/v1/systemone` 原生 JSON 透传，接入 TypeSafe 与 Nace 两个渠道模板。渠道独立保存 System One 地址，不复用聊天协议字段。支持拉取 `{ "models": [{ "name": "…" }] }` 上游模型列表，冒烟测试发送 `state` 与 `questions`；正式请求沿用现有鉴权、模型映射、分组、路由重试、计费和日志。用量读取 `usage.input_tokens` / `output_tokens`，价格仍由管理员按官方价录入（两家当前输出免费），不做聊天协议转换。仅支持非流式调用，显式拒绝 `stream: true`。实测及边界见 [System One 接入记录](research/systemone.md)。2026-10-23 已随统一版本发布到 UM580D 和 DMIT；模板和入口可用，实际渠道需另行配置。
 - **只做透传**：入口协议必须和渠道支持的协议一致，不做跨协议转换。不支持的组合返回明确提示，告诉用户该用哪个入口。适配和转换放到以后。
 - **原始内容留存**：请求和回复全量保留，以后存云盘。MVP 先不做。
 
@@ -137,7 +145,11 @@
 3. 主渠道 key 填错时自动切到兜底渠道，用户无感。
 4. Claude Code 里按 Esc 打断：按已生成部分扣费，上游请求被取消。
 
-## 部署环境（2026-10-18 实测）
+## 部署环境（现役）
+
+- 2026-10-23：团队入口 `https://lingshu.piqode.com` 在 UM580D，独立副本 `https://gateway.piqode.com` 在个人 DMIT。两端应用版本统一，数据库独立。现役操作见 `docs/deploy.md`，DMIT 验收见 `docs/dmit-copy-20261023.md`。
+
+### 历史：腾讯云部署前调查（2026-10-18）
 
 - 目标域名 `lingshu.piqode.com`，DNS 已指向腾讯云 `42.192.106.29`（上海，OpenCloudOS，4C / 3.6G 内存，可用约 0.9G）。服务器上还没有任何灵枢部署。
 - 服务器已有：Nginx 1.26（`conf.d/` 一站一文件 + certbot），本机 Postgres（5432）、Redis（6379）。
@@ -153,7 +165,7 @@
 - 数据库 PostgreSQL：复用服务器已有实例，单独建库和用户；金额用 `NUMERIC`。
 - MVP 不用 Redis：单实例部署，渠道健康状态放内存。
 - 前端 React + TypeScript + Vite，构建产物嵌入 Go 二进制，整个服务只有一个进程。
-- 部署：本地 WSL 编译 → 上传二进制 → systemd 托管 → Nginx 反代 `lingshu.piqode.com`。服务器在上海腾讯云（MVP 上游都在中国，网关放中国合适）；DMIT 洛杉矶机器性能不够，不用。
+- 部署：本地 WSL 从明确 Git 提交构建一次，同一二进制发布至 UM580D（Nginx + Cloudflare Tunnel）和个人 DMIT（Caddy + Cloudflare）。systemd 托管；两端独立数据库和备份。
 
 ---
 

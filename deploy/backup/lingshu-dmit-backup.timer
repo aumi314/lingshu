@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily backup of Lingshu DMIT isolated database
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

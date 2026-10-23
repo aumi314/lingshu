@@ -1,0 +1,16 @@
+[Unit]
+Description=Lingshu isolated PostgreSQL 18 on DMIT
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/lingshu
+ExecStart=/usr/bin/docker compose -p lingshu -f /opt/lingshu/postgres.compose.yml up -d --wait
+ExecStop=/usr/bin/docker compose -p lingshu -f /opt/lingshu/postgres.compose.yml stop
+TimeoutStartSec=120
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

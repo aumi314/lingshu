@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# 仅备份 DMIT 独立库；备份目录归 root，保留最近 14 份。
+set -euo pipefail
+backup_dir=/var/backups/lingshu
+install -d -m 0700 "$backup_dir"
+backup_file="$backup_dir/lingshu-$(date -u +%Y%m%dT%H%M%SZ).dump"
+umask 077
+docker exec lingshu-postgres pg_dump -U lingshu -d lingshu -Fc >"$backup_file.part"
+mv "$backup_file.part" "$backup_file"
+sha256sum "$backup_file" >"$backup_file.sha256"
+# 只删除本脚本生成、超出保留数量的文件，不碰迁移归档。
+mapfile -t old_backups < <(find "$backup_dir" -maxdepth 1 -type f -name 'lingshu-????????T??????Z.dump' -printf '%f\n' | sort -r | tail -n +15)
+for old_backup in "${old_backups[@]}"; do
+  rm -- "$backup_dir/$old_backup"
+  if [[ -f "$backup_dir/$old_backup.sha256" ]]; then
+    rm -- "$backup_dir/$old_backup.sha256"
+  fi
+done
+printf 'Backup complete: %s\n' "$backup_file"

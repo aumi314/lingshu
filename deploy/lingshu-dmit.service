@@ -1,0 +1,29 @@
+[Unit]
+Description=Lingshu AI API gateway (DMIT independent copy)
+Requires=lingshu-db.service
+After=network-online.target lingshu-db.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lingshu
+Group=lingshu
+EnvironmentFile=/etc/lingshu/env
+ExecStart=/opt/lingshu/lingshu serve
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=35
+MemoryHigh=96M
+MemoryMax=192M
+CPUWeight=20
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

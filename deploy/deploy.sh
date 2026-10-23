@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # 发布新版本到腾讯云：本地编译 → 上传 → 备份数据库 → 保留上一版 → 重启 → 健康检查，失败自动回滚程序。
-# 用法（项目根目录）：bash deploy/deploy.sh
-# 首次部署的一次性准备见 docs/deploy.md。
+# 此脚本保留腾讯云时期的目录、SSH 和健康检查约定。现役双机发布见 docs/deploy.md。
+# 使用旧流程时必须显式指定 LINGSHU_HOST，避免默认发布到已停用的腾讯云。
 set -euo pipefail
 
-HOST="${LINGSHU_HOST:-tencent-server}"
+HOST="${LINGSHU_HOST:?This is the legacy Tencent deployment script. See docs/deploy.md for the current UM580D and DMIT release procedure.}"
 
 cd "$(dirname "$0")/.."
 make build

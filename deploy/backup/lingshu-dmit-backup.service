@@ -1,0 +1,8 @@
+[Unit]
+Description=Lingshu DMIT isolated database backup
+Requires=lingshu-db.service
+After=lingshu-db.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/lingshu-backup
