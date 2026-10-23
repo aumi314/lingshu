@@ -10,6 +10,8 @@ import kimi from '../assets/logos/kimi.svg?raw'
 import xiaomi from '../assets/logos/xiaomi-color.svg?raw'
 import hunyuan from '../assets/logos/hunyuan-color.svg?raw'
 import openrouter from '../assets/logos/openrouter.svg?raw'
+import nace from '../assets/logos/nace.svg?raw'
+import typesafe from '../assets/logos/typesafe.png'
 
 const icons: Record<string, string> = {
   deepseek,
@@ -22,9 +24,17 @@ const icons: Record<string, string> = {
   mimo: xiaomi,
   hunyuan,
   openrouter,
+  nace,
 }
 
 export default function VendorIcon({ template, size = 18 }: { template?: string; size?: number }) {
+  if (template === 'typesafe') {
+    return (
+      <span aria-hidden style={{ display: 'inline-flex', width: size, height: size }}>
+        <img src={typesafe} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+      </span>
+    )
+  }
   const svg = template ? icons[template] : undefined
   if (!svg) return null
   return (
