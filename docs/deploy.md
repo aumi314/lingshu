@@ -34,6 +34,8 @@ WSL 访问 UM 时调用 `/mnt/c/Windows/System32/OpenSSH/ssh.exe minisforum-um58
 
 2026-10-23 渠道默认分组发布：新建渠道默认只选启用的 `default` 服务分组。应用提交 `4024abed7cf3a0b629a1eff4bd9f328538688487`，成品 SHA-256 `437e1fc19f958d5c28f78fe7a0b98566f22af9c3a2d76490111683de6fd47da1`。发布前 DMIT 备份为 `/var/backups/lingshu/lingshu-20261023T123958Z.dump`，UM580D 备份为 `/var/backups/lingshu/lingshu-20261023-204016.dump`。schema 未变化；两端二进制哈希一致，内部健康检查及两个公网入口均返回 200。发布前二进制保留为 `/opt/lingshu/lingshu.prev-4024abe`。
 
+2026-10-23 OpenAI Platform 渠道模板发布：提交 `08f53b6441aafe3cec17d8ec49fc9e977494ca5f`，两端成品 SHA-256 `62f3f9c4ede0632e4db46f2201d60ee50150a1972a298543d487819750dc8f8f`。模板使用官方 `https://api.openai.com/v1`，只启用 Chat Completions 和 Responses，Messages 留空。发布前 DMIT 备份 `/var/backups/lingshu/lingshu-20261023T160252Z.dump`，UM580D 备份 `/var/backups/lingshu/lingshu-20261024-000611.dump`；两端本机健康检查、公网入口均返回 200。DMIT 新建渠道 id=16，挂 `default`，只映射 `gpt-6-luna -> gpt-5.6-luna`；API key 只存 DMIT 数据库。创建前没有同名渠道；模型 id=18 的原价保持不变（输入 `$0.10`、输出 `$0.50`、缓存读 `$0.01`、缓存写 `$0.125`/百万 token）。OpenAI 官方实测：Chat Completions 和 Responses 均 HTTP 200，Messages 返回 404。
+
 ## 现役备份与恢复
 
 两端每日备份保留最近 14 份。DMIT 脚本在 `deploy/backup/lingshu-dmit-backup`，PostgreSQL 数据卷和 PiQode 原有 PostgreSQL 15 完全独立。
