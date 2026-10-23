@@ -172,15 +172,60 @@ func (s *Server) setUserGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		GroupIDs []int64 `json:"group_ids"`
+		UserGroupIDs []int64 `json:"user_group_ids"`
 	}
 	if !readJSON(w, r, &in) {
 		return
 	}
-	if in.GroupIDs == nil {
-		in.GroupIDs = []int64{}
+	if in.UserGroupIDs == nil {
+		in.UserGroupIDs = []int64{}
 	}
-	if err := s.Store.SetUserGroups(r.Context(), id, in.GroupIDs); err != nil {
+	if err := s.Store.SetUserGroups(r.Context(), id, in.UserGroupIDs); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	ok(w)
+}
+
+func (s *Server) listUserGroups(w http.ResponseWriter, r *http.Request) {
+	groups, err := s.Store.ListUserGroups(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, groups)
+}
+
+func (s *Server) saveUserGroup(w http.ResponseWriter, r *http.Request) {
+	var g store.UserGroup
+	if !readJSON(w, r, &g) {
+		return
+	}
+	if r.PathValue("id") != "" {
+		id, okID := pathID(w, r)
+		if !okID {
+			return
+		}
+		g.ID = id
+	}
+	g.Name = strings.TrimSpace(g.Name)
+	if g.Name == "" {
+		writeError(w, http.StatusBadRequest, "用户分组名不能为空")
+		return
+	}
+	if err := s.Store.SaveUserGroup(r.Context(), &g); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, g)
+}
+
+func (s *Server) deleteUserGroup(w http.ResponseWriter, r *http.Request) {
+	id, okID := pathID(w, r)
+	if !okID {
+		return
+	}
+	if err := s.Store.DeleteUserGroup(r.Context(), id); err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -219,6 +264,10 @@ func (s *Server) saveGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	if g.Ratio.IsNegative() {
 		writeError(w, http.StatusBadRequest, "倍率不能是负数")
+		return
+	}
+	if !g.IsPublic && len(g.UserGroupIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "指定用户分组时至少选择一个用户分组")
 		return
 	}
 	if err := s.Store.SaveGroup(r.Context(), &g); err != nil {

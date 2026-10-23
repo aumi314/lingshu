@@ -46,7 +46,12 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/admin/users/{id}", s.admin(s.updateUser))
 	mux.HandleFunc("POST /api/admin/users/{id}/balance", s.admin(s.adjustBalance))
 	mux.HandleFunc("GET /api/admin/users/{id}/balance", s.admin(s.balanceHistory))
-	mux.HandleFunc("PUT /api/admin/users/{id}/groups", s.admin(s.setUserGroups))
+	mux.HandleFunc("PUT /api/admin/users/{id}/user-groups", s.admin(s.setUserGroups))
+
+	mux.HandleFunc("GET /api/admin/user-groups", s.admin(s.listUserGroups))
+	mux.HandleFunc("POST /api/admin/user-groups", s.admin(s.saveUserGroup))
+	mux.HandleFunc("PUT /api/admin/user-groups/{id}", s.admin(s.saveUserGroup))
+	mux.HandleFunc("DELETE /api/admin/user-groups/{id}", s.admin(s.deleteUserGroup))
 
 	mux.HandleFunc("GET /api/admin/groups", s.admin(s.listGroups))
 	mux.HandleFunc("POST /api/admin/groups", s.admin(s.saveGroup))

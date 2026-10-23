@@ -33,7 +33,11 @@ func (s *Store) LookupKey(ctx context.Context, keyHash string) (*KeyOwner, error
 	var limit *string
 	err := s.Pool.QueryRow(ctx, `
 		SELECT k.id, k.name, k.user_id, k.group_id, k.enabled, u.enabled,
-		       g.is_public OR EXISTS (SELECT 1 FROM user_groups ug WHERE ug.user_id = u.id AND ug.group_id = g.id),
+		       g.enabled AND (g.is_public OR EXISTS (
+			       SELECT 1 FROM group_user_groups gug
+			       JOIN user_group_members ugm ON ugm.user_group_id = gug.user_group_id
+			       WHERE gug.group_id = g.id AND ugm.user_id = u.id
+		       )),
 		       g.ratio::text, u.balance::text, k.quota_limit::text, k.quota_used::text
 		FROM api_keys k
 		JOIN users u ON u.id = k.user_id

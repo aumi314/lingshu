@@ -50,6 +50,9 @@ func newEnv(t *testing.T) *env {
 		`SELECT setval('users_id_seq', 2)`,
 		`INSERT INTO groups (id, name, ratio, is_public) VALUES (1, 'default', 1, true), (2, 'vip', 0.5, false)`,
 		`SELECT setval('groups_id_seq', 2)`,
+		`INSERT INTO user_groups (id, name) VALUES (2, 'vip-users')`,
+		`SELECT setval('user_groups_id_seq', 2)`,
+		`INSERT INTO group_user_groups (group_id, user_group_id) VALUES (2, 2)`,
 	} {
 		if _, err := s.Pool.Exec(ctx, q); err != nil {
 			t.Fatal(err)
@@ -229,7 +232,7 @@ func TestAPIKeys(t *testing.T) {
 	}
 
 	// 授权 vip 后可以切过去
-	e.login("admin").do("PUT", "/api/admin/users/2/groups", map[string]any{"group_ids": []int64{2}}, nil)
+	e.login("admin").do("PUT", "/api/admin/users/2/user-groups", map[string]any{"user_group_ids": []int64{2}}, nil)
 	if code, body := c.do("PATCH", "/api/me/keys/1", map[string]any{"group_id": 2}, nil); code != 200 {
 		t.Errorf("授权后应能换到 vip: %d %s", code, body)
 	}

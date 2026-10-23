@@ -43,7 +43,7 @@ export default function Models() {
       )}
       {group && (
         <Typography.Paragraph type="secondary">
-          {t('分组', 'Group')} <b>{group.name}</b>
+          {t('服务分组', 'Service group')} <b>{group.name}</b>
           {t('，倍率 ', ', ratio ')}
           {Number(group.ratio)}
           {group.description && ` · ${group.description}`}
@@ -55,7 +55,7 @@ export default function Models() {
         rowKey="name"
         pagination={false}
         dataSource={models.filter((m) => m.group_id === groupID)}
-        locale={{ emptyText: t('这个分组还没有可用的模型', 'No models available in this group yet') }}
+        locale={{ emptyText: t('这个服务分组还没有可用的模型', 'No models available in this service group yet') }}
         expandable={{
           rowExpandable: (m) => m.price_rules?.length > 0,
           expandedRowRender: (m) => (

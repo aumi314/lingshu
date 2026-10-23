@@ -192,8 +192,8 @@ export default function ModelsAdmin() {
           </Divider>
           <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
             {t(
-              '上面是基础价。规则从上往下匹配，第一条条件全部满足的生效，都不满足用基础价。输入长度 = 输入 + 缓存命中 + 缓存写入；日期和时间都按北京时间、以请求开始时为准，时间段可以跨零点；生效日期用来提前配好涨价、降价或限时价；周末按北京时间的周六、周日判断。规则价同样乘分组倍率。',
-              'The prices above are the base. Rules are checked top-down; the first whose conditions all match applies, otherwise the base price. Input length = input + cache hit + cache write; time is Beijing time at request start and may wrap past midnight. Group ratios apply to rule prices too.',
+              '上面是基础价。规则从上往下匹配，第一条条件全部满足的生效，都不满足用基础价。输入长度 = 输入 + 缓存命中 + 缓存写入；日期和时间都按北京时间、以请求开始时为准，时间段可以跨零点；生效日期用来提前配好涨价、降价或限时价；周末按北京时间的周六、周日判断。规则价同样乘服务分组倍率。',
+              'The prices above are the base. Rules are checked top-down; the first whose conditions all match applies, otherwise the base price. Input length = input + cache hit + cache write; time is Beijing time at request start and may wrap past midnight. Service-group ratios apply to rule prices too.',
             )}
           </Typography.Paragraph>
           <Form.List name="price_rules">

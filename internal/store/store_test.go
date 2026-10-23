@@ -3,7 +3,10 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"os"
+	"sort"
+	"strings"
 	"testing"
 )
 
@@ -37,7 +40,7 @@ func TestMigrateCreatesAllTablesAndIsIdempotent(t *testing.T) {
 		}
 	}
 
-	want := []string{"users", "groups", "user_groups", "models", "channels", "channel_groups",
+	want := []string{"users", "groups", "user_groups", "user_group_members", "group_user_groups", "models", "channels", "channel_groups",
 		"channel_models", "api_keys", "request_logs", "balance_adjustments", "settings"}
 	for _, table := range want {
 		var exists bool
@@ -52,6 +55,92 @@ func TestMigrateCreatesAllTablesAndIsIdempotent(t *testing.T) {
 	var rate string
 	if err := s.Pool.QueryRow(ctx, `SELECT value FROM settings WHERE key = 'cny_per_usd'`).Scan(&rate); err != nil || rate != "6.7" {
 		t.Errorf("默认汇率不对: %q %v", rate, err)
+	}
+}
+
+func TestUserGroupMigrationPreservesSpecialGroupAccess(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	if _, err := s.Pool.Exec(ctx, `CREATE TABLE schema_migrations (
+		version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`); err != nil {
+		t.Fatal(err)
+	}
+	names, err := fs.Glob(migrationFS, "migrations/*.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if strings.HasSuffix(name, "0011_user_groups_and_group_scope.sql") {
+			continue
+		}
+		body, err := migrationFS.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		version := strings.TrimSuffix(strings.TrimPrefix(name, "migrations/"), ".sql")
+		if _, err := s.Pool.Exec(ctx, string(body)); err != nil {
+			t.Fatalf("apply %s: %v", version, err)
+		}
+		if _, err := s.Pool.Exec(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{
+		`INSERT INTO users (id, username, password_hash) VALUES (1, 'alice', 'x'), (2, 'bob', 'x'), (3, 'carol', 'x')`,
+		`SELECT setval('users_id_seq', 3)`,
+		`INSERT INTO groups (id, name, is_public) VALUES (1, 'public', true), (2, 'private-a', false), (3, 'private-b', false)`,
+		`INSERT INTO user_groups (user_id, group_id) VALUES (1, 2), (2, 3)`,
+	} {
+		if _, err := s.Pool.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		userID int64
+		want   []string
+	}{
+		{1, []string{"private-a", "public"}},
+		{2, []string{"private-b", "public"}},
+		{3, []string{"public"}},
+	} {
+		groups, err := s.AccessibleGroups(ctx, tc.userID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := make([]string, len(groups))
+		for i, g := range groups {
+			got[i] = g.Name
+		}
+		sort.Strings(got)
+		if len(got) != len(tc.want) {
+			t.Errorf("user %d groups = %v, want %v", tc.userID, got, tc.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != tc.want[i] {
+				t.Errorf("user %d groups = %v, want %v", tc.userID, got, tc.want)
+				break
+			}
+		}
+	}
+
+	newID, err := s.CreateUser(ctx, "dave", "x", "user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inDefault bool
+	if err := s.Pool.QueryRow(ctx, `SELECT EXISTS (
+		SELECT 1 FROM user_group_members ugm JOIN user_groups ug ON ug.id = ugm.user_group_id
+		WHERE ugm.user_id = $1 AND ug.is_default)`, newID).Scan(&inDefault); err != nil {
+		t.Fatal(err)
+	}
+	if !inDefault {
+		t.Error("new user was not added to default user group")
 	}
 }
 

@@ -48,12 +48,14 @@ lingshu/
 
 | 表 | 关键字段 | 说明 |
 |---|---|---|
-| `users` | username、password_hash、role（admin/user）、balance、enabled | 余额允许为负（小额透支） |
-| `groups` | name、ratio、is_public | 公开分组所有人可用 |
-| `user_groups` | user_id、group_id | 特殊分组的授权 |
+| `users` | username、password_hash、role（admin/user）、balance、enabled | 余额允许为负（小额透支）；角色只控制后台权限 |
+| `groups` | name、ratio、enabled、is_public | 服务分组，决定倍率、渠道归属和可用范围 |
+| `user_groups` | name、is_default | 用户分组，例如 default、internal |
+| `user_group_members` | user_id、user_group_id | 用户所属的用户分组 |
+| `group_user_groups` | group_id、user_group_id | 限定范围的服务分组允许使用的用户分组 |
 | `models` | name（站内标准名，唯一）、input / output / cache_read / cache_write 价格、enabled | 价格只挂在这里 |
 | `channels` | name、template、api_key、priority、enabled、base_url_chat / base_url_messages / base_url_responses / base_url_systemone | 填了哪个协议的地址，就算支持哪个协议 |
-| `channel_groups` | channel_id、group_id | 渠道属于哪些分组 |
+| `channel_groups` | channel_id、group_id | 渠道属于哪些服务分组 |
 | `channel_models` | channel_id、model_id、upstream_name | 名称映射；upstream_name 为空表示和标准名相同 |
 | `api_keys` | user_id、name、key_hash、key_prefix、group_id、quota_limit、quota_used、enabled、last_used_at | 只存哈希，完整 key 创建时只显示一次 |
 | `request_logs` | 见下 | 一个客户端请求一行 |
@@ -127,7 +129,7 @@ lingshu/
 
 ### 阶段 4：前端
 做：
-- 管理端：用户（建、改余额、授权分组）、分组、模型和价格、渠道（模板、拉取模型、名称映射、冒烟测试）、全站日志。
+- 管理端：用户（建、角色、改余额、用户分组成员）、用户分组管理、服务分组（倍率、启停、可用用户范围）、模型和价格、渠道（模板、拉取模型、名称映射、冒烟测试）、全站日志。
 - 用户端：登录、余额、可用分组及模型和价格、key 管理、自己的日志（按时间、模型筛选，显示汇总金额）。
 
 渠道模板预置 6 家的地址、协议和模型列表（智谱和阿里没有 `/models`，靠模板预置）。
@@ -220,6 +222,7 @@ System One 接入（2026-10-22 本地完成，2026-10-23 ✅ 发布到 UM580D �
 | 告警通知 | 待做 | 服务宕机、上游余额低于提醒线、用量异常 → 邮件 |
 | 接入说明 | 待做 | 建 key、Claude Code / Codex / Cherry Studio 配置、常见坑 |
 | 操作记录 | 待做 | 谁在什么时候改了价格、开关、渠道、余额（kimi-k2.7-code 被停用查不到是谁） |
+| 角色和用户分组拆分 | ✅ | 角色只管后台权限；用户分组控制服务分组访问。旧逐用户授权迁移为用户分组规则；服务分组支持启停及所有用户 / 指定用户分组范围 |
 
 
 ### 官方渠道收尾验收（2026-10-21）

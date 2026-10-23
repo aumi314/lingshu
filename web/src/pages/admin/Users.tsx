@@ -1,29 +1,32 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, InputNumber, Modal, Segmented, Select, Space, Switch, Table, Tag, Typography } from 'antd'
+import { App, Button, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Switch, Table, Tag, Typography } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { get, patch, post, put, type BalanceAdjustment, type Group, type User } from '../../api'
+import { del, get, patch, post, put, type BalanceAdjustment, type User, type UserGroup } from '../../api'
 import { useApp } from '../../app'
 
 export default function Users() {
   const { user: me, money, t, currency, rate, reload } = useApp()
   const { message } = App.useApp()
   const [users, setUsers] = useState<User[]>([])
-  const [groups, setGroups] = useState<Group[]>([])
+  const [userGroups, setUserGroups] = useState<UserGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [managingGroups, setManagingGroups] = useState(false)
+  const [editingUserGroup, setEditingUserGroup] = useState<UserGroup | 'new' | null>(null)
   const [balanceOf, setBalanceOf] = useState<User | null>(null)
   const [history, setHistory] = useState<BalanceAdjustment[]>([])
   const [passwordOf, setPasswordOf] = useState<User | null>(null)
   const [createForm] = Form.useForm()
   const [balanceForm] = Form.useForm<{ mode: 'add' | 'set'; amount: number; note: string }>()
   const [passwordForm] = Form.useForm<{ password: string }>()
+  const [userGroupForm] = Form.useForm<{ name: string }>()
 
   const load = useCallback(async () => {
     try {
-      const [u, g] = await Promise.all([get<User[]>('/api/admin/users'), get<Group[]>('/api/admin/groups')])
+      const [u, g] = await Promise.all([get<User[]>('/api/admin/users'), get<UserGroup[]>('/api/admin/user-groups')])
       setUsers(u)
-      setGroups(g)
+      setUserGroups(g)
     } catch (e) {
       message.error((e as Error).message)
     } finally {
@@ -47,7 +50,6 @@ export default function Users() {
     }
   }
 
-  const specialGroups = groups.filter((g) => !g.is_public)
   const symbol = currency === 'CNY' ? '¥' : '$'
   const toUSD = (v: number) => String(currency === 'CNY' ? v / rate : v)
 
@@ -75,9 +77,12 @@ export default function Users() {
         <Typography.Title level={3} style={{ margin: 0 }}>
           {t('用户', 'Users')}
         </Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreating(true) }}>
-          {t('创建用户', 'Create user')}
-        </Button>
+        <Space>
+          <Button onClick={() => setManagingGroups(true)}>{t('用户分组管理', 'Manage user groups')}</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreating(true) }}>
+            {t('创建用户', 'Create user')}
+          </Button>
+        </Space>
       </Space>
       <Table
         rowKey="id"
@@ -110,21 +115,21 @@ export default function Users() {
             ),
           },
           {
-            title: t('特殊分组', 'Special groups'),
-            dataIndex: 'group_ids',
+            title: t('用户分组', 'User groups'),
+            dataIndex: 'user_group_ids',
             render: (ids: number[], u) =>
-              specialGroups.length ? (
+              userGroups.length ? (
                 <Select
                   mode="multiple"
                   size="small"
-                  style={{ minWidth: 160 }}
-                  placeholder={t('仅公开分组', 'Public only')}
+                  style={{ minWidth: 190 }}
+                  placeholder={t('选择用户分组', 'Select user groups')}
                   value={ids}
-                  onChange={(group_ids) => run(() => put(`/api/admin/users/${u.id}/groups`, { group_ids }))}
-                  options={specialGroups.map((g) => ({ value: g.id, label: g.name }))}
+                  onChange={(user_group_ids) => run(() => put(`/api/admin/users/${u.id}/user-groups`, { user_group_ids }))}
+                  options={userGroups.map((g) => ({ value: g.id, label: g.name }))}
                 />
               ) : (
-                <span className="muted">{t('还没有特殊分组', 'No special groups')}</span>
+                <span className="muted">{t('还没有用户分组', 'No user groups')}</span>
               ),
           },
           {
@@ -149,6 +154,60 @@ export default function Users() {
           },
         ]}
       />
+
+      <Modal open={managingGroups} title={t('用户分组', 'User groups')} footer={null} onCancel={() => setManagingGroups(false)} destroyOnHidden>
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Typography.Text type="secondary">
+            {t('用户分组只用于授权服务分组，不影响管理员或成员角色。新用户会自动加入 default。', 'User groups grant access to service groups and do not change admin or member roles. New users join default automatically.')}
+          </Typography.Text>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { userGroupForm.resetFields(); setEditingUserGroup('new') }}>
+            {t('新建用户分组', 'Create user group')}
+          </Button>
+          <Table
+            rowKey="id"
+            size="small"
+            dataSource={userGroups}
+            pagination={false}
+            columns={[
+              { title: t('名称', 'Name'), dataIndex: 'name' },
+              { title: t('用途', 'Type'), render: (_, g) => g.is_default ? <Tag color="blue">{t('默认', 'Default')}</Tag> : null },
+              {
+                title: '', align: 'right', render: (_, g) => (
+                  <Space>
+                    <Button size="small" type="link" onClick={() => { userGroupForm.setFieldsValue({ name: g.name }); setEditingUserGroup(g) }}>{t('编辑', 'Edit')}</Button>
+                    {!g.is_default && (
+                      <Popconfirm title={t(`删除「${g.name}」？`, `Delete “${g.name}”?`)} description={t('成员会失去通过此分组获得的服务分组权限。', 'Members will lose service-group access granted through this group.')} onConfirm={() => run(() => del(`/api/admin/user-groups/${g.id}`))}>
+                        <Button size="small" type="link" danger>{t('删除', 'Delete')}</Button>
+                      </Popconfirm>
+                    )}
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        </Space>
+      </Modal>
+
+      <Modal
+        open={editingUserGroup !== null}
+        title={editingUserGroup === 'new' ? t('新建用户分组', 'Create user group') : t('编辑用户分组', 'Edit user group')}
+        okText={t('保存', 'Save')}
+        onCancel={() => setEditingUserGroup(null)}
+        onOk={async () => {
+          const v = await userGroupForm.validateFields()
+          const done = await run(() => editingUserGroup === 'new'
+            ? post('/api/admin/user-groups', v)
+            : put(`/api/admin/user-groups/${editingUserGroup!.id}`, v), t('用户分组已保存', 'User group saved'))
+          if (done) setEditingUserGroup(null)
+        }}
+        destroyOnHidden
+      >
+        <Form form={userGroupForm} layout="vertical" requiredMark={false}>
+          <Form.Item name="name" label={t('名称', 'Name')} rules={[{ required: true }]}>
+            <Input autoFocus />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         open={creating}

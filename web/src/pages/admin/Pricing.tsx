@@ -1,4 +1,4 @@
-// 定价：模型标价 + 分组（倍率和可见范围）。"渠道"负责拿到算力，"定价"负责怎么分发。
+// 定价：模型标价 + 服务分组（倍率和可用范围）。"渠道"负责拿到算力，"定价"负责怎么分发。
 // 以后的阶梯计价、分时段计价也放在这里加标签。
 import { Tabs, Typography } from 'antd'
 import { useSearchParams } from 'react-router-dom'
@@ -17,8 +17,8 @@ export default function Pricing() {
       </Typography.Title>
       <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
         {t(
-          '成员实际付的钱 = 模型标价 × 分组倍率。「渠道」负责拿到算力，「定价」负责怎么分发。',
-          'Members pay model price × group ratio. Channels supply the capacity; pricing decides how it is handed out.',
+          '成员实际付的钱 = 模型标价 × 服务分组倍率。「渠道」负责拿到算力，「定价」负责怎么分发。',
+          'Members pay model price × service-group ratio. Channels supply the capacity; pricing decides how it is handed out.',
         )}
       </Typography.Paragraph>
       <Tabs
@@ -27,7 +27,7 @@ export default function Pricing() {
         destroyOnHidden
         items={[
           { key: 'models', label: t('模型定价', 'Model prices'), children: <ModelsAdmin /> },
-          { key: 'groups', label: t('分组设置', 'Groups'), children: <Groups /> },
+          { key: 'groups', label: t('服务分组', 'Service groups'), children: <Groups /> },
         ]}
       />
     </div>

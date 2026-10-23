@@ -115,7 +115,7 @@ export default function Channels() {
       template: undefined,
       priority: 0,
       enabled: true,
-      group_ids: groups.filter((g) => g.is_public).map((g) => g.id),
+      group_ids: groups.filter((g) => g.is_public && g.enabled).map((g) => g.id),
     })
     setRows([])
     setEditing('new')
@@ -336,7 +336,7 @@ export default function Channels() {
                 <Typography.Text type="warning">{t('未配置模型', 'No models')}</Typography.Text>
               ),
           },
-          { title: t('分组', 'Groups'), dataIndex: 'group_ids', render: (ids: number[]) => ids.map((id) => <Tag key={id}>{groupByID.get(id)?.name}</Tag>) },
+          { title: t('服务分组', 'Service groups'), dataIndex: 'group_ids', render: (ids: number[]) => ids.map((id) => <Tag key={id}>{groupByID.get(id)?.name}</Tag>) },
           { title: t('优先级', 'Priority'), dataIndex: 'priority' },
           {
             title: (
@@ -472,8 +472,8 @@ export default function Channels() {
           >
             <Input className="mono" placeholder="socks5://host:port" allowClear />
           </Form.Item>
-          <Form.Item name="group_ids" label={t('所属分组', 'Groups')}>
-            <Select mode="multiple" options={groups.map((g) => ({ value: g.id, label: `${g.name}${g.is_public ? '' : t('（特殊）', ' (special)')}` }))} />
+          <Form.Item name="group_ids" label={t('所属服务分组', 'Service groups')}>
+            <Select mode="multiple" options={groups.map((g) => ({ value: g.id, label: `${g.name}${g.enabled ? '' : t('（已停用）', ' (disabled)')}` }))} />
           </Form.Item>
         </Form>
 

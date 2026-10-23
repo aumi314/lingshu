@@ -64,6 +64,7 @@ func newEnv(t *testing.T) *env {
 		args []any
 	}{
 		{`INSERT INTO users (id, username, password_hash, balance) VALUES (1, 'alice', 'x', 10)`, nil},
+		{`INSERT INTO user_group_members (user_id, user_group_id) VALUES (1, 1)`, nil},
 		{`INSERT INTO groups (id, name) VALUES (1, 'default')`, nil},
 		// 价格：输入 $1、输出 $2、缓存读 $0.1 / 每百万 token，算起来好核对
 		{`INSERT INTO models (id, name, input_price, output_price, cache_read_price) VALUES (1, 'std-chat', 1, 2, 0.1), (2, 'std-msg', 1, 2, 0.1)`, nil},
@@ -461,6 +462,7 @@ func TestAdmissionRejections(t *testing.T) {
 		{"透支后余额为负", `UPDATE users SET balance = -0.01`, 402, "余额不足"},
 		{"key 额度用完", `UPDATE api_keys SET quota_limit = 1, quota_used = 1`, 402, "额度已用完"},
 		{"特殊分组没有授权", `UPDATE groups SET is_public = false`, 403, "分组"},
+		{"服务分组已停用", `UPDATE groups SET enabled = false`, 403, "分组"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -482,7 +484,7 @@ func TestAdmissionRejections(t *testing.T) {
 	// 授权了特殊分组就能用
 	e := newEnv(t)
 	e.exec(`UPDATE groups SET is_public = false`)
-	e.exec(`INSERT INTO user_groups VALUES (1, 1)`)
+	e.exec(`INSERT INTO group_user_groups VALUES (1, 1)`)
 	e.upstream = okUpstream
 	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
 	resp.Body.Close()

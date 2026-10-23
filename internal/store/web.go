@@ -70,23 +70,23 @@ func execOne(ctx context.Context, q interface {
 // ---- 用户 ----
 
 type User struct {
-	ID          int64           `json:"id"`
-	Username    string          `json:"username"`
-	Role        string          `json:"role"`
-	Balance     decimal.Decimal `json:"balance"`
-	Enabled     bool            `json:"enabled"`
-	Preferences json.RawMessage `json:"preferences"`
-	GroupIDs    []int64         `json:"group_ids"` // 被授权的特殊分组
-	CreatedAt   time.Time       `json:"created_at"`
+	ID           int64           `json:"id"`
+	Username     string          `json:"username"`
+	Role         string          `json:"role"`
+	Balance      decimal.Decimal `json:"balance"`
+	Enabled      bool            `json:"enabled"`
+	Preferences  json.RawMessage `json:"preferences"`
+	UserGroupIDs []int64         `json:"user_group_ids"`
+	CreatedAt    time.Time       `json:"created_at"`
 }
 
 const userColumns = `u.id, u.username, u.role, u.balance::text, u.enabled, u.preferences, u.created_at,
-	COALESCE((SELECT array_agg(ug.group_id ORDER BY ug.group_id) FROM user_groups ug WHERE ug.user_id = u.id), '{}')`
+	COALESCE((SELECT array_agg(ugm.user_group_id ORDER BY ugm.user_group_id) FROM user_group_members ugm WHERE ugm.user_id = u.id), '{}')`
 
 func scanUser(row pgx.Row) (*User, error) {
 	var u User
 	var balance string
-	if err := row.Scan(&u.ID, &u.Username, &u.Role, &balance, &u.Enabled, &u.Preferences, &u.CreatedAt, &u.GroupIDs); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.Role, &balance, &u.Enabled, &u.Preferences, &u.CreatedAt, &u.UserGroupIDs); err != nil {
 		return nil, translate(err)
 	}
 	u.Balance = mustDecimal(balance)
@@ -188,15 +188,45 @@ func (s *Store) BalanceAdjustments(ctx context.Context, userID int64) ([]Balance
 	})
 }
 
-// SetUserGroups 设置用户被授权的特殊分组（整体替换）。
-func (s *Store) SetUserGroups(ctx context.Context, userID int64, groupIDs []int64) error {
+// SetUserGroups 设置用户所属的用户分组（整体替换）。
+func (s *Store) SetUserGroups(ctx context.Context, userID int64, userGroupIDs []int64) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DELETE FROM user_groups WHERE user_id = $1`, userID); err != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM user_group_members WHERE user_id = $1`, userID); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO user_groups (user_id, group_id) SELECT $1, unnest($2::bigint[])`, userID, groupIDs)
+		_, err := tx.Exec(ctx, `INSERT INTO user_group_members (user_id, user_group_id) SELECT $1, unnest($2::bigint[])`, userID, userGroupIDs)
 		return translate(err)
 	})
+}
+
+type UserGroup struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	IsDefault bool   `json:"is_default"`
+}
+
+func (s *Store) ListUserGroups(ctx context.Context) ([]UserGroup, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT id, name, is_default FROM user_groups ORDER BY is_default DESC, name`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (UserGroup, error) {
+		var g UserGroup
+		err := r.Scan(&g.ID, &g.Name, &g.IsDefault)
+		return g, err
+	})
+}
+
+func (s *Store) SaveUserGroup(ctx context.Context, g *UserGroup) error {
+	if g.ID == 0 {
+		err := s.Pool.QueryRow(ctx, `INSERT INTO user_groups (name) VALUES ($1) RETURNING id, is_default`, g.Name).Scan(&g.ID, &g.IsDefault)
+		return translate(err)
+	}
+	return execOne(ctx, s.Pool, `UPDATE user_groups SET name = $2 WHERE id = $1`, g.ID, g.Name)
+}
+
+func (s *Store) DeleteUserGroup(ctx context.Context, id int64) error {
+	return execOne(ctx, s.Pool, `DELETE FROM user_groups WHERE id = $1 AND NOT is_default`, id)
 }
 
 // ---- 会话 ----
@@ -227,11 +257,13 @@ func (s *Store) DeleteUserSessions(ctx context.Context, userID int64) error {
 // ---- 分组 ----
 
 type Group struct {
-	ID          int64           `json:"id"`
-	Name        string          `json:"name"`
-	Ratio       decimal.Decimal `json:"ratio"`
-	IsPublic    bool            `json:"is_public"`
-	Description string          `json:"description"`
+	ID           int64           `json:"id"`
+	Name         string          `json:"name"`
+	Ratio        decimal.Decimal `json:"ratio"`
+	Enabled      bool            `json:"enabled"`
+	IsPublic     bool            `json:"is_public"`
+	UserGroupIDs []int64         `json:"user_group_ids"`
+	Description  string          `json:"description"`
 }
 
 func scanGroups(rows pgx.Rows, err error) ([]Group, error) {
@@ -241,32 +273,53 @@ func scanGroups(rows pgx.Rows, err error) ([]Group, error) {
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Group, error) {
 		var g Group
 		var ratio string
-		err := r.Scan(&g.ID, &g.Name, &ratio, &g.IsPublic, &g.Description)
+		err := r.Scan(&g.ID, &g.Name, &ratio, &g.Enabled, &g.IsPublic, &g.UserGroupIDs, &g.Description)
 		g.Ratio = mustDecimal(ratio)
 		return g, err
 	})
 }
 
 func (s *Store) ListGroups(ctx context.Context) ([]Group, error) {
-	return scanGroups(s.Pool.Query(ctx, `SELECT id, name, ratio::text, is_public, description FROM groups ORDER BY id`))
+	return scanGroups(s.Pool.Query(ctx, `SELECT g.id, g.name, g.ratio::text, g.enabled, g.is_public,
+		COALESCE((SELECT array_agg(gug.user_group_id ORDER BY gug.user_group_id) FROM group_user_groups gug WHERE gug.group_id = g.id), '{}'),
+		g.description FROM groups g ORDER BY g.id`))
 }
 
-// AccessibleGroups 返回用户能用的分组：公开分组 + 被授权的特殊分组。
+// AccessibleGroups 返回用户能用的启用服务分组。
 func (s *Store) AccessibleGroups(ctx context.Context, userID int64) ([]Group, error) {
 	return scanGroups(s.Pool.Query(ctx, `
-		SELECT g.id, g.name, g.ratio::text, g.is_public, g.description FROM groups g
-		WHERE g.is_public OR EXISTS (SELECT 1 FROM user_groups ug WHERE ug.user_id = $1 AND ug.group_id = g.id)
+		SELECT g.id, g.name, g.ratio::text, g.enabled, g.is_public,
+		       COALESCE((SELECT array_agg(gug.user_group_id ORDER BY gug.user_group_id) FROM group_user_groups gug WHERE gug.group_id = g.id), '{}'),
+		       g.description FROM groups g
+		WHERE g.enabled AND (g.is_public OR EXISTS (
+			SELECT 1 FROM group_user_groups gug
+			JOIN user_group_members ugm ON ugm.user_group_id = gug.user_group_id
+			WHERE gug.group_id = g.id AND ugm.user_id = $1
+		))
 		ORDER BY g.ratio, g.id`, userID))
 }
 
 func (s *Store) SaveGroup(ctx context.Context, g *Group) error {
-	if g.ID == 0 {
-		err := s.Pool.QueryRow(ctx, `INSERT INTO groups (name, ratio, is_public, description) VALUES ($1, $2::numeric, $3, $4) RETURNING id`,
-			g.Name, g.Ratio.String(), g.IsPublic, g.Description).Scan(&g.ID)
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		if g.ID == 0 {
+			err := tx.QueryRow(ctx, `INSERT INTO groups (name, ratio, enabled, is_public, description) VALUES ($1, $2::numeric, $3, $4, $5) RETURNING id`,
+				g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description).Scan(&g.ID)
+			if err != nil {
+				return translate(err)
+			}
+		} else if err := execOne(ctx, tx, `UPDATE groups SET name = $2, ratio = $3::numeric, enabled = $4, is_public = $5, description = $6 WHERE id = $1`,
+			g.ID, g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM group_user_groups WHERE group_id = $1`, g.ID); err != nil {
+			return err
+		}
+		if g.IsPublic || len(g.UserGroupIDs) == 0 {
+			return nil
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO group_user_groups (group_id, user_group_id) SELECT $1, unnest($2::bigint[])`, g.ID, g.UserGroupIDs)
 		return translate(err)
-	}
-	return execOne(ctx, s.Pool, `UPDATE groups SET name = $2, ratio = $3::numeric, is_public = $4, description = $5 WHERE id = $1`,
-		g.ID, g.Name, g.Ratio.String(), g.IsPublic, g.Description)
+	})
 }
 
 func (s *Store) DeleteGroup(ctx context.Context, id int64) error {

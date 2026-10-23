@@ -95,8 +95,8 @@ export default function Keys() {
       </Space>
       <Typography.Paragraph type="secondary">
         {t(
-          '每个 key 属于一个分组，按分组倍率计费。可以给 key 设置限额，用完后这个 key 会被拒绝，账户余额不受影响。',
-          'Each key belongs to a group and is billed at that group\'s ratio. A key can have a spending limit; once reached, that key is rejected while your balance stays untouched.',
+          '每个 key 属于一个服务分组，按该分组倍率计费。可以给 key 设置限额，用完后这个 key 会被拒绝，账户余额不受影响。',
+          'Each key belongs to a service group and is billed at that group\'s ratio. A key can have a spending limit; once reached, that key is rejected while your balance stays untouched.',
         )}
       </Typography.Paragraph>
       <Table
@@ -108,7 +108,7 @@ export default function Keys() {
         columns={[
           { title: t('名称', 'Name'), dataIndex: 'name' },
           { title: 'Key', dataIndex: 'prefix', render: (v) => <span className="mono">{v}…</span> },
-          { title: t('分组', 'Group'), dataIndex: 'group_name', render: (v) => <Tag>{v}</Tag> },
+          { title: t('服务分组', 'Service group'), dataIndex: 'group_name', render: (v) => <Tag>{v}</Tag> },
           {
             title: t('已用 / 限额', 'Used / limit'),
             render: (_, k) => (
@@ -157,7 +157,7 @@ export default function Keys() {
           <Form.Item name="name" label={t('名称', 'Name')} rules={[{ required: true, message: t('起个名字，方便区分用途', 'Give it a name') }]}>
             <Input placeholder={t('例如：笔记本 Claude Code', 'e.g. Laptop Claude Code')} maxLength={50} />
           </Form.Item>
-          <Form.Item name="group_id" label={t('分组', 'Group')} rules={[{ required: true }]}>
+          <Form.Item name="group_id" label={t('服务分组', 'Service group')} rules={[{ required: true }]}>
             <Select
               options={groups.map((g) => ({
                 value: g.id,
