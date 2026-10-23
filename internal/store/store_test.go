@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 )
@@ -51,6 +52,46 @@ func TestMigrateCreatesAllTablesAndIsIdempotent(t *testing.T) {
 	var rate string
 	if err := s.Pool.QueryRow(ctx, `SELECT value FROM settings WHERE key = 'cny_per_usd'`).Scan(&rate); err != nil || rate != "6.7" {
 		t.Errorf("默认汇率不对: %q %v", rate, err)
+	}
+}
+
+func TestMigration0010KeepsWeekendRulesAndDeletesHolidaySetting(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.Pool.Exec(ctx, `INSERT INTO models (name, price_rules) VALUES ($1, $2::jsonb)`,
+		"deepseek-v4.1-flash", `[{"name":"低谷（周末和节假日）","days":"non_workday","input_price":"0.15","output_price":"0.6","cache_read_price":"0.003","cache_write_price":"0"}]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Pool.Exec(ctx, `INSERT INTO settings (key, value) VALUES ('cn_holidays', '["2027-01-01"]')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Pool.Exec(ctx, `DELETE FROM schema_migrations WHERE version = '0010_weekend_only'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var raw string
+	if err := s.Pool.QueryRow(ctx, `SELECT price_rules::text FROM models WHERE name = $1`, "deepseek-v4.1-flash").Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var rules []struct {
+		Name string `json:"name"`
+		Days string `json:"days"`
+	}
+	if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+		t.Fatal(err)
+	}
+	if len(rules) != 1 || rules[0].Days != "weekend" || rules[0].Name != "低谷（周末）" {
+		t.Errorf("周末规则应转换为新条件并更新名称: %+v", rules)
+	}
+	var holidays int
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM settings WHERE key = 'cn_holidays'`).Scan(&holidays); err != nil || holidays != 0 {
+		t.Errorf("节假日设置应删除: count=%d err=%v", holidays, err)
 	}
 }
 

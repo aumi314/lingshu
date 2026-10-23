@@ -255,30 +255,16 @@ func TestModelPriceRules(t *testing.T) {
 	}
 }
 
-func TestHolidaySettings(t *testing.T) {
+func TestSystemSettingsOnlyExposeExchangeRate(t *testing.T) {
 	e := newEnv(t)
 	a := e.login("admin")
-	var got struct {
-		CNHolidays []string `json:"cn_holidays"`
+	if code, raw := a.do("GET", "/api/admin/settings", nil, nil); code != 200 || strings.Contains(raw, "cn_holidays") {
+		t.Errorf("系统设置只返回汇率，不应返回节假日字段：%d %s", code, raw)
 	}
-	a.do("GET", "/api/admin/settings", nil, &got)
-	if got.CNHolidays == nil || len(got.CNHolidays) != 0 {
-		t.Errorf("没设置时应返回空列表: %+v", got)
+	if code, body := a.do("PUT", "/api/admin/settings", map[string]any{"cny_per_usd": "7"}, nil); code != 200 {
+		t.Fatalf("保存汇率: %d %s", code, body)
 	}
-	if code, body := a.do("PUT", "/api/admin/settings", map[string]any{"cny_per_usd": "7", "cn_holidays": []string{"2027-01-02", "2027-01-01", "2027-01-01"}}, nil); code != 200 {
-		t.Fatalf("保存: %d %s", code, body)
-	}
-	a.do("GET", "/api/admin/settings", nil, &got)
-	if strings.Join(got.CNHolidays, ",") != "2027-01-01,2027-01-02" {
-		t.Errorf("应去重排序: %v", got.CNHolidays)
-	}
-	if code, _ := a.do("PUT", "/api/admin/settings", map[string]any{"cny_per_usd": "7", "cn_holidays": []string{"2027/1/1"}}, nil); code != 400 {
-		t.Errorf("格式不对应拒绝，实际 %d", code)
-	}
-	// 只改汇率不传节假日：节假日保持不变
-	a.do("PUT", "/api/admin/settings", map[string]any{"cny_per_usd": "7.1"}, nil)
-	a.do("GET", "/api/admin/settings", nil, &got)
-	if len(got.CNHolidays) != 2 {
-		t.Errorf("不传节假日时不应清空: %v", got.CNHolidays)
+	if code, raw := a.do("GET", "/api/admin/settings", nil, nil); code != 200 || !strings.Contains(raw, `"cny_per_usd":"7"`) || strings.Contains(raw, "cn_holidays") {
+		t.Errorf("汇率应保存且无节假日字段：%d %s", code, raw)
 	}
 }

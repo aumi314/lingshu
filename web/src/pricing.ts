@@ -7,8 +7,7 @@ export function ruleCondition(r: PriceRule, t: (zh: string, en: string) => strin
   else if (r.date_from) parts.push(t(`${r.date_from} 起`, `from ${r.date_from}`))
   else if (r.date_to) parts.push(t(`截至 ${r.date_to}`, `until ${r.date_to}`))
   if (r.input_above != null) parts.push(t(`输入超过 ${r.input_above.toLocaleString()} tokens`, `input > ${r.input_above.toLocaleString()} tokens`))
-  if (r.days === 'workday') parts.push(t('工作日', 'workdays'))
-  if (r.days === 'non_workday') parts.push(t('周末和节假日', 'weekends & holidays'))
+  if (r.days === 'weekend') parts.push(t('周末', 'weekends'))
   if (r.time_start) parts.push(t(`北京时间 ${r.time_start}–${r.time_end}`, `${r.time_start}–${r.time_end} Beijing time`))
   return parts.join(' · ')
 }

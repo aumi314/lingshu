@@ -494,18 +494,12 @@ func (s *Server) adminLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
-	holidays, err := s.Store.Holidays(r.Context())
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"cny_per_usd": s.cnyPerUSD(r), "cn_holidays": holidays})
+	writeJSON(w, http.StatusOK, map[string]any{"cny_per_usd": s.cnyPerUSD(r)})
 }
 
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		CNYPerUSD  decimal.Decimal `json:"cny_per_usd"`
-		CNHolidays *[]string       `json:"cn_holidays"` // 不传表示不改
+		CNYPerUSD decimal.Decimal `json:"cny_per_usd"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -514,23 +508,9 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "汇率要大于 0")
 		return
 	}
-	var holidays []string
-	if in.CNHolidays != nil {
-		var err error
-		if holidays, err = billing.NormalizeHolidays(*in.CNHolidays); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-	}
 	if err := s.Store.SetSetting(r.Context(), "cny_per_usd", in.CNYPerUSD.String()); err != nil {
 		writeStoreError(w, err)
 		return
-	}
-	if in.CNHolidays != nil {
-		if err := s.Store.SetHolidays(r.Context(), holidays); err != nil {
-			writeStoreError(w, err)
-			return
-		}
 	}
 	ok(w)
 }

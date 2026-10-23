@@ -28,7 +28,7 @@ WSL 访问 UM 时调用 `/mnt/c/Windows/System32/OpenSSH/ssh.exe minisforum-um58
 5. 将同一成品传到两端，先执行各自主机的数据库备份；保留现有程序后，在同目录用临时文件加原子替换安装。先发布 DMIT 并验收，再更新 UM。
 6. 重启 `lingshu.service`，检查数据库迁移、主机内部 `/healthz`、公网 HTTPS、真实三协议调用、日志计费。更新两端 `release.json`，确认提交与程序哈希相同。
 
-2026-10-23 的应用功能提交为 `4bef2a13d8bbd7ef654bb788aa2a26643ec74859`（System One）。成品 SHA-256 为 `f94184bf62c270543405752757025f91931b3c6d306d96d5fe026f05a66bdbfd`。后续仅部署文档和运维文件的提交可能具有相同程序哈希，完整发布提交以两端 `release.json` 为准。
+2026-10-23 的应用功能提交为 `4bef2a13d8bbd7ef654bb788aa2a26643ec74859`（System One）。成品 SHA-256 为 `f94184bf62c270543405752757025f91931b3c6d306d96d5fe026f05a66bdbfd`。2026-10-23 后续发布移除了法定节假日定价设置：schema 10 将旧 `days: non_workday` 迁移为 `weekend`、把 DeepSeek 低谷规则名改为“低谷（周末）”，并删除 `settings.cn_holidays`。完整发布提交和成品 SHA-256 以两端 `release.json` 为准。
 
 ## 现役备份与恢复
 

@@ -192,7 +192,7 @@ export default function ModelsAdmin() {
           </Divider>
           <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
             {t(
-              '上面是基础价。规则从上往下匹配，第一条条件全部满足的生效，都不满足用基础价。输入长度 = 输入 + 缓存命中 + 缓存写入；日期和时间都按北京时间、以请求开始时为准，时间段可以跨零点；生效日期用来提前配好涨价、降价或限时价；工作日 = 周一到周五且不是法定节假日（在「系统设置」里维护）。规则价同样乘分组倍率。',
+              '上面是基础价。规则从上往下匹配，第一条条件全部满足的生效，都不满足用基础价。输入长度 = 输入 + 缓存命中 + 缓存写入；日期和时间都按北京时间、以请求开始时为准，时间段可以跨零点；生效日期用来提前配好涨价、降价或限时价；周末按北京时间的周六、周日判断。规则价同样乘分组倍率。',
               'The prices above are the base. Rules are checked top-down; the first whose conditions all match applies, otherwise the base price. Input length = input + cache hit + cache write; time is Beijing time at request start and may wrap past midnight. Group ratios apply to rule prices too.',
             )}
           </Typography.Paragraph>
@@ -231,13 +231,12 @@ export default function ModelsAdmin() {
                       <Form.Item name={[field.name, 'date_to']} label={t('截止日期', 'To date')} rules={[{ pattern: ymd, message: 'YYYY-MM-DD' }]}>
                         <Input style={{ width: 120 }} placeholder={t('不限', 'Any')} />
                       </Form.Item>
-                      <Form.Item name={[field.name, 'days']} label={t('工作日', 'Workdays')}>
+                      <Form.Item name={[field.name, 'days']} label={t('日期条件', 'Days')}>
                         <Select
                           style={{ width: 130 }}
                           options={[
                             { value: '', label: t('不限', 'Any day') },
-                            { value: 'workday', label: t('仅工作日', 'Workdays') },
-                            { value: 'non_workday', label: t('周末和节假日', 'Weekends & holidays') },
+                            { value: 'weekend', label: t('仅周末', 'Weekends only') },
                           ]}
                         />
                       </Form.Item>
