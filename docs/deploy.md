@@ -38,6 +38,8 @@ WSL 访问 UM 时调用 `/mnt/c/Windows/System32/OpenSSH/ssh.exe minisforum-um58
 
 2026-10-23 OpenAI Platform 图标发布：提交 `5270ebd68ee44ba2f6f308a39fc9c074f4ce4e8c`，图标使用仓库已有的 `openai.svg`，接入管理端渠道列表和模板选择。两端成品 SHA-256 `678a2ccf81169174432da3c09b70fd767067e98a8d01d58cdd9af85318130a46` 一致；发布前 DMIT 备份 `/var/backups/lingshu/lingshu-20261023T230402Z.dump`，UM580D 备份 `/var/backups/lingshu/lingshu-20261024-070406.dump`。两端本机和公网健康检查均返回 200；两个公网首页加载的 JS bundle 均含 OpenAI 模板图标映射。
 
+2026-10-23 DMIT 上线 Kimi K3.1 Pro：数据库变更前备份 `/var/backups/lingshu/lingshu-20261023T233119Z.dump`。新增模型 id=26 `kimi-k3.1-pro`，按官方价格设置输入 `$2`、输出 `$10`、缓存命中 `$0.20`、缓存写入 `$2`/百万 token，并映射到已启用的 Moonshot 渠道 id=4。渠道原有服务分组 `Official` 不变；不含 highspeed，不改 UM。使用该渠道现有 key 向 Moonshot 发真实 Chat Completions 请求，HTTP 200，返回内容非空，usage 为输入 90、输出 58 tokens。
+
 ## 现役备份与恢复
 
 两端每日备份保留最近 14 份。DMIT 脚本在 `deploy/backup/lingshu-dmit-backup`，PostgreSQL 数据卷和 PiQode 原有 PostgreSQL 15 完全独立。
