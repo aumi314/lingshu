@@ -115,7 +115,7 @@ export default function Channels() {
       template: undefined,
       priority: 0,
       enabled: true,
-      group_ids: groups.filter((g) => g.is_public && g.enabled).map((g) => g.id),
+      group_ids: groups.filter((g) => g.name === 'default' && g.enabled).map((g) => g.id),
     })
     setRows([])
     setEditing('new')
