@@ -32,6 +32,8 @@ WSL 访问 UM 时调用 `/mnt/c/Windows/System32/OpenSSH/ssh.exe minisforum-um58
 
 2026-10-23 用户分组权限发布：应用提交 `102f002180bd818c3f1f809bfccf3d2bbc47bc9c`，成品 SHA-256 `0e164f21f3880887713e2d9fc599fc8e6af00eb506f8bd1195e3f0c0db563b6e`。schema 11 将旧逐用户特殊分组授权迁移为用户分组成员资格和服务分组允许列表；两个数据库均确认有唯一 `default` 用户分组、没有用户缺少分组。DMIT 发布前备份为 `/var/backups/lingshu/lingshu-20261023T114127Z.dump`，UM580D 发布前备份为 `/var/backups/lingshu/lingshu-20261023-194707.dump`。两端 schema 均为 `0011_user_groups_and_group_scope`，服务健康检查和公网页面均返回 200，前端资源包含用户分组设置。发布前二进制保留为 `/opt/lingshu/lingshu.prev-102f002`。回滚此版本时要先从对应备份恢复数据库，再启动旧二进制；旧程序不兼容 schema 11 的用户分组表结构。
 
+2026-10-23 渠道默认分组发布：新建渠道默认只选启用的 `default` 服务分组。应用提交 `4024abed7cf3a0b629a1eff4bd9f328538688487`，成品 SHA-256 `437e1fc19f958d5c28f78fe7a0b98566f22af9c3a2d76490111683de6fd47da1`。发布前 DMIT 备份为 `/var/backups/lingshu/lingshu-20261023T123958Z.dump`，UM580D 备份为 `/var/backups/lingshu/lingshu-20261023-204016.dump`。schema 未变化；两端二进制哈希一致，内部健康检查及两个公网入口均返回 200。发布前二进制保留为 `/opt/lingshu/lingshu.prev-4024abe`。
+
 ## 现役备份与恢复
 
 两端每日备份保留最近 14 份。DMIT 脚本在 `deploy/backup/lingshu-dmit-backup`，PostgreSQL 数据卷和 PiQode 原有 PostgreSQL 15 完全独立。
