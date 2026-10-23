@@ -46,6 +46,8 @@ var channelTemplates = []ChannelTemplate{
 	{ID: "openrouter", Name: "OpenRouter", BaseURLChat: "https://openrouter.ai/api/v1", BaseURLMessages: "https://openrouter.ai/api",
 		BaseURLResponses: "https://openrouter.ai/api/v1", HasModelList: true, ProxyURL: "socks5://127.0.0.1:10808",
 		Note: "三种协议都支持。从中国访问 Claude、GPT 等模型会被按地区拒绝，需要走代理（已预填本机出境代理）。模型名带厂商前缀，如 anthropic/claude-opus-5.5"},
+	{ID: "openai-platform", Name: "OpenAI Platform", BaseURLChat: "https://api.openai.com/v1", BaseURLResponses: "https://api.openai.com/v1",
+		HasModelList: true, Note: "OpenAI 官方 Platform API；支持 Chat Completions 和 Responses，不提供 Anthropic Messages 协议"},
 	{ID: "typesafe", Name: "TypeSafe", BaseURLSystemOne: "https://api.typesafe.ai/v1", HasModelList: true,
 		Note: "Jev 决策模型，使用 System One 协议（state + questions），不支持聊天或流式输出；输出 token 免费，模型价格在定价页设置"},
 	{ID: "nace", Name: "Nace", BaseURLSystemOne: "https://console.nace.ai/v1", HasModelList: true,
