@@ -5,3 +5,4 @@
 - gemini.svg：Google Gemini。
 - `*-color.svg`（含 hunyuan-color）：同一图标包的彩色版，用在管理端渠道列表里标识模板厂商。Kimi 的彩色版含白色部分，浅色主题下看不清，仍用单色版；MiMo 的图标是一行小字，渠道列表里改用小米标志 `xiaomi-color.svg`（来自 simple-icons 16.35.0，CC0，填了小米橙 #FF6900）。
 - `typesafe.png`、`nace.svg`：分别取自 [TypeSafe AI 官网](https://typesafe.ai) favicon 和 [Nace.AI 官网图标](https://www.nace.ai/icon.svg)，用于管理端渠道列表和模板选择；品牌图形仅用于识别对应厂商。
+- `openai.svg`：OpenAI 标志，也用于 OpenAI Platform 渠道列表和模板选择。

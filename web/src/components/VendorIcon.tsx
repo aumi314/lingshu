@@ -10,6 +10,7 @@ import kimi from '../assets/logos/kimi.svg?raw'
 import xiaomi from '../assets/logos/xiaomi-color.svg?raw'
 import hunyuan from '../assets/logos/hunyuan-color.svg?raw'
 import openrouter from '../assets/logos/openrouter.svg?raw'
+import openai from '../assets/logos/openai.svg?raw'
 import nace from '../assets/logos/nace.svg?raw'
 import typesafe from '../assets/logos/typesafe.png'
 
@@ -24,6 +25,7 @@ const icons: Record<string, string> = {
   mimo: xiaomi,
   hunyuan,
   openrouter,
+  'openai-platform': openai,
   nace,
 }
 
