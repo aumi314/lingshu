@@ -195,8 +195,8 @@ resp = client.chat.completions.create(
       char: '透',
       title: t('原样透传，分毫不改', 'Passed through, untouched'),
       text: t(
-        'Chat Completions、Responses、Anthropic Messages 三种协议原样转发。思考、工具调用、提示缓存都和直连官方一样。',
-        'Chat Completions, Responses and Anthropic Messages, forwarded as-is. Reasoning, tool calls and prompt caching behave exactly like going direct.',
+        'Chat Completions、Responses、Anthropic Messages、System One 四种协议原样转发。聊天和决策请求都用同一把 key。',
+        'Chat Completions, Responses, Anthropic Messages and System One, forwarded as-is. One key for chat and decision requests.',
       ),
     },
     {
@@ -264,7 +264,7 @@ resp = client.chat.completions.create(
 
       <section className="ls-stats" data-reveal>
         {([
-          [3, t('种协议', 'protocols')],
+          [4, t('种协议', 'protocols')],
           [6, t('家厂商', 'vendors')],
           [1, t('把 key', 'key')],
           [10, t('位小数记账', 'decimal places')],

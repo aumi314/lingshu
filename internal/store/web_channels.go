@@ -30,6 +30,7 @@ type Channel struct {
 	BaseURLChat      string         `json:"base_url_chat"`
 	BaseURLMessages  string         `json:"base_url_messages"`
 	BaseURLResponses string         `json:"base_url_responses"`
+	BaseURLSystemOne string         `json:"base_url_systemone"`
 	ProxyURL         string         `json:"proxy_url"` // 空表示直连
 	GroupIDs         []int64        `json:"group_ids"`
 	Models           []ChannelModel `json:"models"`
@@ -45,7 +46,7 @@ func maskKey(k string) string {
 func (s *Store) ListChannels(ctx context.Context) ([]*Channel, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT c.id, c.name, c.template, c.api_key, c.priority, c.enabled,
-		       c.base_url_chat, c.base_url_messages, c.base_url_responses, c.proxy_url,
+		       c.base_url_chat, c.base_url_messages, c.base_url_responses, c.base_url_systemone, c.proxy_url,
 		       COALESCE((SELECT array_agg(group_id ORDER BY group_id) FROM channel_groups WHERE channel_id = c.id), '{}')
 		FROM channels c ORDER BY c.sort_order, c.id`)
 	if err != nil {
@@ -57,7 +58,7 @@ func (s *Store) ListChannels(ctx context.Context) ([]*Channel, error) {
 		c := &Channel{Models: []ChannelModel{}}
 		var key string
 		if err := rows.Scan(&c.ID, &c.Name, &c.Template, &key, &c.Priority, &c.Enabled,
-			&c.BaseURLChat, &c.BaseURLMessages, &c.BaseURLResponses, &c.ProxyURL, &c.GroupIDs); err != nil {
+			&c.BaseURLChat, &c.BaseURLMessages, &c.BaseURLResponses, &c.BaseURLSystemOne, &c.ProxyURL, &c.GroupIDs); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -93,8 +94,8 @@ func (s *Store) ListChannels(ctx context.Context) ([]*Channel, error) {
 // ChannelSecret 返回渠道的完整配置（含 key），只给服务器内部用（拉取模型、冒烟测试）。
 func (s *Store) ChannelSecret(ctx context.Context, id int64) (*Channel, error) {
 	var c Channel
-	err := s.Pool.QueryRow(ctx, `SELECT id, name, template, api_key, base_url_chat, base_url_messages, base_url_responses, proxy_url
-		FROM channels WHERE id = $1`, id).Scan(&c.ID, &c.Name, &c.Template, &c.APIKey, &c.BaseURLChat, &c.BaseURLMessages, &c.BaseURLResponses, &c.ProxyURL)
+	err := s.Pool.QueryRow(ctx, `SELECT id, name, template, api_key, base_url_chat, base_url_messages, base_url_responses, base_url_systemone, proxy_url
+		FROM channels WHERE id = $1`, id).Scan(&c.ID, &c.Name, &c.Template, &c.APIKey, &c.BaseURLChat, &c.BaseURLMessages, &c.BaseURLResponses, &c.BaseURLSystemOne, &c.ProxyURL)
 	if err != nil {
 		return nil, translate(err)
 	}
@@ -109,18 +110,18 @@ func (s *Store) SaveChannel(ctx context.Context, c *Channel) error {
 				return fmt.Errorf("新建渠道必须填写 API key")
 			}
 			if err := tx.QueryRow(ctx, `
-				INSERT INTO channels (name, template, api_key, priority, enabled, base_url_chat, base_url_messages, base_url_responses, proxy_url, sort_order)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, (SELECT COALESCE(max(sort_order), 0) + 1 FROM channels)) RETURNING id`,
-				c.Name, c.Template, c.APIKey, c.Priority, c.Enabled, c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses, c.ProxyURL,
+				INSERT INTO channels (name, template, api_key, priority, enabled, base_url_chat, base_url_messages, base_url_responses, base_url_systemone, proxy_url, sort_order)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, (SELECT COALESCE(max(sort_order), 0) + 1 FROM channels)) RETURNING id`,
+				c.Name, c.Template, c.APIKey, c.Priority, c.Enabled, c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses, c.BaseURLSystemOne, c.ProxyURL,
 			).Scan(&c.ID); err != nil {
 				return translate(err)
 			}
 		} else {
 			if err := execOne(ctx, tx, `
 				UPDATE channels SET name = $2, template = $3, api_key = COALESCE(NULLIF($4, ''), api_key), priority = $5,
-				       enabled = $6, base_url_chat = $7, base_url_messages = $8, base_url_responses = $9, proxy_url = $10
+				       enabled = $6, base_url_chat = $7, base_url_messages = $8, base_url_responses = $9, proxy_url = $10, base_url_systemone = $11
 				WHERE id = $1`,
-				c.ID, c.Name, c.Template, c.APIKey, c.Priority, c.Enabled, c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses, c.ProxyURL,
+				c.ID, c.Name, c.Template, c.APIKey, c.Priority, c.Enabled, c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses, c.ProxyURL, c.BaseURLSystemOne,
 			); err != nil {
 				return err
 			}

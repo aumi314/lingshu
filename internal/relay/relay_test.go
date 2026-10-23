@@ -84,6 +84,7 @@ func newEnv(t *testing.T) *env {
 	mux.Handle("POST /v1/chat/completions", h.Serve(usage.Chat))
 	mux.Handle("POST /v1/messages", h.Serve(usage.Messages))
 	mux.Handle("POST /v1/responses", h.Serve(usage.Responses))
+	mux.Handle("POST /v1/systemone", h.Serve(usage.SystemOne))
 	mux.HandleFunc("GET /v1/models", h.ServeModels)
 	e.gateway = httptest.NewServer(mux)
 	t.Cleanup(e.gateway.Close)

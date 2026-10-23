@@ -1,0 +1,1 @@
+{"model":"drex-v2.0","answers":{"is_urgent":{"type":"noul","noul":0.7353}},"usage":{"input_tokens":26,"output_tokens":24},"evaluation_time_ms":48.914,"request_id":"req_fixture"}

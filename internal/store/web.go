@@ -338,7 +338,8 @@ func (s *Store) PricedModels(ctx context.Context, groupIDs []int64) ([]PricedMod
 		       array_remove(ARRAY[
 		           CASE WHEN bool_or(c.base_url_chat <> '') THEN 'chat' END,
 		           CASE WHEN bool_or(c.base_url_messages <> '') THEN 'messages' END,
-		           CASE WHEN bool_or(c.base_url_responses <> '') THEN 'responses' END], NULL),
+		           CASE WHEN bool_or(c.base_url_responses <> '') THEN 'responses' END,
+		           CASE WHEN bool_or(c.base_url_systemone <> '') THEN 'systemone' END], NULL),
 		       (m.input_price * g.ratio)::text, (m.output_price * g.ratio)::text,
 		       (m.cache_read_price * g.ratio)::text, (m.cache_write_price * g.ratio)::text,
 		       m.price_rules, g.ratio::text

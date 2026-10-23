@@ -4,7 +4,7 @@ import { get, type Group, type PricedModel } from '../api'
 import { priceText, useApp } from '../app'
 import { ruleCondition } from '../pricing'
 
-const entry: Record<string, string> = { chat: '/v1/chat/completions', messages: '/v1/messages', responses: '/v1/responses' }
+const entry: Record<string, string> = { chat: '/v1/chat/completions', messages: '/v1/messages', responses: '/v1/responses', systemone: '/v1/systemone' }
 
 export default function Models() {
   const { money, t, currency } = useApp()

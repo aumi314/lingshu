@@ -12,7 +12,7 @@
 
 | 路径 | 用途 | 鉴权 |
 |---|---|---|
-| `/v1/chat/completions`、`/v1/messages`、`/v1/responses` | 网关透传 | API key（`Authorization: Bearer` 或 `x-api-key`） |
+| `/v1/chat/completions`、`/v1/messages`、`/v1/responses`、`/v1/systemone` | 网关透传 | API key（`Authorization: Bearer` 或 `x-api-key`） |
 | `/api/...` | 管理端和用户端的 JSON 接口 | 登录会话（cookie） |
 | `/` 其余路径 | 前端页面（构建产物嵌入二进制） | 前端自己判断登录状态 |
 
@@ -30,7 +30,7 @@ lingshu/
 ├── internal/
 │   ├── config/             # 读环境变量
 │   ├── store/              # 数据库访问 + migrations/*.sql
-│   ├── relay/              # 三个协议的透传：改写请求、转发、流式转发
+│   ├── relay/              # 四个协议的透传：改写请求、转发；聊天协议支持流式
 │   │   └── usage/          # 各协议 usage 解析和统一口径
 │   ├── router/             # 选渠道、重试、渠道冷却
 │   ├── billing/            # 算钱、结算、准入检查
@@ -52,7 +52,7 @@ lingshu/
 | `groups` | name、ratio、is_public | 公开分组所有人可用 |
 | `user_groups` | user_id、group_id | 特殊分组的授权 |
 | `models` | name（站内标准名，唯一）、input / output / cache_read / cache_write 价格、enabled | 价格只挂在这里 |
-| `channels` | name、template、api_key、priority、enabled、base_url_chat / base_url_messages / base_url_responses | 填了哪个协议的地址，就算支持哪个协议 |
+| `channels` | name、template、api_key、priority、enabled、base_url_chat / base_url_messages / base_url_responses / base_url_systemone | 填了哪个协议的地址，就算支持哪个协议 |
 | `channel_groups` | channel_id、group_id | 渠道属于哪些分组 |
 | `channel_models` | channel_id、model_id、upstream_name | 名称映射；upstream_name 为空表示和标准名相同 |
 | `api_keys` | user_id、name、key_hash、key_prefix、group_id、quota_limit、quota_used、enabled、last_used_at | 只存哈希，完整 key 创建时只显示一次 |
@@ -77,6 +77,7 @@ lingshu/
 | chat | `prompt_tokens` − 缓存读 − 缓存写 | `prompt_tokens_details.cached_tokens` | `prompt_tokens_details.cache_write_tokens`（Moonshot） | `completion_tokens` |
 | messages | `input_tokens` | `cache_read_input_tokens` | `cache_creation_input_tokens` | `output_tokens` |
 | responses | `input_tokens` − `cached_tokens` | `input_tokens_details.cached_tokens` | — | `output_tokens` |
+| systemone | `input_tokens` | — | — | `output_tokens` |
 
 - 流里每个字段取最后出现的值，不累加。
 - 拿不到 usage：输入用请求体估算，输出用已转发内容估算，`usage_estimated = true`。估算规则：中日韩文字每字 1 token，其他字符每 4 字节 1 token（各家分词器都不是 tiktoken，引入它不会更准）。
@@ -202,6 +203,8 @@ lingshu/
 ## MVP 之后（2026-10-19 → 10-21）
 
 团队正式使用前的加固和运营工具。决策细节见 `docs/decisions.md` 对应小节。
+
+System One 接入（2026-10-22，✅ 本地实现并验证，未发布）：迁移 `0009` 新增独立渠道地址，加入 TypeSafe / Nace 模板、`/v1/systemone` 透传与用量解析、模型拉取和非流式冒烟测试；管理端及用户端展示协议入口。全量 Go 测试、前端类型检查和 `make build` 通过（构建使用本机已有的 WSL Node 22.22.3）。已验证真实响应样本、鉴权和失败不扣费、529 重试与只结算一次、完整 / 缺失用量、渠道配置读写；两家真实上游的 `noul` / `choice` / `score` 请求经本地最终构建成功，日志金额与输入单价精确一致。浏览器检查模板切换、地址预填、渠道测试和用户模型页通过。详情及复验步骤见 [System One 接入记录](research/systemone.md)。
 
 | 项 | 状态 | 说明 |
 |---|---|---|

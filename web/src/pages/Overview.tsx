@@ -26,6 +26,7 @@ export default function Overview() {
     { protocol: 'OpenAI Chat Completions', url: `${base}/v1/chat/completions`, sdk: `${base}/v1` },
     { protocol: 'OpenAI Responses', url: `${base}/v1/responses`, sdk: `${base}/v1` },
     { protocol: 'Anthropic Messages', url: `${base}/v1/messages`, sdk: base },
+    { protocol: 'System One (TypeSafe / Nace)', url: `${base}/v1/systemone`, sdk: base },
   ]
 
   return (

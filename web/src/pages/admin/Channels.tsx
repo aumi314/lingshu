@@ -36,13 +36,14 @@ type FormValues = {
   base_url_chat: string
   base_url_messages: string
   base_url_responses: string
+  base_url_systemone: string
   proxy_url: string
   priority: number
   enabled: boolean
   group_ids: number[]
 }
 
-const protocolLabel: Record<string, string> = { chat: 'chat', messages: 'messages', responses: 'responses' }
+const protocolLabel: Record<string, string> = { chat: 'chat', messages: 'messages', responses: 'responses', systemone: 'System One' }
 let rowSeq = 1
 
 export default function Channels() {
@@ -135,6 +136,7 @@ export default function Channels() {
       base_url_chat: tpl.base_url_chat,
       base_url_messages: tpl.base_url_messages,
       base_url_responses: tpl.base_url_responses,
+      base_url_systemone: tpl.base_url_systemone,
       proxy_url: tpl.proxy_url ?? '',
     })
     if (tpl.preset_models?.length) addRows(tpl.preset_models)
@@ -149,6 +151,7 @@ export default function Channels() {
       base_url_chat: v.base_url_chat ?? '',
       base_url_messages: v.base_url_messages ?? '',
       base_url_responses: v.base_url_responses ?? '',
+      base_url_systemone: v.base_url_systemone ?? '',
       proxy_url: v.proxy_url ?? '',
     }
   }
@@ -169,7 +172,7 @@ export default function Channels() {
   }
 
   const runProbe = async (d: ReturnType<typeof draft>, upstreams: string[]) => {
-    const protocols = (['chat', 'messages', 'responses'] as const).filter((p) => d[`base_url_${p}`])
+    const protocols = (['chat', 'messages', 'responses', 'systemone'] as const).filter((p) => d[`base_url_${p}`])
     const targets = upstreams.flatMap((m) => protocols.map((p) => ({ protocol: p, model: m })))
     if (!targets.length) {
       message.warning(t('先添加模型、填好协议地址', 'Add models and protocol URLs first'))
@@ -251,8 +254,8 @@ export default function Channels() {
     }
   }
 
-  const protocols = (c: Pick<Channel, 'base_url_chat' | 'base_url_messages' | 'base_url_responses'>) =>
-    (['chat', 'messages', 'responses'] as const).filter((p) => c[`base_url_${p}`])
+  const protocols = (c: Pick<Channel, 'base_url_chat' | 'base_url_messages' | 'base_url_responses' | 'base_url_systemone'>) =>
+    (['chat', 'messages', 'responses', 'systemone'] as const).filter((p) => c[`base_url_${p}`])
 
   const templateID = Form.useWatch('template', form)
   const currentTemplate = templates.find((x) => x.id === templateID)
@@ -348,7 +351,7 @@ export default function Channels() {
             align: 'right',
             render: (_, c) => (
               <Space>
-                <Button size="small" type="link" onClick={() => runProbe({ id: c.id, api_key: '', base_url_chat: c.base_url_chat, base_url_messages: c.base_url_messages, base_url_responses: c.base_url_responses, proxy_url: c.proxy_url }, c.models.map((m) => m.upstream_name || m.model_name))}>
+                <Button size="small" type="link" onClick={() => runProbe({ id: c.id, api_key: '', base_url_chat: c.base_url_chat, base_url_messages: c.base_url_messages, base_url_responses: c.base_url_responses, base_url_systemone: c.base_url_systemone, proxy_url: c.proxy_url }, c.models.map((m) => m.upstream_name || m.model_name))}>
                   {t('测试', 'Test')}
                 </Button>
                 <Button size="small" type="link" onClick={() => openEdit(c)}>
@@ -452,9 +455,9 @@ export default function Channels() {
           </Form.Item>
           <Typography.Text type="secondary">{t('各协议的地址（上游不支持的协议留空）', 'Base URL per protocol (leave unsupported ones empty)')}</Typography.Text>
           <div style={{ marginTop: 8 }}>
-            {(['chat', 'messages', 'responses'] as const).map((p) => (
+            {(['chat', 'messages', 'responses', 'systemone'] as const).map((p) => (
               <Form.Item key={p} name={`base_url_${p}`} style={{ marginBottom: 8 }}>
-                <Input addonBefore={<span style={{ display: 'inline-block', width: 72 }}>{protocolLabel[p]}</span>} placeholder={{ chat: 'https://…/v1', messages: 'https://…/anthropic', responses: 'https://…/v1' }[p]} className="mono" />
+                <Input addonBefore={<span style={{ display: 'inline-block', width: 88 }}>{protocolLabel[p]}</span>} placeholder={{ chat: 'https://…/v1', messages: 'https://…/anthropic', responses: 'https://…/v1', systemone: 'https://…/v1' }[p]} className="mono" />
               </Form.Item>
             ))}
           </div>
@@ -584,7 +587,7 @@ export default function Channels() {
             pagination={false}
             dataSource={probe ?? []}
             columns={[
-              { title: t('协议', 'Protocol'), dataIndex: 'protocol' },
+              { title: t('协议', 'Protocol'), dataIndex: 'protocol', render: (v) => protocolLabel[v] ?? v },
               { title: t('上游模型', 'Upstream model'), dataIndex: 'model', render: (v) => <span className="mono">{v}</span> },
               {
                 title: t('结果', 'Result'),
@@ -601,12 +604,12 @@ export default function Channels() {
               { title: t('首字', 'First byte'), dataIndex: 'first_byte_ms', render: (v) => (v ? `${(v / 1000).toFixed(1)}s` : '-') },
               { title: t('总耗时', 'Total'), dataIndex: 'total_ms', render: (v) => `${(v / 1000).toFixed(1)}s` },
               {
-                title: t('流式用量', 'Stream usage'),
+                title: t('用量（输入 / 输出）', 'Usage (input / output)'),
                 render: (_, r) =>
                   !r.ok ? '-' : r.usage_reported ? (
                     <span>{r.input_tokens} / {r.output_tokens}</span>
                   ) : (
-                    <Tooltip title={t('上游流里没有返回用量，这个渠道只能按内容估算计费', 'No usage in the stream; billing will be estimated')}>
+                    <Tooltip title={t('上游没有返回用量，这个渠道只能按内容估算计费', 'No usage returned; billing will be estimated')}>
                       <Tag icon={<WarningFilled />} color="warning">{t('无', 'none')}</Tag>
                     </Tooltip>
                   ),

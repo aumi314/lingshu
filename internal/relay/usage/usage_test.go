@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// testdata 里是 2026-10-18 从真实上游抓的响应原文（scripts/capture-fixtures.py）。
+// testdata 包含 2026-10-18 的聊天协议原文和 2026-10-22 的 System One 真实响应。
 func TestFixtures(t *testing.T) {
 	cases := []struct {
 		file       string
@@ -33,6 +33,9 @@ func TestFixtures(t *testing.T) {
 		// 阿里 message_start 里 input_tokens=7 不准，必须以 message_delta 的 68 为准
 		{"dashscope_messages.json", Messages, Usage{Input: 68, Output: 30}, ""},
 		{"dashscope_messages.sse", Messages, Usage{Input: 68, Output: 41}, ""},
+		// 2026-10-22 真实 System One 响应；Nace 的 request_id 已换成固定样本值。
+		{"typesafe_systemone.json", Protocol("systemone"), Usage{Input: 283, Output: 23}, ""},
+		{"nace_systemone.json", Protocol("systemone"), Usage{Input: 26, Output: 24}, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.file, func(t *testing.T) {

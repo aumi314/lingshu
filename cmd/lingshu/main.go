@@ -116,6 +116,7 @@ func serve() error {
 	mux.Handle("POST /v1/chat/completions", h.Serve(usage.Chat))
 	mux.Handle("POST /v1/messages", h.Serve(usage.Messages))
 	mux.Handle("POST /v1/responses", h.Serve(usage.Responses))
+	mux.Handle("POST /v1/systemone", h.Serve(usage.SystemOne))
 	mux.HandleFunc("GET /v1/models", h.ServeModels)
 	dist, _ := fs.Sub(web.Dist, "dist")
 	apiServer := &api.Server{Store: s, Relay: h, Web: dist}

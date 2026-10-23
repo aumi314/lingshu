@@ -342,6 +342,7 @@ func (s *Server) saveChannel(w http.ResponseWriter, r *http.Request) {
 	c.BaseURLChat = strings.TrimRight(strings.TrimSpace(c.BaseURLChat), "/")
 	c.BaseURLMessages = strings.TrimRight(strings.TrimSpace(c.BaseURLMessages), "/")
 	c.BaseURLResponses = strings.TrimRight(strings.TrimSpace(c.BaseURLResponses), "/")
+	c.BaseURLSystemOne = strings.TrimRight(strings.TrimSpace(c.BaseURLSystemOne), "/")
 	c.ProxyURL = strings.TrimSpace(c.ProxyURL)
 	if err := relay.ValidateProxyURL(c.ProxyURL); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -351,14 +352,14 @@ func (s *Server) saveChannel(w http.ResponseWriter, r *http.Request) {
 	case c.Name == "":
 		writeError(w, http.StatusBadRequest, "渠道名不能为空")
 		return
-	case c.BaseURLChat == "" && c.BaseURLMessages == "" && c.BaseURLResponses == "":
+	case c.BaseURLChat == "" && c.BaseURLMessages == "" && c.BaseURLResponses == "" && c.BaseURLSystemOne == "":
 		writeError(w, http.StatusBadRequest, "至少填一个协议的地址")
 		return
 	case c.ID == 0 && c.APIKey == "":
 		writeError(w, http.StatusBadRequest, "新建渠道要填 API key")
 		return
 	}
-	for _, u := range []string{c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses} {
+	for _, u := range []string{c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses, c.BaseURLSystemOne} {
 		if u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 			writeError(w, http.StatusBadRequest, "地址要以 https:// 开头: "+u)
 			return

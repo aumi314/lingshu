@@ -8,13 +8,14 @@ type ChannelTemplate struct {
 	BaseURLChat      string   `json:"base_url_chat"`
 	BaseURLMessages  string   `json:"base_url_messages"`
 	BaseURLResponses string   `json:"base_url_responses"`
+	BaseURLSystemOne string   `json:"base_url_systemone"`
 	HasModelList     bool     `json:"has_model_list"` // 上游有没有 /models 接口
 	PresetModels     []string `json:"preset_models"`  // 没有 /models 接口时预置的模型名
 	ProxyURL         string   `json:"proxy_url"`      // 需要走代理的上游，套模板时自动填上
 	Note             string   `json:"note"`
 }
 
-// 协议地址都经过 2026-10-18 实测（灵枢冒烟测试，三种协议 × 各家模型，流式 usage 都有），见 docs/research/upstream-protocols.md。
+// 聊天协议地址见 docs/research/upstream-protocols.md；System One 地址于 2026-10-22 实测，见 docs/research/systemone.md。
 var channelTemplates = []ChannelTemplate{
 	{ID: "deepseek", Name: "DeepSeek", BaseURLChat: "https://api.deepseek.com", BaseURLMessages: "https://api.deepseek.com/anthropic",
 		BaseURLResponses: "https://api.deepseek.com", HasModelList: true, Note: "按量计费，三种协议都支持"},
@@ -45,5 +46,9 @@ var channelTemplates = []ChannelTemplate{
 	{ID: "openrouter", Name: "OpenRouter", BaseURLChat: "https://openrouter.ai/api/v1", BaseURLMessages: "https://openrouter.ai/api",
 		BaseURLResponses: "https://openrouter.ai/api/v1", HasModelList: true, ProxyURL: "socks5://127.0.0.1:10808",
 		Note: "三种协议都支持。从中国访问 Claude、GPT 等模型会被按地区拒绝，需要走代理（已预填本机出境代理）。模型名带厂商前缀，如 anthropic/claude-opus-5.5"},
+	{ID: "typesafe", Name: "TypeSafe", BaseURLSystemOne: "https://api.typesafe.ai/v1", HasModelList: true,
+		Note: "Jev 决策模型，使用 System One 协议（state + questions），不支持聊天或流式输出；输出 token 免费，模型价格在定价页设置"},
+	{ID: "nace", Name: "Nace", BaseURLSystemOne: "https://console.nace.ai/v1", HasModelList: true,
+		Note: "Drex 决策模型，使用 System One 协议（state + questions），不支持聊天或流式输出；输出 token 免费，模型价格在定价页设置"},
 	{ID: "custom", Name: "自定义", HasModelList: true, Note: "按上游文档填写各协议的地址"},
 }

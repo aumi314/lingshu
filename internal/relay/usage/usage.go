@@ -1,4 +1,4 @@
-// Package usage 从三种协议的响应里提取 token 用量，并换算成统一口径。
+// Package usage 从各协议的响应里提取 token 用量，并换算成统一口径。
 //
 // 统一口径：Input 不含缓存部分；CacheRead、CacheWrite 单独计；Output 含推理 token。
 // 流式响应里每个字段取最后出现的值（不累加）：StepFun 每块都带累计值，
@@ -16,6 +16,7 @@ const (
 	Chat      Protocol = "chat"
 	Messages  Protocol = "messages"
 	Responses Protocol = "responses"
+	SystemOne Protocol = "systemone"
 )
 
 // Usage 是统一口径的用量。
@@ -44,8 +45,15 @@ func NewTracker(p Protocol) *Tracker {
 	return &Tracker{proto: p, fields: map[string]int64{}}
 }
 
-// Seen 表示是否拿到过任何 usage 字段。
-func (t *Tracker) Seen() bool { return len(t.fields) > 0 }
+// Seen 表示拿到了可计费用量；System One 必须同时有输入和输出字段（显式 0 也有效）。
+func (t *Tracker) Seen() bool {
+	if t.proto == SystemOne {
+		_, input := t.fields["input"]
+		_, output := t.fields["output"]
+		return input && output
+	}
+	return len(t.fields) > 0
+}
 
 func (t *Tracker) set(name string, v *int64) {
 	if v != nil {
@@ -103,6 +111,9 @@ func (t *Tracker) observeUsage(u *rawUsage) {
 		t.set("output", u.OutputTokens)
 		t.set("cache_read", u.CacheReadInputTokens)
 		t.set("cache_write", u.CacheCreationInputTokens)
+	case SystemOne:
+		t.set("input", u.InputTokens)
+		t.set("output", u.OutputTokens)
 	case Responses:
 		t.set("input", u.InputTokens)
 		t.set("output", u.OutputTokens)
@@ -126,6 +137,17 @@ func (t *Tracker) ObserveBody(body []byte) {
 	}
 	t.observeUsage(v.Usage)
 	t.estOutput = estimateOutput(body)
+	if t.proto == SystemOne {
+		var decision struct {
+			Answers map[string]json.RawMessage `json:"answers"`
+		}
+		if json.Unmarshal(body, &decision) != nil || len(decision.Answers) == 0 {
+			t.Failed = true
+			return
+		}
+		answers, _ := json.Marshal(decision.Answers)
+		t.estOutput = EstimateText(string(answers))
+	}
 	if t.proto == Responses && v.ID != "" {
 		t.ResponseID = v.ID
 	}
@@ -202,6 +224,8 @@ func (t *Tracker) Result() Usage {
 		u.CacheRead = f["cache_read"]
 		u.CacheWrite = f["cache_write"]
 		u.Output = f["output"]
+	case SystemOne:
+		u.Input, u.Output = f["input"], f["output"]
 	case Responses:
 		u.CacheRead = f["cached"]
 		u.Input = max(f["input"]-u.CacheRead, 0)

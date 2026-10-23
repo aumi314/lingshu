@@ -32,6 +32,7 @@ var upstreamPaths = map[usage.Protocol]string{
 	usage.Chat:      "/chat/completions",
 	usage.Messages:  "/v1/messages",
 	usage.Responses: "/responses",
+	usage.SystemOne: "/systemone",
 }
 
 // 各协议对应的灵枢入口，用于提示用户换入口。
@@ -39,6 +40,7 @@ var entryPaths = map[string]string{
 	"chat":      "/v1/chat/completions",
 	"messages":  "/v1/messages",
 	"responses": "/v1/responses",
+	"systemone": "/v1/systemone",
 }
 
 type Handler struct {
@@ -149,6 +151,10 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 	}
 	c.log.Model, c.log.Stream = req.model, req.stream
 	c.body = body
+	if c.proto == usage.SystemOne && req.stream {
+		c.reject(w, http.StatusBadRequest, "System One 不支持流式调用，请移除 stream 或设为 false")
+		return
+	}
 
 	if !owner.GroupAllowed {
 		c.reject(w, http.StatusForbidden, "你已经没有这个 key 所在分组的使用权限，请换一个 key 或联系管理员")
@@ -369,8 +375,12 @@ func (h *Handler) relayBody(w http.ResponseWriter, c *call, route store.Route, r
 		h.Health.Record(route.ChannelID, router.Failure)
 		return &failure{status: http.StatusBadGateway, reason: "读取响应失败: " + err.Error(), msg: "读取上游响应失败，请稍后重试"}
 	}
-	h.Health.Record(route.ChannelID, router.Success)
 	c.tracker.ObserveBody(body)
+	if c.proto == usage.SystemOne && !c.tracker.Terminal {
+		h.Health.Record(route.ChannelID, router.Failure)
+		return &failure{status: http.StatusBadGateway, reason: "无效的 System One 响应", msg: "上游没有返回有效的决策结果，请稍后重试"}
+	}
+	h.Health.Record(route.ChannelID, router.Success)
 	copyResponseHeaders(w.Header(), resp.Header)
 	c.log.HTTPStatus = resp.StatusCode
 	w.WriteHeader(resp.StatusCode)

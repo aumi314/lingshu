@@ -79,6 +79,7 @@ var protocolColumns = map[string]string{
 	"chat":      "base_url_chat",
 	"messages":  "base_url_messages",
 	"responses": "base_url_responses",
+	"systemone": "base_url_systemone",
 }
 
 // FindRoutes 返回分组内支持该协议和模型的渠道，按优先级从高到低，同优先级随机。
@@ -120,13 +121,14 @@ func (s *Store) ModelProtocols(ctx context.Context, groupID int64, model string)
 		SELECT DISTINCT p FROM (
 			SELECT CASE WHEN c.base_url_chat <> '' THEN 'chat' END AS p1,
 			       CASE WHEN c.base_url_messages <> '' THEN 'messages' END AS p2,
-			       CASE WHEN c.base_url_responses <> '' THEN 'responses' END AS p3
+			       CASE WHEN c.base_url_responses <> '' THEN 'responses' END AS p3,
+			       CASE WHEN c.base_url_systemone <> '' THEN 'systemone' END AS p4
 			FROM models m
 			JOIN channel_models cm ON cm.model_id = m.id
 			JOIN channels c ON c.id = cm.channel_id
 			JOIN channel_groups cg ON cg.channel_id = c.id AND cg.group_id = $1
 			WHERE m.name = $2 AND m.enabled AND c.enabled
-		) t, LATERAL (VALUES (p1), (p2), (p3)) v(p)
+		) t, LATERAL (VALUES (p1), (p2), (p3), (p4)) v(p)
 		WHERE p IS NOT NULL ORDER BY p`, groupID, model)
 	if err != nil {
 		return nil, err
