@@ -64,7 +64,7 @@ lingshu/
 | `balance_adjustments` | user_id、amount、balance_after、operator_id、note、topup_order_id | 管理员调整及自动充值流水，订单关联唯一 |
 | `payment_config_versions` / `payment_services` | provider、config、secrets / enabled、version_id | 不可变商户配置版本与当前服务开关 |
 | `topup_orders` | user_id、provider、version_id、environment、credit_usd、amount、currency、unit_price、status | 报价、支付会话及到账状态 |
-| `settings` | key、value | 显示汇率（CNY/USD）、用户充值开关（默认关闭） |
+| `settings` | key、value | 显示汇率（CNY/USD）、用户充值开关、注册方式、实例级 API Base URL |
 
 `request_logs` 字段：request_id、user_id、api_key_id、group_id、protocol、model、upstream_model、channel_id、stream、status（success / client_cancelled / upstream_error / rejected）、http_status、error、input / cache_read / cache_write / output / reasoning tokens、usage_estimated、价格与倍率快照、cost、attempts、首字节耗时、总耗时、upstream_response_id、created_at。
 
@@ -229,6 +229,8 @@ TypeSafe / Nace 模板显示（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：模
 渠道冒烟测试交互（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：点击“测试”先选协议，按模型单测或批量测试所选协议下的全部模型；弹窗展示单项结果。每次最多批量 20 个模型，后端并发限制保持 3。前端构建和 `go test ./internal/api` 通过；无数据库迁移。提交、备份和线上验收见 [现役部署记录](deploy.md)。
 
 系统设置板块（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：运营设置提供“显示汇率”；支付设置提供默认关闭的“开放用户充值”开关，保存到现有 settings 表，五种支付接入进度见本节开头。汇率和开关可独立保存，兼容旧客户端只提交汇率。独立测试库运行 `make test`、前端类型检查与构建、程序构建通过；两端用现有 aumif 账户验证设置接口均返回汇率 6.7、充值关闭，临时验证会话已删除。无数据库迁移。提交、备份和线上验收见 [现役部署记录](deploy.md)。
+
+API 接入地址（2026-10-24）：运营设置可编辑当前部署的完整 API Base URL；默认由该实例 `LINGSHU_PUBLIC_URL` 加 `/v1` 得出，保存后写入现有 settings。API keys 与概览页面从用户接口读取同一值并生成各协议地址；支付回调仍使用独立的 `LINGSHU_PUBLIC_URL` 根地址。目标环境值：DMIT `https://gateway.piqode.com/v1`，UM580D `https://lingshu.piqode.com/v1`。前后端及部署验收待本轮完成后补记。
 
 用户钱包入口（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：用户区第五项新增“钱包充值”，页面展示当前登录用户余额，进入时刷新账户数据；沿用货币偏好和显示汇率，普通用户与管理员均可访问。前端类型检查、前端与程序构建通过；Playwright 以模拟账户响应检查普通用户和管理员入口、第五项顺序、中英文、USD/CNY 换算及手机布局通过。无后端或数据库变更；两端服务、公网健康检查、钱包路由与新资源均通过。提交、备份和哈希见 [现役部署记录](deploy.md)。
 

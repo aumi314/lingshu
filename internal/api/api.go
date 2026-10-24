@@ -40,6 +40,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 
 	// 当前用户
 	mux.HandleFunc("GET /api/me", s.user(s.me))
+	mux.HandleFunc("GET /api/me/endpoints", s.user(s.getAPIEndpoints))
 	mux.HandleFunc("PUT /api/me/preferences", s.user(s.setPreferences))
 	mux.HandleFunc("PUT /api/me/password", s.user(s.changePassword))
 	mux.HandleFunc("GET /api/me/models", s.user(s.myModels))

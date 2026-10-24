@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Card, Form, InputNumber, Modal, Radio, Space, Switch, Table, Tabs, Tag, Typography } from 'antd'
+import { App, Button, Card, Form, Input, InputNumber, Modal, Radio, Space, Switch, Table, Tabs, Tag, Typography } from 'antd'
 import { useSearchParams } from 'react-router-dom'
 import { del, get, post, put } from '../../api'
 import { useApp } from '../../app'
@@ -14,7 +14,9 @@ export default function System() {
   const [params, setParams] = useSearchParams()
   const tab = ['payments', 'registration'].includes(params.get('tab') ?? '') ? params.get('tab')! : 'operations'
   const [form] = Form.useForm<{ cny_per_usd: number }>()
+  const [apiURLForm] = Form.useForm<{ api_base_url: string }>()
   const [saving, setSaving] = useState(false)
+  const [savingAPIURL, setSavingAPIURL] = useState(false)
   const [loading, setLoading] = useState(true)
   const [paymentEnabled, setPaymentEnabled] = useState(false)
   const [savingPayment, setSavingPayment] = useState(false)
@@ -26,14 +28,15 @@ export default function System() {
   const [generatingCodes, setGeneratingCodes] = useState(false)
   const [generatedCodes, setGeneratedCodes] = useState<GeneratedCode[] | null>(null)
 
-  const fill = (s: { cny_per_usd: string; payment_enabled: boolean; registration_mode?: string }) => {
+  const fill = (s: { cny_per_usd: string; payment_enabled: boolean; registration_mode?: string; api_base_url: string }) => {
     form.setFieldsValue({ cny_per_usd: Number(s.cny_per_usd) })
+    apiURLForm.setFieldsValue({ api_base_url: s.api_base_url })
     setPaymentEnabled(s.payment_enabled)
     setRegistrationMode(s.registration_mode === 'code' ? 'code' : 'manual')
   }
 
   useEffect(() => {
-    get<{ cny_per_usd: string; payment_enabled: boolean; registration_mode?: string }>('/api/admin/settings')
+    get<{ cny_per_usd: string; payment_enabled: boolean; registration_mode?: string; api_base_url: string }>('/api/admin/settings')
       .then(fill)
       .catch((e) => message.error(e.message))
       .finally(() => setLoading(false))
@@ -60,6 +63,20 @@ export default function System() {
       message.error((e as Error).message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const saveAPIURL = async () => {
+    const v = await apiURLForm.validateFields()
+    setSavingAPIURL(true)
+    try {
+      await put('/api/admin/settings', { api_base_url: v.api_base_url })
+      apiURLForm.setFieldValue('api_base_url', v.api_base_url.trim().replace(/\/+$/, ''))
+      message.success(t('已保存', 'Saved'))
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSavingAPIURL(false)
     }
   }
 
@@ -131,6 +148,7 @@ export default function System() {
         onChange={(k) => setParams(k === 'operations' ? {} : { tab: k }, { replace: true })}
         items={[
           { key: 'operations', label: t('运营设置', 'Operations'), forceRender: true, children: (
+            <Space direction="vertical" size={16} style={{ width: '100%' }}>
             <Card title={t('显示汇率', 'Display exchange rate')}>
               <Typography.Paragraph type="secondary">
                 {t(
@@ -147,6 +165,20 @@ export default function System() {
                 </Button>
               </Form>
             </Card>
+            <Card title={t('API 接入地址', 'API base URL')}>
+              <Typography.Paragraph type="secondary">
+                {t('用户在 API keys 和概览页面看到这个地址。每个部署填写自己的公开地址，格式为 https://域名/v1。', 'This address appears on the API keys and Overview pages. Set the public URL for this deployment in the format https://domain/v1.')}
+              </Typography.Paragraph>
+              <Form form={apiURLForm} layout="inline" onFinish={saveAPIURL}>
+                <Form.Item name="api_base_url" rules={[{ required: true, message: t('请输入 API 接入地址', 'Enter an API base URL') }]}>
+                  <Input placeholder="https://gateway.example.com/v1" style={{ width: 'min(360px, 70vw)' }} disabled={loading} />
+                </Form.Item>
+                <Button type="primary" htmlType="submit" loading={savingAPIURL} disabled={loading}>
+                  {t('保存', 'Save')}
+                </Button>
+              </Form>
+            </Card>
+            </Space>
           ) },
           { key: 'payments', label: t('支付设置', 'Payments'), children: (
             <Card>

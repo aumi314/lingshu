@@ -8,6 +8,7 @@ export default function Overview() {
   const { user, money, t } = useApp()
   const [today, setToday] = useState<LogsResponse | null>(null)
   const [month, setMonth] = useState<LogsResponse | null>(null)
+  const [apiBaseURL, setAPIBaseURL] = useState('')
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -18,15 +19,17 @@ export default function Overview() {
         setMonth(m)
       })
       .catch((e) => setError(e.message))
+    get<{ api_base_url: string }>('/api/me/endpoints').then((v) => setAPIBaseURL(v.api_base_url)).catch(() => {})
   }, [])
 
   const balance = Number(user?.balance ?? 0)
-  const base = window.location.origin
+  const base = apiBaseURL || `${window.location.origin}/v1`
+  const sdkBase = base.replace(/\/v1\/?$/, '')
   const endpoints = [
-    { protocol: 'OpenAI Chat Completions', url: `${base}/v1/chat/completions`, sdk: `${base}/v1` },
-    { protocol: 'OpenAI Responses', url: `${base}/v1/responses`, sdk: `${base}/v1` },
-    { protocol: 'Anthropic Messages', url: `${base}/v1/messages`, sdk: base },
-    { protocol: 'System One (TypeSafe / Nace)', url: `${base}/v1/systemone`, sdk: base },
+    { protocol: 'OpenAI Chat Completions', url: `${base}/chat/completions`, sdk: base },
+    { protocol: 'OpenAI Responses', url: `${base}/responses`, sdk: base },
+    { protocol: 'Anthropic Messages', url: `${base}/messages`, sdk: sdkBase },
+    { protocol: 'System One (TypeSafe / Nace)', url: `${base}/systemone`, sdk: sdkBase },
   ]
 
   return (

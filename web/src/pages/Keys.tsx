@@ -12,6 +12,7 @@ export default function Keys() {
   const { message } = App.useApp()
   const [keys, setKeys] = useState<APIKey[]>([])
   const [groups, setGroups] = useState<Group[]>([])
+  const [apiBaseURL, setAPIBaseURL] = useState('')
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<APIKey | 'new' | null>(null)
   const [created, setCreated] = useState('')
@@ -19,9 +20,14 @@ export default function Keys() {
 
   const load = useCallback(async () => {
     try {
-      const [k, m] = await Promise.all([get<APIKey[]>('/api/me/keys'), get<{ groups: Group[]; models: PricedModel[] }>('/api/me/models')])
+      const [k, m, endpoints] = await Promise.all([
+        get<APIKey[]>('/api/me/keys'),
+        get<{ groups: Group[]; models: PricedModel[] }>('/api/me/models'),
+        get<{ api_base_url: string }>('/api/me/endpoints'),
+      ])
       setKeys(k)
       setGroups(m.groups)
+      setAPIBaseURL(endpoints.api_base_url)
     } catch (e) {
       message.error((e as Error).message)
     } finally {
@@ -104,7 +110,7 @@ export default function Keys() {
         showIcon
         style={{ marginBottom: 16 }}
         message={t('接入 URL', 'Base URL')}
-        description={<Typography.Text copyable className="mono">https://gateway.piqode.com/v1</Typography.Text>}
+        description={<Typography.Text copyable className="mono">{apiBaseURL || `${window.location.origin}/v1`}</Typography.Text>}
       />
       <Table
         rowKey="id"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -569,9 +570,52 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	apiBaseURL, err := s.apiBaseURL(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode,
+		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode, "api_base_url": apiBaseURL,
 	})
+}
+
+func (s *Server) apiBaseURL(ctx context.Context) (string, error) {
+	value, err := s.Store.Setting(ctx, "api_base_url")
+	if err == nil {
+		return value, nil
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		return "", err
+	}
+	if s.PublicURL == "" {
+		return "", nil
+	}
+	return strings.TrimRight(s.PublicURL, "/") + "/v1", nil
+}
+
+func (s *Server) getAPIEndpoints(w http.ResponseWriter, r *http.Request) {
+	apiBaseURL, err := s.apiBaseURL(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"api_base_url": apiBaseURL})
+}
+
+func validAPIBaseURL(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	parsed, err := url.Parse(raw)
+	localHTTP := parsed != nil && (strings.EqualFold(parsed.Hostname(), "localhost") || parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "::1")
+	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || strings.Contains(raw, "#") || (parsed.Scheme != "https" && !(parsed.Scheme == "http" && localHTTP)) {
+		return "", false
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	if parsed.Path != "/v1" {
+		return "", false
+	}
+	parsed.RawPath = ""
+	return strings.TrimRight(parsed.String(), "/"), true
 }
 
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
@@ -579,6 +623,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		CNYPerUSD        *decimal.Decimal `json:"cny_per_usd"`
 		PaymentEnabled   *bool            `json:"payment_enabled"`
 		RegistrationMode *string          `json:"registration_mode"`
+		APIBaseURL       *string          `json:"api_base_url"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -590,6 +635,14 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	if in.RegistrationMode != nil && *in.RegistrationMode != "manual" && *in.RegistrationMode != "code" {
 		writeError(w, http.StatusBadRequest, "注册方式只能是 manual 或 code；邮箱注册尚未开放")
 		return
+	}
+	if in.APIBaseURL != nil {
+		value, valid := validAPIBaseURL(*in.APIBaseURL)
+		if !valid {
+			writeError(w, http.StatusBadRequest, "API 接入地址必须是 http(s)://域名/v1")
+			return
+		}
+		in.APIBaseURL = &value
 	}
 	if in.CNYPerUSD != nil {
 		if err := s.Store.SetSetting(r.Context(), "cny_per_usd", in.CNYPerUSD.String()); err != nil {
@@ -605,6 +658,12 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.RegistrationMode != nil {
 		if err := s.Store.SetSetting(r.Context(), "registration_mode", *in.RegistrationMode); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
+	if in.APIBaseURL != nil {
+		if err := s.Store.SetSetting(r.Context(), "api_base_url", *in.APIBaseURL); err != nil {
 			writeStoreError(w, err)
 			return
 		}

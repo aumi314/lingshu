@@ -257,8 +257,9 @@ func TestModelPriceRules(t *testing.T) {
 
 func TestSystemSettingsExchangeRate(t *testing.T) {
 	e := newEnv(t)
+	e.api.PublicURL = "https://gateway.example.com"
 	a := e.login("admin")
-	if code, raw := a.do("GET", "/api/admin/settings", nil, nil); code != 200 || strings.Contains(raw, "cn_holidays") {
+	if code, raw := a.do("GET", "/api/admin/settings", nil, nil); code != 200 || strings.Contains(raw, "cn_holidays") || !strings.Contains(raw, `"api_base_url":"https://gateway.example.com/v1"`) {
 		t.Errorf("系统设置不应返回节假日字段：%d %s", code, raw)
 	}
 	if code, body := a.do("PUT", "/api/admin/settings", map[string]any{"cny_per_usd": "7"}, nil); code != 200 {
@@ -266,6 +267,21 @@ func TestSystemSettingsExchangeRate(t *testing.T) {
 	}
 	if code, raw := a.do("GET", "/api/admin/settings", nil, nil); code != 200 || !strings.Contains(raw, `"cny_per_usd":"7"`) || strings.Contains(raw, "cn_holidays") {
 		t.Errorf("汇率应保存且无节假日字段：%d %s", code, raw)
+	}
+	if code, body := a.do("PUT", "/api/admin/settings", map[string]string{"api_base_url": "https://team.example.com/v1/"}, nil); code != 200 {
+		t.Fatalf("保存 API 接入地址: %d %s", code, body)
+	}
+	var endpoints map[string]string
+	if code, body := e.login("bob").do("GET", "/api/me/endpoints", nil, &endpoints); code != 200 || endpoints["api_base_url"] != "https://team.example.com/v1" {
+		t.Fatalf("用户应读取到保存后的 API 接入地址: %d %s %+v", code, body, endpoints)
+	}
+	for _, invalid := range []string{"", "http://team.example.com/v1", "https://team.example.com", "https://team.example.com/v2", "https://team.example.com/v1?x=1"} {
+		if code, body := a.do("PUT", "/api/admin/settings", map[string]string{"api_base_url": invalid}, nil); code != 400 {
+			t.Errorf("无效 API 接入地址 %q 应返回 400，得到 %d %s", invalid, code, body)
+		}
+	}
+	if code, body := a.do("PUT", "/api/admin/settings", map[string]string{"api_base_url": "http://localhost:8300/v1"}, nil); code != 200 {
+		t.Errorf("本地开发地址应允许 HTTP: %d %s", code, body)
 	}
 }
 

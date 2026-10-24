@@ -27,7 +27,9 @@
 
 ## API keys 页面接入地址（2026-10-24 确认）
 
-- 在 API keys 列表上方显示 Base URL `https://gateway.piqode.com/v1`，用户可直接复制到客户端配置。
+- API 接入地址属于部署实例自己的公共地址，不写死 PiQode 或其他部署的域名。系统设置的运营设置中允许管理员编辑完整 Base URL（例如 `https://gateway.piqode.com/v1` 或 `https://xxx.com/v1`）。
+- 未单独保存时，默认使用部署配置 `LINGSHU_PUBLIC_URL` 加 `/v1`；不同团队部署自然显示自己的域名。API keys 和概览页从同一设置读取并提供复制。
+- 支付回调继续使用独立的 `LINGSHU_PUBLIC_URL` 根地址，不受 API Base URL 编辑影响。
 
 ## 多支付服务与钱包充值（2026-10-23 确认）
 
