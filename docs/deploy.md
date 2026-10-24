@@ -50,6 +50,14 @@ WSL 访问 UM 时调用 `/mnt/c/Windows/System32/OpenSSH/ssh.exe minisforum-um58
 
 ## 现役备份与恢复
 
+### 系统设置标签页（2026-10-23）
+
+提交 `5e5d897`：系统设置改为与定价页一致的顶部“运营设置 / 支付设置”标签，默认运营设置，支付页可用 `?tab=payments` 直达并保留刷新状态，内容宽度与定价页一致。前端类型检查/构建及 Playwright 中英文、切换/刷新、按需加载和手机布局验证通过。没有后端或 schema 变更。
+
+同一干净提交构建一次发布两端，程序 SHA-256 均为 `089d6fc9896188c1d435e016bd0ccd2fbca00a23df2c51a2c2a09dfa4e58b632`，新资源 `index-_HyFulUn.js`。发布前 DMIT 数据库备份 `/var/backups/lingshu/lingshu-20261024T051424Z-pre-5e5d897.dump`（SHA-256 `d6eb3ed5a9a4c2778a9c42c360be3c60850576be1a6277a269ae0d340d131c64`），UM 备份 `/var/backups/lingshu/lingshu-20261024T051518Z-pre-5e5d897.dump`（SHA-256 `3aaa00dfc5a5e76deb056787953e101fcb1bea6f52fe91926793077f3976ac97`）；均通过 `pg_restore --list`，同前缀 `.env` 备份配置。旧程序及标记分别保留在 `/opt/lingshu/lingshu.prev-5e5d897`、`/opt/lingshu/release.prev-5e5d897.json`。
+
+两端服务 active，主机内与公网健康检查、新前端资源均通过，schema 保持 13。DMIT 充值开启、EPay 配置版本 2、余额 `$10.8493093969`、已付订单恰好一条流水；UM 充值关闭、商户配置为空、余额 `$9.8492565429`，均未改变。
+
 ### 多支付发布（2026-10-23；备份时间为 UTC 2026-10-24）
 
 应用提交 `ba139c4b7b5df55fd8c81d39581b380bfd3bdbe2` 已推送 GitHub；从干净 detached worktree 构建一次，先发布 DMIT，再发布 UM580D。两端程序 SHA-256 均为 `20b7b92fba2d2ee25322d772a3b61ce9593081b2c7dfae0081ed698edcf13a0c`，`release.json` 记录同一提交，schema 均为 `0013_payments`。新增五种支付适配、配置版本、订单及原子余额入账；迁移时用户、模型和原有余额调整流水完整保留（DMIT 1/26/1，UM 1/23/1）；后续 DMIT 真实充值另新增一条流水。
