@@ -1,7 +1,7 @@
 # 灵枢 · Lingshu MVP 实施计划
 
 状态：**已确认**（2026-10-18），当前进度见第 7 节。2026-10-23 现役部署：UM580D 团队入口、DMIT 独立副本，统一应用版本；标准渠道模板已发布两端，详见 `docs/deploy.md`。模型可用性按“定价记录存在即配置完成”处理；schema 12、TypeSafe / Nace 仅显示 System One 协议地址及简化说明，以及新建渠道默认标准预设均已发布两端。
-多支付应用已发布两端，线上数据库为 schema 13；DMIT EPay 已通过真实付款并开放，UM 充值保持关闭。注册管理已发布两端，新增 schema 14；注册默认仍关闭。
+多支付应用已发布两端，线上数据库为 schema 13；DMIT EPay 已通过真实付款并开放，UM 充值保持关闭。注册管理已发布两端，新增 schema 14；注册默认仍关闭。实例级 API 接入地址设置已发布两端。
 依据：`docs/decisions.md`（已定决策）、`docs/research/upstream-protocols.md`（上游实测）。
 本文件只写"怎么做"；"做什么、为什么"以 `decisions.md` 为准，两者冲突时先改 `decisions.md`。
 
@@ -230,7 +230,7 @@ TypeSafe / Nace 模板显示（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：模
 
 系统设置板块（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：运营设置提供“显示汇率”；支付设置提供默认关闭的“开放用户充值”开关，保存到现有 settings 表，五种支付接入进度见本节开头。汇率和开关可独立保存，兼容旧客户端只提交汇率。独立测试库运行 `make test`、前端类型检查与构建、程序构建通过；两端用现有 aumif 账户验证设置接口均返回汇率 6.7、充值关闭，临时验证会话已删除。无数据库迁移。提交、备份和线上验收见 [现役部署记录](deploy.md)。
 
-API 接入地址（2026-10-24）：运营设置可编辑当前部署的完整 API Base URL；默认由该实例 `LINGSHU_PUBLIC_URL` 加 `/v1` 得出，保存后写入现有 settings。API keys 与概览页面从用户接口读取同一值并生成各协议地址；支付回调仍使用独立的 `LINGSHU_PUBLIC_URL` 根地址。目标环境值：DMIT `https://gateway.piqode.com/v1`，UM580D `https://lingshu.piqode.com/v1`。前后端及部署验收待本轮完成后补记。
+API 接入地址（2026-10-24 ✅ 已发布两端）：运营设置可编辑当前部署的完整 API Base URL；默认由该实例 `LINGSHU_PUBLIC_URL` 加 `/v1` 得出，保存后写入现有 settings。API keys 与概览页面从用户接口读取同一值并生成各协议地址；支付回调仍使用独立的 `LINGSHU_PUBLIC_URL` 根地址。DMIT 显示 `https://gateway.piqode.com/v1`，UM580D 显示 `https://lingshu.piqode.com/v1`。提交、备份和线上验收见 [现役部署记录](deploy.md)。
 
 用户钱包入口（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：用户区第五项新增“钱包充值”，页面展示当前登录用户余额，进入时刷新账户数据；沿用货币偏好和显示汇率，普通用户与管理员均可访问。前端类型检查、前端与程序构建通过；Playwright 以模拟账户响应检查普通用户和管理员入口、第五项顺序、中英文、USD/CNY 换算及手机布局通过。无后端或数据库变更；两端服务、公网健康检查、钱包路由与新资源均通过。提交、备份和哈希见 [现役部署记录](deploy.md)。
 
