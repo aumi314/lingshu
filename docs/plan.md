@@ -1,6 +1,6 @@
 # 灵枢 · Lingshu MVP 实施计划
 
-状态：**已确认**（2026-10-18），当前进度见第 7 节。2026-10-23 现役部署：UM580D 团队入口、DMIT 独立副本，统一应用版本；标准渠道模板已发布两端，详见 `docs/deploy.md`。模型可用性按“定价记录存在即配置完成”处理；schema 12 与 TypeSafe / Nace 专属 System One 展示均已发布两端。
+状态：**已确认**（2026-10-18），当前进度见第 7 节。2026-10-23 现役部署：UM580D 团队入口、DMIT 独立副本，统一应用版本；标准渠道模板已发布两端，详见 `docs/deploy.md`。模型可用性按“定价记录存在即配置完成”处理；schema 12、TypeSafe / Nace 专属 System One 展示，以及新建渠道默认标准预设均已发布两端。
 依据：`docs/decisions.md`（已定决策）、`docs/research/upstream-protocols.md`（上游实测）。
 本文件只写"怎么做"；"做什么、为什么"以 `decisions.md` 为准，两者冲突时先改 `decisions.md`。
 
