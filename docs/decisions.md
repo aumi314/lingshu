@@ -5,7 +5,7 @@
 
 ---
 
-## 标准渠道模板（2026-10-24 确认）
+## 标准渠道模板（2026-10-23 确认）
 
 - 新增“标准模板”：管理员只填根地址，系统默认生成 Chat / Messages / Responses 三种协议地址，不提供协议开关。Chat 和 Responses 的 Base URL 为根地址加 `/v1`，Messages 使用根地址；请求仍分别追加 `/chat/completions`、`/v1/messages`、`/responses`。上游不支持的协议由冒烟测试和请求反馈报错，未来另行评估协议桥接。
 - 根地址只允许 scheme + host + 可选端口，支持 HTTP/HTTPS，移除首尾空白和末尾斜杠；不接受路径、查询或片段，避免重复版本路径。

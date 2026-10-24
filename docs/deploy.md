@@ -44,6 +44,8 @@ WSL 访问 UM 时调用 `/mnt/c/Windows/System32/OpenSSH/ssh.exe minisforum-um58
 
 2026-10-23 限制 System One 展示：提交 `9198bf9`，仅 `typesafe` / `nace` 模板显示 System One 地址项、协议标签，并在渠道测试时将其作为可测协议。没有 schema 变化。发布前 DMIT 数据库备份 `/var/backups/lingshu/lingshu-20261024T010342Z-pre-9198bf9.dump`，UM580D 备份 `/var/backups/lingshu/lingshu-20261024T010345Z-pre-9198bf9.dump`；旧程序保留在 `/opt/lingshu/lingshu.prev-9198bf9`。两端程序 SHA-256 同为 `eb2eab6c41fa0d2cbf09f087711003a1bac6330153888407aebb87b16a2112e6`，本机与公网健康检查均返回 200，两个公网首页均加载新前端资源 `index-BndXhI9w.js`。
 
+2026-10-23 标准渠道模板发布：提交 `ebfd2e97b950ed425cedd1ed4377bbf837387abd`，从干净提交构建一次，两端二进制 SHA-256 均为 `bdccb8c47b934f6dbb62b702c9b31e922dcd4ec56d736b4894cac5031b73ade5`；schema 无变化。DMIT 发布前备份 `/var/backups/lingshu/lingshu-20261024T014302Z.dump`，UM580D 发布前备份 `/var/backups/lingshu/lingshu-20261024-095030.dump`；两端旧程序均保留为 `/opt/lingshu/lingshu.prev-ebfd2e9`。两端 `release.json` 提交号和 SHA-256 一致，systemd、主机内健康检查及两个公网健康检查均通过；两个公网首页均加载 `index-CWQk-9NI.js`。DMIT 使用渠道 15 已保存的 key 直连测试标准模板生成的 `https://api.kinght.top/v1/chat/completions`、`/v1/messages`、`/v1/responses`，均 HTTP 200。没有改动两端渠道数据。
+
 ## 现役备份与恢复
 
 两端每日备份保留最近 14 份。DMIT 脚本在 `deploy/backup/lingshu-dmit-backup`，PostgreSQL 数据卷和 PiQode 原有 PostgreSQL 15 完全独立。
