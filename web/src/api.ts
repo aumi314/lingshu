@@ -82,7 +82,6 @@ export type Model = {
   cache_read_price: string
   cache_write_price: string
   price_rules: PriceRule[]
-  enabled: boolean
 }
 
 export type PricedModel = {

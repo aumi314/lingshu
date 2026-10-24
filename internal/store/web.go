@@ -336,19 +336,18 @@ type Model struct {
 	CacheReadPrice  decimal.Decimal     `json:"cache_read_price"`
 	CacheWritePrice decimal.Decimal     `json:"cache_write_price"`
 	PriceRules      []billing.PriceRule `json:"price_rules"`
-	Enabled         bool                `json:"enabled"`
 }
 
 func (s *Store) ListModels(ctx context.Context) ([]Model, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT id, name, input_price::text, output_price::text, cache_read_price::text,
-		cache_write_price::text, price_rules, enabled FROM models ORDER BY name`)
+		cache_write_price::text, price_rules FROM models ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Model, error) {
 		var m Model
 		var in, out, cr, cw string
-		err := r.Scan(&m.ID, &m.Name, &in, &out, &cr, &cw, &m.PriceRules, &m.Enabled)
+		err := r.Scan(&m.ID, &m.Name, &in, &out, &cr, &cw, &m.PriceRules)
 		m.InputPrice, m.OutputPrice, m.CacheReadPrice, m.CacheWritePrice = mustDecimal(in), mustDecimal(out), mustDecimal(cr), mustDecimal(cw)
 		return m, err
 	})
@@ -358,14 +357,14 @@ func (s *Store) SaveModel(ctx context.Context, m *Model) error {
 	if m.PriceRules == nil {
 		m.PriceRules = []billing.PriceRule{}
 	}
-	args := []any{m.Name, m.InputPrice.String(), m.OutputPrice.String(), m.CacheReadPrice.String(), m.CacheWritePrice.String(), m.Enabled, m.PriceRules}
+	args := []any{m.Name, m.InputPrice.String(), m.OutputPrice.String(), m.CacheReadPrice.String(), m.CacheWritePrice.String(), m.PriceRules}
 	if m.ID == 0 {
-		err := s.Pool.QueryRow(ctx, `INSERT INTO models (name, input_price, output_price, cache_read_price, cache_write_price, enabled, price_rules)
-			VALUES ($1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6, $7) RETURNING id`, args...).Scan(&m.ID)
+		err := s.Pool.QueryRow(ctx, `INSERT INTO models (name, input_price, output_price, cache_read_price, cache_write_price, price_rules)
+			VALUES ($1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6) RETURNING id`, args...).Scan(&m.ID)
 		return translate(err)
 	}
 	return execOne(ctx, s.Pool, `UPDATE models SET name = $2, input_price = $3::numeric, output_price = $4::numeric,
-		cache_read_price = $5::numeric, cache_write_price = $6::numeric, enabled = $7, price_rules = $8 WHERE id = $1`, append([]any{m.ID}, args...)...)
+		cache_read_price = $5::numeric, cache_write_price = $6::numeric, price_rules = $7 WHERE id = $1`, append([]any{m.ID}, args...)...)
 }
 
 func (s *Store) DeleteModel(ctx context.Context, id int64) error {
@@ -401,7 +400,7 @@ func (s *Store) PricedModels(ctx context.Context, groupIDs []int64) ([]PricedMod
 		JOIN channels c ON c.id = cm.channel_id AND c.enabled
 		JOIN channel_groups cg ON cg.channel_id = c.id
 		JOIN groups g ON g.id = cg.group_id
-		WHERE m.enabled AND cg.group_id = ANY($1)
+		WHERE cg.group_id = ANY($1)
 		GROUP BY cg.group_id, m.id, g.ratio
 		ORDER BY cg.group_id, m.name`, groupIDs)
 	if err != nil {

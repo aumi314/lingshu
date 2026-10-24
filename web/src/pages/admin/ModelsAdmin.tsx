@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Card, Divider, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Switch, Table, Tag, Tooltip, Typography } from 'antd'
+import { App, Button, Card, Divider, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { del, get, post, put, type Model, type PriceRule } from '../../api'
 import { priceText, useApp } from '../../app'
@@ -39,7 +39,7 @@ export default function ModelsAdmin() {
     setInputCurrency('USD')
     form.setFieldsValue(
       m === 'new'
-        ? { name: '', enabled: true, input_price: 0, output_price: 0, cache_read_price: 0, cache_write_price: 0, price_rules: [] }
+        ? { name: '', input_price: 0, output_price: 0, cache_read_price: 0, cache_write_price: 0, price_rules: [] }
         : {
             ...m,
             ...Object.fromEntries(priceFields.map((f) => [f, Number(m[f])])),
@@ -142,7 +142,6 @@ export default function ModelsAdmin() {
                 <span className="muted">—</span>
               ),
           },
-          { title: t('启用', 'Enabled'), dataIndex: 'enabled', render: (v) => <Switch size="small" checked={v} disabled /> },
           {
             title: '',
             align: 'right',
@@ -183,9 +182,6 @@ export default function ModelsAdmin() {
               </Form.Item>
             ))}
           </Space>
-          <Form.Item name="enabled" label={t('启用', 'Enabled')} valuePropName="checked">
-            <Switch />
-          </Form.Item>
 
           <Divider titlePlacement="start" style={{ marginTop: 0 }}>
             {t('价格规则（阶梯 / 分时段）', 'Price rules (tiers / time of day)')}

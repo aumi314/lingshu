@@ -301,7 +301,10 @@ func TestAdminUsersAndBalance(t *testing.T) {
 func TestChannelKeyNeverLeaves(t *testing.T) {
 	e := newEnv(t)
 	a := e.login("admin")
-	a.do("POST", "/api/admin/models", map[string]any{"name": "m1", "input_price": "1", "output_price": "2", "cache_read_price": "0", "cache_write_price": "0", "enabled": true}, nil)
+	modelCode, modelBody := a.do("POST", "/api/admin/models", map[string]any{"name": "m1", "input_price": "0", "output_price": "0", "cache_read_price": "0", "cache_write_price": "0", "enabled": false}, nil)
+	if modelCode != 200 || strings.Contains(modelBody, `"enabled"`) {
+		t.Fatalf("零价模型应能创建，响应不再包含 enabled: %d %s", modelCode, modelBody)
+	}
 	secret := "sk-upstream-super-secret-123456"
 	var saved struct {
 		ID int64 `json:"id"`

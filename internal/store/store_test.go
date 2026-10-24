@@ -58,6 +58,65 @@ func TestMigrateCreatesAllTablesAndIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestRemoveModelEnabledPreservesModelsAndMappings(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	if _, err := s.Pool.Exec(ctx, `CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`); err != nil {
+		t.Fatal(err)
+	}
+	names, err := fs.Glob(migrationFS, "migrations/*.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if strings.HasSuffix(name, "0012_remove_model_enabled.sql") {
+			break
+		}
+		body, err := migrationFS.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		version := strings.TrimSuffix(strings.TrimPrefix(name, "migrations/"), ".sql")
+		if _, err := s.Pool.Exec(ctx, string(body)); err != nil {
+			t.Fatalf("apply %s: %v", version, err)
+		}
+		if _, err := s.Pool.Exec(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{
+		`INSERT INTO models (id, name, input_price, output_price, cache_read_price, cache_write_price, enabled, price_rules) VALUES (7, 'free-model', 0, 0, 0, 0, false, '[]'::jsonb)`,
+		`INSERT INTO channels (id, name, api_key) VALUES (4, 'supplier', 'secret')`,
+		`INSERT INTO channel_models (channel_id, model_id, upstream_name) VALUES (4, 7, 'upstream-free')`,
+	} {
+		if _, err := s.Pool.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var hasEnabled bool
+	if err := s.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'models' AND column_name = 'enabled')`).Scan(&hasEnabled); err != nil {
+		t.Fatal(err)
+	}
+	if hasEnabled {
+		t.Fatal("models.enabled 列仍存在")
+	}
+	var id int64
+	var name, input, output, cacheRead, cacheWrite, rules, upstream string
+	if err := s.Pool.QueryRow(ctx, `SELECT m.id, m.name, m.input_price::text, m.output_price::text, m.cache_read_price::text, m.cache_write_price::text, m.price_rules::text, cm.upstream_name FROM models m JOIN channel_models cm ON cm.model_id = m.id WHERE m.id = 7`).Scan(&id, &name, &input, &output, &cacheRead, &cacheWrite, &rules, &upstream); err != nil {
+		t.Fatal(err)
+	}
+	if id != 7 || name != "free-model" || input != "0.0000000000" || output != "0.0000000000" || cacheRead != "0.0000000000" || cacheWrite != "0.0000000000" || rules != "[]" || upstream != "upstream-free" {
+		t.Fatalf("迁移后模型或映射发生变化: id=%d name=%q prices=%s/%s/%s/%s rules=%q upstream=%q", id, name, input, output, cacheRead, cacheWrite, rules, upstream)
+	}
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatalf("重复迁移失败: %v", err)
+	}
+}
+
 func TestUserGroupMigrationPreservesSpecialGroupAccess(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
@@ -71,8 +130,8 @@ func TestUserGroupMigrationPreservesSpecialGroupAccess(t *testing.T) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if strings.HasSuffix(name, "0011_user_groups_and_group_scope.sql") {
-			continue
+		if strings.Contains(name, "0011_user_groups_and_group_scope.sql") {
+			break
 		}
 		body, err := migrationFS.ReadFile(name)
 		if err != nil {

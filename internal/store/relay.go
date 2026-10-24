@@ -101,7 +101,7 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 		JOIN channels c ON c.id = cm.channel_id
 		JOIN channel_groups cg ON cg.channel_id = c.id AND cg.group_id = $1
 		LEFT JOIN upstream_accounts a ON a.id = c.upstream_account_id
-		WHERE m.name = $2 AND m.enabled AND c.enabled AND c.%[1]s <> ''
+		WHERE m.name = $2 AND c.enabled AND c.%[1]s <> ''
 		ORDER BY c.priority DESC, random()`, col), groupID, model)
 	if err != nil {
 		return nil, err
@@ -131,7 +131,7 @@ func (s *Store) ModelProtocols(ctx context.Context, groupID int64, model string)
 			JOIN channel_models cm ON cm.model_id = m.id
 			JOIN channels c ON c.id = cm.channel_id
 			JOIN channel_groups cg ON cg.channel_id = c.id AND cg.group_id = $1
-			WHERE m.name = $2 AND m.enabled AND c.enabled
+			WHERE m.name = $2 AND c.enabled
 		) t, LATERAL (VALUES (p1), (p2), (p3), (p4)) v(p)
 		WHERE p IS NOT NULL ORDER BY p`, groupID, model)
 	if err != nil {
@@ -161,7 +161,7 @@ func (s *Store) GroupModels(ctx context.Context, groupID int64) ([]string, error
 		JOIN channel_models cm ON cm.model_id = m.id
 		JOIN channels c ON c.id = cm.channel_id
 		JOIN channel_groups cg ON cg.channel_id = c.id AND cg.group_id = $1
-		WHERE m.enabled AND c.enabled
+		WHERE c.enabled
 		ORDER BY m.name`, groupID)
 	if err != nil {
 		return nil, err

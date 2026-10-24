@@ -1,6 +1,6 @@
 # 灵枢 · Lingshu MVP 实施计划
 
-状态：**已确认**（2026-10-18），当前进度见第 7 节。2026-10-23 现役部署：UM580D 团队入口、DMIT 独立副本，统一应用版本，详见 `docs/deploy.md`。
+状态：**已确认**（2026-10-18），当前进度见第 7 节。2026-10-23 现役部署：UM580D 团队入口、DMIT 独立副本，统一应用版本，详见 `docs/deploy.md`。模型可用性按“定价记录存在即配置完成”处理，schema 迁移与发布记录见 `docs/deploy.md`。
 依据：`docs/decisions.md`（已定决策）、`docs/research/upstream-protocols.md`（上游实测）。
 本文件只写"怎么做"；"做什么、为什么"以 `decisions.md` 为准，两者冲突时先改 `decisions.md`。
 
@@ -53,7 +53,7 @@ lingshu/
 | `user_groups` | name、is_default | 用户分组，例如 default、internal |
 | `user_group_members` | user_id、user_group_id | 用户所属的用户分组 |
 | `group_user_groups` | group_id、user_group_id | 限定范围的服务分组允许使用的用户分组 |
-| `models` | name（站内标准名，唯一）、input / output / cache_read / cache_write 价格、enabled | 价格只挂在这里 |
+| `models` | name（站内标准名，唯一）、input / output / cache_read / cache_write 价格、price_rules | 存在定价记录即可供已启用渠道映射调用，零价有效 |
 | `channels` | name、template、api_key、priority、enabled、base_url_chat / base_url_messages / base_url_responses / base_url_systemone | 填了哪个协议的地址，就算支持哪个协议 |
 | `channel_groups` | channel_id、group_id | 渠道属于哪些服务分组 |
 | `channel_models` | channel_id、model_id、upstream_name | 名称映射；upstream_name 为空表示和标准名相同 |

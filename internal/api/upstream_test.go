@@ -215,7 +215,7 @@ func TestModelPriceRules(t *testing.T) {
 	e := newEnv(t)
 	a := e.login("admin")
 	model := map[string]any{
-		"name": "gpt-x", "input_price": "2", "output_price": "10", "cache_read_price": "0.2", "cache_write_price": "2.5", "enabled": true,
+		"name": "gpt-x", "input_price": "2", "output_price": "10", "cache_read_price": "0.2", "cache_write_price": "2.5",
 		"price_rules": []map[string]any{{"input_above": 272000, "input_price": "4", "output_price": "15", "cache_read_price": "0.4", "cache_write_price": "5"}},
 	}
 	var saved struct {

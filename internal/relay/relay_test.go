@@ -440,6 +440,23 @@ func TestSuccessChargesBalanceAndKeyQuota(t *testing.T) {
 	}
 }
 
+func TestZeroPricedModelRoutesAndDoesNotCharge(t *testing.T) {
+	e := newEnv(t)
+	e.upstream = okUpstream
+	e.exec(`UPDATE models SET input_price = 0, output_price = 0, cache_read_price = 0 WHERE id = 1`)
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("零价模型仍应经过渠道调用，状态码 %d", resp.StatusCode)
+	}
+	if got, estimated := e.cost(resp.Header.Get("X-Lingshu-Request-Id")); !got.IsZero() || estimated {
+		t.Errorf("零价模型扣费 = %s（估算 %v）", got, estimated)
+	}
+	if got := e.balance(); !got.Equal(decimal.NewFromInt(10)) {
+		t.Errorf("零价模型调用后余额 = %s", got)
+	}
+}
+
 func TestGroupRatioApplied(t *testing.T) {
 	e := newEnv(t)
 	e.exec(`UPDATE groups SET ratio = 0.5`)
