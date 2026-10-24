@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, App, Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { del, get, patch, post, type APIKey, type Group, type PricedModel } from '../api'
@@ -105,13 +105,14 @@ export default function Keys() {
           'Each key belongs to a service group and is billed at that group\'s ratio. A key can have a spending limit; once reached, that key is rejected while your balance stays untouched.',
         )}
       </Typography.Paragraph>
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message={t('接入 URL', 'Base URL')}
-        description={<Typography.Text copyable className="mono">{apiBaseURL || `${window.location.origin}/v1`}</Typography.Text>}
-      />
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <Space size={12} wrap>
+          <Typography.Text type="secondary">{t('接入地址', 'Base URL')}</Typography.Text>
+          <Typography.Text code copyable className="mono">
+            {apiBaseURL || `${window.location.origin}/v1`}
+          </Typography.Text>
+        </Space>
+      </Card>
       <Table
         rowKey="id"
         loading={loading}
