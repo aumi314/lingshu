@@ -60,7 +60,7 @@ lingshu/
 | `api_keys` | user_id、name、key_hash、key_prefix、group_id、quota_limit、quota_used、enabled、last_used_at | 只存哈希，完整 key 创建时只显示一次 |
 | `request_logs` | 见下 | 一个客户端请求一行 |
 | `balance_adjustments` | user_id、amount、balance_after、operator_id、note | 管理员改余额的流水 |
-| `settings` | key、value | 汇率（CNY/USD）等 |
+| `settings` | key、value | 显示汇率（CNY/USD）、用户充值开关（默认关闭） |
 
 `request_logs` 字段：request_id、user_id、api_key_id、group_id、protocol、model、upstream_model、channel_id、stream、status（success / client_cancelled / upstream_error / rejected）、http_status、error、input / cache_read / cache_write / output / reasoning tokens、usage_estimated、价格与倍率快照、cost、attempts、首字节耗时、总耗时、upstream_response_id、created_at。
 
@@ -213,6 +213,8 @@ System One 接入（2026-10-22 本地完成，2026-10-23 ✅ 发布到 UM580D �
 TypeSafe / Nace 模板显示（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：模板选择器说明只显示 `System One`；协议地址区只显示 System One 地址行，隐藏空的 Chat、Messages、Responses 行；通用切换提示也不显示。其他模板和后端协议处理不变。`go test ./internal/api`、前端类型检查、前端构建和后端构建通过；无数据库迁移。提交、备份和线上验收见 [现役部署记录](deploy.md)。
 
 渠道冒烟测试交互（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：点击“测试”先选协议，按模型单测或批量测试所选协议下的全部模型；弹窗展示单项结果。每次最多批量 20 个模型，后端并发限制保持 3。前端构建和 `go test ./internal/api` 通过；无数据库迁移。提交、备份和线上验收见 [现役部署记录](deploy.md)。
+
+系统设置板块（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：运营设置提供“显示汇率”；支付设置提供默认关闭的“开放用户充值”开关，保存到现有 settings 表，真实支付后续接入。汇率和开关可独立保存，兼容旧客户端只提交汇率。独立测试库运行 `make test`、前端类型检查与构建、程序构建通过；两端用现有 aumif 账户验证设置接口均返回汇率 6.7、充值关闭，临时验证会话已删除。无数据库迁移。提交、备份和线上验收见 [现役部署记录](deploy.md)。
 
 | 项 | 状态 | 说明 |
 |---|---|---|
