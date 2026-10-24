@@ -128,16 +128,39 @@ func (s *Store) PasswordHash(ctx context.Context, userID int64) (string, error) 
 }
 
 type UserPatch struct {
+	Username     *string
 	Role         *string
 	Enabled      *bool
 	PasswordHash *string
+	UserGroupIDs *[]int64
 }
 
 func (s *Store) UpdateUser(ctx context.Context, id int64, p UserPatch) error {
-	return execOne(ctx, s.Pool, `
-		UPDATE users SET role = COALESCE($2, role), enabled = COALESCE($3, enabled),
-		       password_hash = COALESCE($4, password_hash)
-		WHERE id = $1`, id, p.Role, p.Enabled, p.PasswordHash)
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `
+			UPDATE users SET username = COALESCE($2, username), role = COALESCE($3, role),
+			       enabled = COALESCE($4, enabled), password_hash = COALESCE($5, password_hash)
+			WHERE id = $1`, id, p.Username, p.Role, p.Enabled, p.PasswordHash)
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "users_username_key" {
+				return ErrUsernameTaken
+			}
+			return translate(err)
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		if p.UserGroupIDs != nil {
+			if _, err := tx.Exec(ctx, `DELETE FROM user_group_members WHERE user_id = $1`, id); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO user_group_members (user_id, user_group_id) SELECT $1, unnest($2::bigint[])`, id, *p.UserGroupIDs); err != nil {
+				return translate(err)
+			}
+		}
+		return nil
+	})
 }
 
 func (s *Store) SetPreferences(ctx context.Context, userID int64, prefs json.RawMessage) error {

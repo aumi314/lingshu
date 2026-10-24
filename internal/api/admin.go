@@ -73,9 +73,11 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Role     *string `json:"role"`
-		Enabled  *bool   `json:"enabled"`
-		Password *string `json:"password"`
+		Username     *string  `json:"username"`
+		Role         *string  `json:"role"`
+		Enabled      *bool    `json:"enabled"`
+		Password     *string  `json:"password"`
+		UserGroupIDs *[]int64 `json:"user_group_ids"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -86,6 +88,14 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var p store.UserPatch
+	if in.Username != nil {
+		username := strings.TrimSpace(*in.Username)
+		if username == "" {
+			writeError(w, http.StatusBadRequest, "用户名不能为空")
+			return
+		}
+		p.Username = &username
+	}
 	if in.Role != nil {
 		if !validRole(*in.Role) {
 			writeError(w, http.StatusBadRequest, "角色只能是 admin 或 user")
@@ -94,7 +104,8 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		p.Role = in.Role
 	}
 	p.Enabled = in.Enabled
-	if in.Password != nil {
+	passwordChanged := in.Password != nil && *in.Password != ""
+	if passwordChanged {
 		hash, msg := hashPassword(*in.Password)
 		if msg != "" {
 			writeError(w, http.StatusBadRequest, msg)
@@ -102,11 +113,12 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		}
 		p.PasswordHash = &hash
 	}
+	p.UserGroupIDs = in.UserGroupIDs
 	if err := s.Store.UpdateUser(r.Context(), id, p); err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	if (in.Enabled != nil && !*in.Enabled) || in.Password != nil {
+	if (in.Enabled != nil && !*in.Enabled) || passwordChanged {
 		s.Store.DeleteUserSessions(r.Context(), id) // 停用或重置密码后让对方重新登录
 	}
 	ok(w)

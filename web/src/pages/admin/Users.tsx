@@ -14,12 +14,11 @@ export default function Users() {
   const [creating, setCreating] = useState(false)
   const [managingGroups, setManagingGroups] = useState(false)
   const [editingUserGroup, setEditingUserGroup] = useState<UserGroup | 'new' | null>(null)
-  const [balanceOf, setBalanceOf] = useState<User | null>(null)
+  const [editingUser, setEditingUser] = useState<User | null>(null)
   const [history, setHistory] = useState<BalanceAdjustment[]>([])
-  const [passwordOf, setPasswordOf] = useState<User | null>(null)
   const [createForm] = Form.useForm()
+  const [editForm] = Form.useForm<{ username: string; password?: string; user_group_ids: number[] }>()
   const [balanceForm] = Form.useForm<{ mode: 'add' | 'set'; amount: number; note: string }>()
-  const [passwordForm] = Form.useForm<{ password: string }>()
   const [userGroupForm] = Form.useForm<{ name: string }>()
 
   const load = useCallback(async () => {
@@ -53,21 +52,36 @@ export default function Users() {
   const symbol = currency === 'CNY' ? '¥' : '$'
   const toUSD = (v: number) => String(currency === 'CNY' ? v / rate : v)
 
-  const openBalance = async (u: User) => {
+  const openEdit = async (u: User) => {
+    editForm.setFieldsValue({ username: u.username, password: '', user_group_ids: u.user_group_ids ?? [] })
     balanceForm.setFieldsValue({ mode: 'add', amount: undefined, note: '' })
-    setBalanceOf(u)
+    setEditingUser(u)
     setHistory(await get<BalanceAdjustment[]>(`/api/admin/users/${u.id}/balance`).catch(() => []))
   }
 
   const saveBalance = async () => {
     const v = await balanceForm.validateFields()
-    const done = await run(
-      () => post(`/api/admin/users/${balanceOf!.id}/balance`, { mode: v.mode, amount: toUSD(v.amount), note: v.note }),
-      t('余额已更新', 'Balance updated'),
-    )
+    const done = await run(() => post(`/api/admin/users/${editingUser!.id}/balance`, { mode: v.mode, amount: toUSD(v.amount), note: v.note }), t('余额已更新', 'Balance updated'))
+    if (done && editingUser) {
+      const refreshedUsers = await get<User[]>('/api/admin/users')
+      setEditingUser(refreshedUsers.find((u) => u.id === editingUser.id) ?? editingUser)
+      setHistory(await get<BalanceAdjustment[]>(`/api/admin/users/${editingUser.id}/balance`).catch(() => []))
+      balanceForm.setFieldsValue({ amount: undefined, note: '' })
+      if (editingUser.id === me?.id) reload()
+    }
+  }
+
+  const saveUser = async () => {
+    const v = await editForm.validateFields()
+    if (!editingUser) return
+    const done = await run(() => patch(`/api/admin/users/${editingUser.id}`, {
+      username: v.username,
+      password: v.password ?? '',
+      user_group_ids: v.user_group_ids ?? [],
+    }), t('用户资料已保存', 'User updated'))
     if (done) {
-      setBalanceOf(null)
-      if (balanceOf!.id === me?.id) reload()
+      setEditingUser({ ...editingUser, username: v.username.trim(), user_group_ids: v.user_group_ids ?? [] })
+      editForm.setFieldValue('password', '')
     }
   }
 
@@ -108,29 +122,7 @@ export default function Users() {
           {
             title: t('余额', 'Balance'),
             dataIndex: 'balance',
-            render: (v, u) => (
-              <Button type="link" size="small" style={{ padding: 0, color: Number(v) <= 0 ? '#ff4d4f' : undefined }} onClick={() => openBalance(u)}>
-                {money(v)}
-              </Button>
-            ),
-          },
-          {
-            title: t('用户分组', 'User groups'),
-            dataIndex: 'user_group_ids',
-            render: (ids: number[], u) =>
-              userGroups.length ? (
-                <Select
-                  mode="multiple"
-                  size="small"
-                  style={{ minWidth: 190 }}
-                  placeholder={t('选择用户分组', 'Select user groups')}
-                  value={ids}
-                  onChange={(user_group_ids) => run(() => put(`/api/admin/users/${u.id}/user-groups`, { user_group_ids }))}
-                  options={userGroups.map((g) => ({ value: g.id, label: g.name }))}
-                />
-              ) : (
-                <span className="muted">{t('还没有用户分组', 'No user groups')}</span>
-              ),
+            render: (v) => <span style={{ color: Number(v) <= 0 ? '#ff4d4f' : undefined }}>{money(v)}</span>,
           },
           {
             title: t('启用', 'Enabled'),
@@ -142,14 +134,7 @@ export default function Users() {
             title: '',
             align: 'right',
             render: (_, u) => (
-              <Space>
-                <Button size="small" type="link" onClick={() => openBalance(u)}>
-                  {t('调整余额', 'Adjust balance')}
-                </Button>
-                <Button size="small" type="link" onClick={() => { passwordForm.resetFields(); setPasswordOf(u) }}>
-                  {t('重置密码', 'Reset password')}
-                </Button>
-              </Space>
+              <Button size="small" type="link" onClick={() => openEdit(u)}>{t('编辑', 'Edit')}</Button>
             ),
           },
         ]}
@@ -234,26 +219,44 @@ export default function Users() {
       </Modal>
 
       <Modal
-        open={!!balanceOf}
-        title={`${t('调整余额', 'Adjust balance')} · ${balanceOf?.username}`}
-        okText={t('确定', 'Confirm')}
-        onCancel={() => setBalanceOf(null)}
-        onOk={saveBalance}
-        width={600}
+        open={!!editingUser}
+        title={`${t('编辑用户', 'Edit user')} · ${editingUser?.username}`}
+        okText={t('保存资料', 'Save details')}
+        onCancel={() => setEditingUser(null)}
+        onOk={saveUser}
+        width={720}
         destroyOnHidden
       >
+        <Form form={editForm} layout="vertical" requiredMark={false}>
+          <Form.Item name="username" label={t('用户名', 'Username')} rules={[{ required: true, whitespace: true, message: t('用户名不能为空', 'Username is required') }]}>
+            <Input autoComplete="off" />
+          </Form.Item>
+          <Form.Item
+            name="password"
+            label={t('密码', 'Password')}
+            extra={t('留空不修改；填入新密码则重置，至少 12 位。', 'Leave blank to keep the current password. Enter a new password (at least 12 characters) to reset it.')}
+            rules={[{ validator: (_, value) => !value || value.length >= 12 ? Promise.resolve() : Promise.reject(new Error(t('新密码至少 12 位', 'New password must be at least 12 characters'))) }]}
+          >
+            <Input.Password autoComplete="new-password" />
+          </Form.Item>
+          <Form.Item name="user_group_ids" label={t('用户分组', 'User groups')}>
+            <Select mode="multiple" options={userGroups.map((g) => ({ value: g.id, label: g.name }))} placeholder={t('选择用户分组', 'Select user groups')} />
+          </Form.Item>
+        </Form>
+
+        <Typography.Title level={5} style={{ marginTop: 24 }}>{t('额度调整', 'Quota adjustment')}</Typography.Title>
         <Typography.Paragraph>
-          {t('当前余额', 'Current balance')}：<b>{balanceOf && money(balanceOf.balance)}</b>
+          {t('当前余额', 'Current balance')}：<b>{editingUser && money(editingUser.balance)}</b>
         </Typography.Paragraph>
         <Form form={balanceForm} layout="vertical" requiredMark={false}>
-          <Form.Item name="mode">
-            <Segmented options={[{ value: 'add', label: t('加减', 'Add / subtract') }, { value: 'set', label: t('直接设为', 'Set to') }]} />
+          <Form.Item name="mode" style={{ marginBottom: 12 }}>
+            <Segmented options={[{ value: 'add', label: t('加减', 'Add / subtract') }, { value: 'set', label: t('设为余额', 'Set balance') }]} />
           </Form.Item>
           <Form.Item noStyle dependencies={['mode']}>
             {({ getFieldValue }) => (
               <Form.Item
                 name="amount"
-                label={getFieldValue('mode') === 'set' ? t('新余额', 'New balance') : t('金额（负数表示扣减）', 'Amount (negative to subtract)')}
+                label={getFieldValue('mode') === 'set' ? t('调整后的余额', 'New balance') : t('变动金额（负数为扣减）', 'Change (negative to subtract)')}
                 rules={[{ required: true, message: t('填写金额', 'Enter an amount') }]}
               >
                 <InputNumber style={{ width: '100%' }} prefix={symbol} step={1} />
@@ -264,6 +267,7 @@ export default function Users() {
             <Input placeholder={t('例如：10 月额度', 'e.g. October allowance')} />
           </Form.Item>
         </Form>
+        <Button type="primary" onClick={saveBalance}>{t('确认调整额度', 'Confirm quota adjustment')}</Button>
         {history.length > 0 && (
           <>
             <Typography.Text type="secondary">{t('最近调整', 'Recent adjustments')}</Typography.Text>
@@ -283,24 +287,6 @@ export default function Users() {
             />
           </>
         )}
-      </Modal>
-
-      <Modal
-        open={!!passwordOf}
-        title={`${t('重置密码', 'Reset password')} · ${passwordOf?.username}`}
-        okText={t('重置', 'Reset')}
-        onCancel={() => setPasswordOf(null)}
-        onOk={async () => {
-          const v = await passwordForm.validateFields()
-          if (await run(() => patch(`/api/admin/users/${passwordOf!.id}`, { password: v.password }), t('密码已重置，对方需要用新密码重新登录', 'Password reset. They must sign in again.'))) setPasswordOf(null)
-        }}
-        destroyOnHidden
-      >
-        <Form form={passwordForm} layout="vertical" requiredMark={false}>
-          <Form.Item name="password" label={t('新密码', 'New password')} rules={[{ required: true, min: 12, message: t('至少 12 位', 'At least 12 characters') }]}>
-            <Input.Password autoComplete="new-password" />
-          </Form.Item>
-        </Form>
       </Modal>
     </div>
   )

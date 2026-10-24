@@ -150,6 +150,8 @@ func writeStoreError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeError(w, http.StatusNotFound, "要操作的记录不存在，可能已被删除，请刷新页面")
+	case errors.Is(err, store.ErrUsernameTaken):
+		writeError(w, http.StatusConflict, "用户名已存在，请换一个")
 	case errors.Is(err, store.ErrNameTaken):
 		writeError(w, http.StatusConflict, "名称已存在，换一个名称")
 	case errors.Is(err, store.ErrInUse):
