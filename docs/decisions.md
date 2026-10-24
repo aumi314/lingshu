@@ -23,7 +23,7 @@
 - **定位**：只给团队内部用。不考虑对外服务、许可证合规和真实支付。
 - **自研**：不 fork 现有项目。`references/` 下的仓库只作为设计参考，代码不继承。
 - **协议**：MVP 支持三个入口 `/v1/messages`、`/v1/chat/completions`、`/v1/responses`。
-- **System One（2026-10-22 确认，本地实现并验证）**：新增 `/v1/systemone` 原生 JSON 透传，接入 TypeSafe 与 Nace 两个渠道模板。渠道独立保存 System One 地址，不复用聊天协议字段。支持拉取 `{ "models": [{ "name": "…" }] }` 上游模型列表，冒烟测试发送 `state` 与 `questions`；正式请求沿用现有鉴权、模型映射、分组、路由重试、计费和日志。用量读取 `usage.input_tokens` / `output_tokens`，价格仍由管理员按官方价录入（两家当前输出免费），不做聊天协议转换。仅支持非流式调用，显式拒绝 `stream: true`。实测及边界见 [System One 接入记录](research/systemone.md)。2026-10-23 已随统一版本发布到 UM580D 和 DMIT；模板和入口可用，实际渠道需另行配置。
+- **System One（2026-10-22 确认，本地实现并验证）**：新增 `/v1/systemone` 原生 JSON 透传，接入 TypeSafe 与 Nace 两个渠道模板。渠道独立保存 System One 地址，不复用聊天协议字段。支持拉取 `{ "models": [{ "name": "…" }] }` 上游模型列表，冒烟测试发送 `state` 与 `questions`；正式请求沿用现有鉴权、模型映射、分组、路由重试、计费和日志。用量读取 `usage.input_tokens` / `output_tokens`，价格仍由管理员按官方价录入（两家当前输出免费），不做聊天协议转换。仅支持非流式调用，显式拒绝 `stream: true`。管理端只对 `typesafe` 和 `nace` 模板显示 System One 协议及地址项。实测及边界见 [System One 接入记录](research/systemone.md)。2026-10-23 已随统一版本发布到 UM580D 和 DMIT；模板和入口可用，实际渠道需另行配置。
 - **只做透传**：入口协议必须和渠道支持的协议一致，不做跨协议转换。不支持的组合返回明确提示，告诉用户该用哪个入口。适配和转换放到以后。
 - **原始内容留存**：请求和回复全量保留，以后存云盘。MVP 先不做。
 

@@ -44,6 +44,7 @@ type FormValues = {
 }
 
 const protocolLabel: Record<string, string> = { chat: 'chat', messages: 'messages', responses: 'responses', systemone: 'System One' }
+const supportsSystemOne = (template?: string) => template === 'typesafe' || template === 'nace'
 let rowSeq = 1
 
 export default function Channels() {
@@ -147,6 +148,7 @@ export default function Channels() {
     const v = form.getFieldsValue()
     return {
       id: editing && editing !== 'new' ? editing.id : 0,
+      template: v.template ?? (editing !== 'new' ? editing?.template : '') ?? '',
       api_key: v.api_key ?? '',
       base_url_chat: v.base_url_chat ?? '',
       base_url_messages: v.base_url_messages ?? '',
@@ -172,7 +174,7 @@ export default function Channels() {
   }
 
   const runProbe = async (d: ReturnType<typeof draft>, upstreams: string[]) => {
-    const protocols = (['chat', 'messages', 'responses', 'systemone'] as const).filter((p) => d[`base_url_${p}`])
+    const protocols = (['chat', 'messages', 'responses', 'systemone'] as const).filter((p) => d[`base_url_${p}`] && (p !== 'systemone' || supportsSystemOne(d.template)))
     const targets = upstreams.flatMap((m) => protocols.map((p) => ({ protocol: p, model: m })))
     if (!targets.length) {
       message.warning(t('先添加模型、填好协议地址', 'Add models and protocol URLs first'))
@@ -254,11 +256,12 @@ export default function Channels() {
     }
   }
 
-  const protocols = (c: Pick<Channel, 'base_url_chat' | 'base_url_messages' | 'base_url_responses' | 'base_url_systemone'>) =>
-    (['chat', 'messages', 'responses', 'systemone'] as const).filter((p) => c[`base_url_${p}`])
+  const protocols = (c: Pick<Channel, 'template' | 'base_url_chat' | 'base_url_messages' | 'base_url_responses' | 'base_url_systemone'>) =>
+    (['chat', 'messages', 'responses', 'systemone'] as const).filter((p) => c[`base_url_${p}`] && (p !== 'systemone' || supportsSystemOne(c.template)))
 
   const templateID = Form.useWatch('template', form)
   const currentTemplate = templates.find((x) => x.id === templateID)
+  const visibleProtocols = (['chat', 'messages', 'responses', 'systemone'] as const).filter((p) => p !== 'systemone' || supportsSystemOne(templateID))
 
   return (
     <div className="page" style={{ maxWidth: 1400 }}>
@@ -351,7 +354,7 @@ export default function Channels() {
             align: 'right',
             render: (_, c) => (
               <Space>
-                <Button size="small" type="link" onClick={() => runProbe({ id: c.id, api_key: '', base_url_chat: c.base_url_chat, base_url_messages: c.base_url_messages, base_url_responses: c.base_url_responses, base_url_systemone: c.base_url_systemone, proxy_url: c.proxy_url }, c.models.map((m) => m.upstream_name || m.model_name))}>
+                <Button size="small" type="link" onClick={() => runProbe({ id: c.id, template: c.template, api_key: '', base_url_chat: c.base_url_chat, base_url_messages: c.base_url_messages, base_url_responses: c.base_url_responses, base_url_systemone: c.base_url_systemone, proxy_url: c.proxy_url }, c.models.map((m) => m.upstream_name || m.model_name))}>
                   {t('测试', 'Test')}
                 </Button>
                 <Button size="small" type="link" onClick={() => openEdit(c)}>
@@ -455,7 +458,7 @@ export default function Channels() {
           </Form.Item>
           <Typography.Text type="secondary">{t('各协议的地址（上游不支持的协议留空）', 'Base URL per protocol (leave unsupported ones empty)')}</Typography.Text>
           <div style={{ marginTop: 8 }}>
-            {(['chat', 'messages', 'responses', 'systemone'] as const).map((p) => (
+            {visibleProtocols.map((p) => (
               <Form.Item key={p} name={`base_url_${p}`} style={{ marginBottom: 8 }}>
                 <Input addonBefore={<span style={{ display: 'inline-block', width: 88 }}>{protocolLabel[p]}</span>} placeholder={{ chat: 'https://…/v1', messages: 'https://…/anthropic', responses: 'https://…/v1', systemone: 'https://…/v1' }[p]} className="mono" />
               </Form.Item>
