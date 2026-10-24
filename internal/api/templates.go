@@ -49,9 +49,9 @@ var channelTemplates = []ChannelTemplate{
 	{ID: "openai-platform", Name: "OpenAI Platform", BaseURLChat: "https://api.openai.com/v1", BaseURLResponses: "https://api.openai.com/v1",
 		HasModelList: true, Note: "OpenAI 官方 Platform API；支持 Chat Completions 和 Responses，不提供 Anthropic Messages 协议"},
 	{ID: "typesafe", Name: "TypeSafe", BaseURLSystemOne: "https://api.typesafe.ai/v1", HasModelList: true,
-		Note: "Jev 决策模型，使用 System One 协议（state + questions），不支持聊天或流式输出；输出 token 免费，模型价格在定价页设置"},
+		Note: "System One"},
 	{ID: "nace", Name: "Nace", BaseURLSystemOne: "https://console.nace.ai/v1", HasModelList: true,
-		Note: "Drex 决策模型，使用 System One 协议（state + questions），不支持聊天或流式输出；输出 token 免费，模型价格在定价页设置"},
+		Note: "System One"},
 	{ID: "standard", Name: "标准模板", HasModelList: true, Note: "填写根地址，自动生成 Chat、Messages 和 Responses 三种协议地址"},
 	{ID: "custom", Name: "自定义", HasModelList: true, Note: "按上游文档填写各协议的地址"},
 }
