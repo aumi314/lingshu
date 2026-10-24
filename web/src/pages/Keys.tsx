@@ -99,6 +99,13 @@ export default function Keys() {
           'Each key belongs to a service group and is billed at that group\'s ratio. A key can have a spending limit; once reached, that key is rejected while your balance stays untouched.',
         )}
       </Typography.Paragraph>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message={t('接入 URL', 'Base URL')}
+        description={<Typography.Text copyable className="mono">https://gateway.piqode.com/v1</Typography.Text>}
+      />
       <Table
         rowKey="id"
         loading={loading}
