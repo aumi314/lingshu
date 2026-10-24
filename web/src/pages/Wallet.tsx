@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, App, Button, Card, Form, InputNumber, Modal, Select, Space, Statistic, Table, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, Col, Form, InputNumber, Modal, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd'
 import { useSearchParams } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { get, post } from '../api'
+import { get, post, type LogsResponse } from '../api'
 import { useApp } from '../app'
 import { paymentNames, payOrder, type OrderList, type PaymentMethod, type Topup } from '../payment'
 
@@ -14,6 +14,7 @@ export default function Wallet() {
   const [params] = useSearchParams()
   const [form] = Form.useForm()
   const [methods, setMethods] = useState<Available[]>([])
+  const [totalSpent, setTotalSpent] = useState<string | null>(null)
   const [orders, setOrders] = useState<OrderList>({ items: [], total: 0 })
   const [page, setPage] = useState(1)
   const [quote, setQuote] = useState<Topup | null>(null)
@@ -26,6 +27,7 @@ export default function Wallet() {
 
   useEffect(() => {
     reload()
+    get<LogsResponse>('/api/me/logs?page_size=1').then((v) => setTotalSpent(v.summary.cost)).catch((e) => message.error(e.message))
     get<{ enabled: boolean; methods: Available[] }>('/api/me/payment-methods').then((v) => {
       setMethods(v.methods)
       if (v.methods[0]) form.setFieldsValue({ provider: v.methods[0].provider, method: v.methods[0].methods[0]?.id, credit_usd: v.methods[0].min_usd })
@@ -65,9 +67,18 @@ export default function Wallet() {
       <Typography.Title level={3} className="page-title">
         {t('钱包充值', 'Wallet & top-up')}
       </Typography.Title>
-      <Card>
-        <Statistic title={t('当前余额', 'Current balance')} value={money(user?.balance ?? 0)} />
-      </Card>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} sm={12}>
+          <Card>
+            <Statistic title={t('当前余额', 'Current balance')} value={money(user?.balance ?? 0)} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12}>
+          <Card>
+            <Statistic title={t('累计消费金额', 'Total spent')} value={totalSpent === null ? '—' : money(totalSpent)} />
+          </Card>
+        </Col>
+      </Row>
       {focused && <Alert showIcon type={focused.status === 'success' ? 'success' : 'info'} style={{ marginTop: 16 }} title={focused.status === 'success' ? t('充值已完成', 'Top-up completed') : t('正在核对付款状态，请勿重复支付', 'Checking payment; please do not pay again')} description={<Space wrap><Typography.Text copyable>{focused.id}</Typography.Text><span>{focused.status}</span>{focused.environment === 'test' && <Tag>{t('测试环境，不增加真实余额', 'Test: no wallet credit')}</Tag>}<Button size="small" loading={busy} onClick={() => refresh(focused.id)}>{t('刷新状态', 'Refresh status')}</Button></Space>} />}
       <Card title={t('在线充值', 'Online top-up')} style={{ marginTop: 16 }}>
         {methods.length === 0 ? <Typography.Text type="secondary">{t('在线充值尚未开放，如需充值请联系管理员。', 'Online top-ups are not available. Contact an admin to top up.')}</Typography.Text> : <Form form={form} layout="vertical" onValuesChange={() => setRequestKey(crypto.randomUUID())} onFinish={(v) => run(async () => {

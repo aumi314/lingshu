@@ -340,16 +340,23 @@ func TestUserLogsHideChannel(t *testing.T) {
 	ctx := context.Background()
 	e.store.Pool.Exec(ctx, `INSERT INTO channels (id, name, api_key, base_url_chat) VALUES (1, 'secret-channel', 'k', 'https://x')`)
 	e.store.Pool.Exec(ctx, `INSERT INTO request_logs (request_id, user_id, protocol, model, upstream_model, channel_id, status, cost)
-		VALUES ('r1', 2, 'chat', 'm1', 'up-m1', 1, 'success', 0.5), ('r2', 1, 'chat', 'm2', '', 1, 'success', 1)`)
-	_, raw := e.login("bob").do("GET", "/api/me/logs", nil, nil)
+		VALUES ('r1', 2, 'chat', 'm1', 'up-m1', 1, 'success', 0.5), ('r3', 2, 'chat', 'm3', '', 1, 'success', 0.25), ('r2', 1, 'chat', 'm2', '', 1, 'success', 1)`)
+	var userLogs struct {
+		Summary struct {
+			Requests int64  `json:"requests"`
+			Cost     string `json:"cost"`
+		} `json:"summary"`
+		Logs []store.LogEntry `json:"logs"`
+	}
+	_, raw := e.login("bob").do("GET", "/api/me/logs?page_size=1", nil, &userLogs)
 	if strings.Contains(raw, "secret-channel") || strings.Contains(raw, "up-m1") || strings.Contains(raw, "r2") {
 		t.Errorf("用户日志不应包含渠道信息或别人的记录: %s", raw)
 	}
-	if !strings.Contains(raw, `"cost":"0.5"`) {
-		t.Errorf("用户日志 = %s", raw)
+	if userLogs.Summary.Requests != 2 || userLogs.Summary.Cost != "0.75" || len(userLogs.Logs) != 1 {
+		t.Errorf("用户累计消费应覆盖自己的全部请求，不受分页影响: %+v", userLogs)
 	}
 	_, raw = e.login("admin").do("GET", "/api/admin/logs", nil, nil)
-	if !strings.Contains(raw, "secret-channel") || !strings.Contains(raw, `"requests":2`) {
+	if !strings.Contains(raw, "secret-channel") || !strings.Contains(raw, `"requests":3`) {
 		t.Errorf("管理端日志 = %s", raw)
 	}
 }
