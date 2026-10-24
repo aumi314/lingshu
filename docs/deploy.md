@@ -42,6 +42,8 @@ WSL 访问 UM 时调用 `/mnt/c/Windows/System32/OpenSSH/ssh.exe minisforum-um58
 
 2026-10-23 移除模型启用开关：提交 `a5c056cce8d7512615a18e2c1b89563f6eb525de`，schema 12 删除 `models.enabled`；存在定价记录即视为已配置，零价有效，路由只按渠道、映射、分组和协议判断。DMIT 发布前数据库备份 `/var/backups/lingshu/lingshu-20261024T004621Z-pre-a5c056c.dump`，UM580D 备份 `/var/backups/lingshu/lingshu-20261024T004624Z-pre-a5c056c.dump`；旧程序分别保存在 `/opt/lingshu/lingshu.prev-a5c056c`。两端 schema 12、模型数 26 / 23、无 `models.enabled` 列，服务和公网健康检查均返回 200；同一二进制 SHA-256 为 `224685ee25900d5d2bc824eecfe5cfffb3bec95d01f36eb9bc087f7913797978`。用 aumif 现有账户的临时 key 分别经两端本机监听调用 DeepSeek Chat，均 HTTP 200，输入 / 输出 38 / 13 tokens，日志状态 success，费用 `$0.0000135`；临时 key 已撤销。WSL 经 DMIT 公网域名发送模型请求时收到 403，网关没有对应请求日志；本机监听实测成功，公网 API 请求来源尚未确认。回滚需先恢复对应发布前备份，再换回旧二进制。
 
+2026-10-23 限制 System One 展示：提交 `9198bf9`，仅 `typesafe` / `nace` 模板显示 System One 地址项、协议标签，并在渠道测试时将其作为可测协议。没有 schema 变化。发布前 DMIT 数据库备份 `/var/backups/lingshu/lingshu-20261024T010342Z-pre-9198bf9.dump`，UM580D 备份 `/var/backups/lingshu/lingshu-20261024T010345Z-pre-9198bf9.dump`；旧程序保留在 `/opt/lingshu/lingshu.prev-9198bf9`。两端程序 SHA-256 同为 `eb2eab6c41fa0d2cbf09f087711003a1bac6330153888407aebb87b16a2112e6`，本机与公网健康检查均返回 200，两个公网首页均加载新前端资源 `index-BndXhI9w.js`。
+
 ## 现役备份与恢复
 
 两端每日备份保留最近 14 份。DMIT 脚本在 `deploy/backup/lingshu-dmit-backup`，PostgreSQL 数据卷和 PiQode 原有 PostgreSQL 15 完全独立。
