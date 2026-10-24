@@ -116,7 +116,8 @@ export default function Channels() {
   const openNew = () => {
     form.resetFields()
     form.setFieldsValue({
-      template: undefined,
+      template: 'standard',
+      root_url: '',
       priority: 0,
       enabled: true,
       group_ids: groups.filter((g) => g.name === 'default' && g.enabled).map((g) => g.id),
@@ -456,7 +457,7 @@ export default function Channels() {
         <Form form={form} layout="vertical" requiredMark={false}>
           <Form.Item
             name="template"
-            label={t('模板', 'Template')}
+            label={t('预设模板', 'Preset template')}
             extra={
               <>
                 {currentTemplate?.note}
