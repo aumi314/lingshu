@@ -461,7 +461,7 @@ export default function Channels() {
             extra={
               <>
                 {currentTemplate?.note}
-                {editing !== 'new' && (
+                {editing !== 'new' && !supportsSystemOne(templateID) && (
                   <div>{t('换模板会按模板重新填写各协议地址，保存后才生效，可以先点"测试"。', 'Switching templates refills the protocol URLs; nothing changes until you save, so you can test first.')}</div>
                 )}
               </>
