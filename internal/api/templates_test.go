@@ -14,3 +14,19 @@ func TestOpenAIPlatformTemplate(t *testing.T) {
 	}
 	t.Fatal("OpenAI Platform template is missing")
 }
+
+func TestStandardTemplate(t *testing.T) {
+	for _, template := range channelTemplates {
+		if template.ID != "standard" {
+			continue
+		}
+		if template.Name != "标准模板" || template.BaseURLChat != "" || template.BaseURLMessages != "" || template.BaseURLResponses != "" || !template.HasModelList {
+			t.Fatalf("unexpected standard template: %+v", template)
+		}
+		if channelTemplates[len(channelTemplates)-2].ID != "standard" {
+			t.Fatal("standard template must appear immediately before custom")
+		}
+		return
+	}
+	t.Fatal("standard template is missing")
+}

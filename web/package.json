@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "test": "node --experimental-strip-types --test src/channelUrls.test.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.4",

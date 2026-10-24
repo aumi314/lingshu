@@ -146,13 +146,19 @@ func (h *Handler) FetchModels(ctx context.Context, ch *store.Channel) ([]string,
 	if ch.BaseURLSystemOne != "" {
 		tries = append(tries, attempt{strings.TrimRight(ch.BaseURLSystemOne, "/") + "/models", "systemone"})
 	}
-	for _, b := range []string{ch.BaseURLChat, ch.BaseURLResponses} {
-		if b != "" {
-			tries = append(tries, attempt{strings.TrimRight(b, "/") + "/models", "openai"})
+	if ch.Template == "standard" {
+		if ch.BaseURLChat != "" {
+			tries = append(tries, attempt{strings.TrimRight(ch.BaseURLChat, "/") + "/models", "openai"})
 		}
-	}
-	if ch.BaseURLMessages != "" {
-		tries = append(tries, attempt{strings.TrimRight(ch.BaseURLMessages, "/") + "/v1/models", "anthropic"})
+	} else {
+		for _, b := range []string{ch.BaseURLChat, ch.BaseURLResponses} {
+			if b != "" {
+				tries = append(tries, attempt{strings.TrimRight(b, "/") + "/models", "openai"})
+			}
+		}
+		if ch.BaseURLMessages != "" {
+			tries = append(tries, attempt{strings.TrimRight(ch.BaseURLMessages, "/") + "/v1/models", "anthropic"})
+		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()

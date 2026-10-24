@@ -54,6 +54,37 @@ func TestSystemOneProbeAndModelList(t *testing.T) {
 	}
 }
 
+func TestStandardModelListUsesSingleV1Endpoint(t *testing.T) {
+	var requests atomic.Int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.URL.Path != "/v1/models" {
+			t.Errorf("model list path = %s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer standard-key" {
+			t.Errorf("missing standard API key")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"data":[{"id":"model-z"},{"id":"model-a"}]}`)
+	}))
+	defer up.Close()
+
+	ch := &store.Channel{
+		Template:         "standard",
+		APIKey:           "standard-key",
+		BaseURLChat:      up.URL + "/v1",
+		BaseURLMessages:  up.URL,
+		BaseURLResponses: up.URL + "/v1",
+	}
+	names, err := NewHandler(nil).FetchModels(context.Background(), ch)
+	if err != nil || !reflect.DeepEqual(names, []string{"model-a", "model-z"}) {
+		t.Fatalf("standard model list = %v, %v", names, err)
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("standard model list requests = %d, want exactly one", got)
+	}
+}
+
 func TestSystemOneProbeRejectsInvalidResponse(t *testing.T) {
 	for _, body := range []string{`not json`, `{}`, `{"answers":{},"usage":{"input_tokens":1,"output_tokens":0}}`, `{"answers":{"other":{"type":"noul","noul":0.95}}}`} {
 		t.Run(body, func(t *testing.T) {

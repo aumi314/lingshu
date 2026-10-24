@@ -4,6 +4,7 @@ import {
   App,
   Button,
   Checkbox,
+  Collapse,
   Divider,
   Drawer,
   Form,
@@ -26,11 +27,13 @@ import VendorIcon from '../../components/VendorIcon'
 import { BalanceCell, BalanceDrawer } from '../../components/ChannelBalance'
 import { DragHandle, SortableBody, SortableRow } from '../../components/SortableRows'
 import { arrayMove } from '@dnd-kit/sortable'
+import { parseStandardRoot, recoverStandardRoot, standardBases } from '../../channelUrls'
 
 
 type Row = { key: number; upstream: string; model_id?: number }
 type FormValues = {
   template: string
+  root_url: string
   name: string
   api_key: string
   base_url_chat: string
@@ -124,7 +127,7 @@ export default function Channels() {
 
   const openEdit = (c: Channel) => {
     form.resetFields()
-    form.setFieldsValue({ ...c, api_key: '' })
+    form.setFieldsValue({ ...c, api_key: '', root_url: c.template === 'standard' ? c.base_url_messages : '' })
     setRows(c.models.map((m) => ({ key: rowSeq++, upstream: m.upstream_name || m.model_name, model_id: m.model_id })))
     setEditing(c)
   }
@@ -132,11 +135,29 @@ export default function Channels() {
   const applyTemplate = (id: string) => {
     const tpl = templates.find((x) => x.id === id)
     if (!tpl) return
+    const current = form.getFieldsValue(true)
+    if (id === 'standard') {
+      const root = recoverStandardRoot(current)
+      form.setFieldsValue({
+        template: id,
+        root_url: root ?? '',
+        base_url_chat: '',
+        base_url_messages: '',
+        base_url_responses: '',
+        base_url_systemone: '',
+      })
+      return
+    }
+
+    const previousRoot = current.root_url ? parseStandardRoot(current.root_url) : undefined
+    const previousBases = previousRoot?.root ? standardBases(previousRoot.root) : undefined
     form.setFieldsValue({
+      template: id,
       name: form.getFieldValue('name') || (tpl.id === 'custom' ? '' : tpl.id),
-      base_url_chat: tpl.base_url_chat,
-      base_url_messages: tpl.base_url_messages,
-      base_url_responses: tpl.base_url_responses,
+      root_url: '',
+      base_url_chat: previousBases?.base_url_chat ?? tpl.base_url_chat,
+      base_url_messages: previousBases?.base_url_messages ?? tpl.base_url_messages,
+      base_url_responses: previousBases?.base_url_responses ?? tpl.base_url_responses,
       base_url_systemone: tpl.base_url_systemone,
       proxy_url: tpl.proxy_url ?? '',
     })
@@ -145,23 +166,35 @@ export default function Channels() {
 
   // 拉取模型和冒烟测试用当前表单内容（可以是还没保存的渠道）
   const draft = () => {
-    const v = form.getFieldsValue()
+    const v = form.getFieldsValue(true)
+    const bases = v.template === 'standard'
+      ? (() => {
+          const parsed = parseStandardRoot(v.root_url ?? '')
+          return parsed.root ? standardBases(parsed.root) : null
+        })()
+      : v
+    if (!bases) return null
     return {
       id: editing && editing !== 'new' ? editing.id : 0,
       template: v.template ?? (editing !== 'new' ? editing?.template : '') ?? '',
       api_key: v.api_key ?? '',
-      base_url_chat: v.base_url_chat ?? '',
-      base_url_messages: v.base_url_messages ?? '',
-      base_url_responses: v.base_url_responses ?? '',
+      base_url_chat: bases.base_url_chat ?? '',
+      base_url_messages: bases.base_url_messages ?? '',
+      base_url_responses: bases.base_url_responses ?? '',
       base_url_systemone: v.base_url_systemone ?? '',
       proxy_url: v.proxy_url ?? '',
     }
   }
 
   const fetchModels = async () => {
+    const d = draft()
+    if (!d) {
+      void form.validateFields(['root_url']).catch(() => {})
+      return
+    }
     setFetching(true)
     try {
-      const names = await post<string[]>('/api/admin/channels/fetch-models', draft())
+      const names = await post<string[]>('/api/admin/channels/fetch-models', d)
       const have = new Set(rows.map((r) => r.upstream))
       setPicked(names.filter((n) => have.has(n)))
       setModelSearch('')
@@ -173,7 +206,7 @@ export default function Channels() {
     }
   }
 
-  const runProbe = async (d: ReturnType<typeof draft>, upstreams: string[]) => {
+  const runProbe = async (d: NonNullable<ReturnType<typeof draft>>, upstreams: string[]) => {
     const protocols = (['chat', 'messages', 'responses', 'systemone'] as const).filter((p) => d[`base_url_${p}`] && (p !== 'systemone' || supportsSystemOne(d.template)))
     const targets = upstreams.flatMap((m) => protocols.map((p) => ({ protocol: p, model: m })))
     if (!targets.length) {
@@ -197,6 +230,8 @@ export default function Channels() {
 
   const save = async () => {
     const v = await form.validateFields()
+    const d = draft()
+    if (!d) return
     const missing = rows.findIndex((r) => !r.upstream.trim() || !r.model_id)
     if (missing >= 0) {
       message.error(t(`第 ${missing + 1} 行模型没填完整：上游模型名和站内模型都要填`, `Row ${missing + 1} is incomplete`))
@@ -208,8 +243,11 @@ export default function Channels() {
       return
     }
     const body = {
-      ...v,
-      template: v.template ?? (editing !== 'new' ? editing?.template : '') ?? '',
+      ...d,
+      name: v.name,
+      priority: v.priority,
+      enabled: v.enabled,
+      group_ids: v.group_ids,
       models: rows.map((r) => ({ model_id: r.model_id, model_name: modelByID.get(r.model_id!)?.name, upstream_name: r.upstream.trim() })),
     }
     setSaving(true)
@@ -260,6 +298,7 @@ export default function Channels() {
     (['chat', 'messages', 'responses', 'systemone'] as const).filter((p) => c[`base_url_${p}`] && (p !== 'systemone' || supportsSystemOne(c.template)))
 
   const templateID = Form.useWatch('template', form)
+  const rootURL = Form.useWatch('root_url', form)
   const currentTemplate = templates.find((x) => x.id === templateID)
   const visibleProtocols = (['chat', 'messages', 'responses', 'systemone'] as const).filter((p) => p !== 'systemone' || supportsSystemOne(templateID))
 
@@ -401,7 +440,11 @@ export default function Channels() {
         title={editing === 'new' ? t('添加渠道', 'Add channel') : `${t('编辑渠道', 'Edit channel')} · ${editing && typeof editing === 'object' ? editing.name : ''}`}
         extra={
           <Space>
-            <Button loading={probing} onClick={() => runProbe(draft(), rows.map((r) => r.upstream).filter(Boolean))}>
+            <Button loading={probing} onClick={() => {
+              const d = draft()
+              if (d) void runProbe(d, rows.map((r) => r.upstream).filter(Boolean))
+              else void form.validateFields(['root_url']).catch(() => {})
+            }}>
               {t('测试', 'Test')}
             </Button>
             <Button type="primary" loading={saving} onClick={save}>
@@ -456,14 +499,61 @@ export default function Channels() {
           >
             <Input.Password autoComplete="new-password" className="mono" />
           </Form.Item>
-          <Typography.Text type="secondary">{t('各协议的地址（上游不支持的协议留空）', 'Base URL per protocol (leave unsupported ones empty)')}</Typography.Text>
-          <div style={{ marginTop: 8 }}>
-            {visibleProtocols.map((p) => (
-              <Form.Item key={p} name={`base_url_${p}`} style={{ marginBottom: 8 }}>
-                <Input addonBefore={<span style={{ display: 'inline-block', width: 88 }}>{protocolLabel[p]}</span>} placeholder={{ chat: 'https://…/v1', messages: 'https://…/anthropic', responses: 'https://…/v1', systemone: 'https://…/v1' }[p]} className="mono" />
+          <Typography.Text type="secondary">
+            {templateID === 'standard'
+              ? t('标准模板默认生成三种协议地址', 'The standard template generates URLs for all three protocols')
+              : t('各协议的地址（上游不支持的协议留空）', 'Base URL per protocol (leave unsupported ones empty)')}
+          </Typography.Text>
+          {templateID === 'standard' ? (
+            <>
+              <Form.Item
+                name="root_url"
+                label={t('根地址', 'Root URL')}
+                style={{ marginTop: 8, marginBottom: 8 }}
+                rules={[{
+                  validator: async (_, value: string) => {
+                    const result = parseStandardRoot(value ?? '')
+                    if (result.root) return
+                    if (result.error === 'required') throw new Error(t('填写上游根地址', 'Enter the upstream root URL'))
+                    if (result.error === 'path') throw new Error(t('只填域名根地址，不要带路径、查询参数或片段', 'Enter only the origin; paths, query strings and fragments are not allowed'))
+                    throw new Error(t('请输入有效的 HTTP 或 HTTPS 地址', 'Enter a valid HTTP or HTTPS URL'))
+                  },
+                }]}
+              >
+                <Input className="mono" placeholder="https://api.example.com" />
               </Form.Item>
-            ))}
-          </div>
+              {(() => {
+                const parsed = parseStandardRoot(rootURL ?? '')
+                if (!parsed.root) return null
+                const root = parsed.root
+                return (
+                  <Collapse
+                    size="small"
+                    style={{ marginBottom: 8 }}
+                    items={[{
+                      key: 'urls',
+                      label: t('查看最终请求地址', 'Show final request URLs'),
+                      children: (
+                        <Space direction="vertical" size={4}>
+                          <Typography.Text className="mono">Chat · {root}/v1/chat/completions</Typography.Text>
+                          <Typography.Text className="mono">Messages · {root}/v1/messages</Typography.Text>
+                          <Typography.Text className="mono">Responses · {root}/v1/responses</Typography.Text>
+                        </Space>
+                      ),
+                    }]}
+                  />
+                )
+              })()}
+            </>
+          ) : (
+            <div style={{ marginTop: 8 }}>
+              {visibleProtocols.map((p) => (
+                <Form.Item key={p} name={`base_url_${p}`} style={{ marginBottom: 8 }}>
+                  <Input addonBefore={<span style={{ display: 'inline-block', width: 88 }}>{protocolLabel[p]}</span>} placeholder={{ chat: 'https://…/v1', messages: 'https://…/anthropic', responses: 'https://…/v1', systemone: 'https://…/v1' }[p]} className="mono" />
+                </Form.Item>
+              ))}
+            </div>
+          )}
           <Form.Item
             name="proxy_url"
             label={t('代理', 'Proxy')}
