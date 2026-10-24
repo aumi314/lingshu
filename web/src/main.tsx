@@ -9,6 +9,7 @@ import 'dayjs/locale/zh-cn'
 import { AppProvider, useApp } from './app'
 import AppLayout from './components/AppLayout'
 import Login from './pages/Login'
+import Register from './pages/Register'
 import Welcome from './pages/Welcome'
 import Overview from './pages/Overview'
 import Keys from './pages/Keys'
@@ -68,6 +69,7 @@ function Root() {
           <Routes>
             <Route index element={<Welcome />} />
             <Route path="login" element={<LoginRoute />} />
+            <Route path="register" element={<Register />} />
             <Route path="console" element={<RequireUser />}>
               <Route element={<AppLayout />}>
                 <Route index element={<Overview />} />

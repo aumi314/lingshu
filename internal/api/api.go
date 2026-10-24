@@ -33,6 +33,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	}
 	s.registerPayments(mux)
 	mux.HandleFunc("POST /api/auth/login", s.login)
+	mux.HandleFunc("GET /api/auth/registration", s.registrationStatus)
+	mux.HandleFunc("POST /api/auth/register", s.registerWithCode)
 	mux.HandleFunc("POST /api/auth/challenge", s.challenge)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
 
@@ -54,6 +56,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/users/{id}/balance", s.admin(s.adjustBalance))
 	mux.HandleFunc("GET /api/admin/users/{id}/balance", s.admin(s.balanceHistory))
 	mux.HandleFunc("PUT /api/admin/users/{id}/user-groups", s.admin(s.setUserGroups))
+	mux.HandleFunc("GET /api/admin/registration-codes", s.admin(s.listRegistrationCodes))
+	mux.HandleFunc("POST /api/admin/registration-codes", s.admin(s.createRegistrationCodes))
+	mux.HandleFunc("DELETE /api/admin/registration-codes/{id}", s.admin(s.revokeRegistrationCode))
 
 	mux.HandleFunc("GET /api/admin/user-groups", s.admin(s.listUserGroups))
 	mux.HandleFunc("POST /api/admin/user-groups", s.admin(s.saveUserGroup))

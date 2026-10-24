@@ -562,19 +562,33 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true"})
+	registrationMode, err := s.Store.Setting(r.Context(), "registration_mode")
+	if errors.Is(err, store.ErrNotFound) {
+		registrationMode = "manual"
+	} else if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode,
+	})
 }
 
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		CNYPerUSD      *decimal.Decimal `json:"cny_per_usd"`
-		PaymentEnabled *bool            `json:"payment_enabled"`
+		CNYPerUSD        *decimal.Decimal `json:"cny_per_usd"`
+		PaymentEnabled   *bool            `json:"payment_enabled"`
+		RegistrationMode *string          `json:"registration_mode"`
 	}
 	if !readJSON(w, r, &in) {
 		return
 	}
 	if in.CNYPerUSD != nil && !in.CNYPerUSD.IsPositive() {
 		writeError(w, http.StatusBadRequest, "汇率要大于 0")
+		return
+	}
+	if in.RegistrationMode != nil && *in.RegistrationMode != "manual" && *in.RegistrationMode != "code" {
+		writeError(w, http.StatusBadRequest, "注册方式只能是 manual 或 code；邮箱注册尚未开放")
 		return
 	}
 	if in.CNYPerUSD != nil {
@@ -585,6 +599,12 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.PaymentEnabled != nil {
 		if err := s.Store.SetSetting(r.Context(), "payment_enabled", strconv.FormatBool(*in.PaymentEnabled)); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
+	if in.RegistrationMode != nil {
+		if err := s.Store.SetSetting(r.Context(), "registration_mode", *in.RegistrationMode); err != nil {
 			writeStoreError(w, err)
 			return
 		}

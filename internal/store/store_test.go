@@ -41,7 +41,7 @@ func TestMigrateCreatesAllTablesAndIsIdempotent(t *testing.T) {
 	}
 
 	want := []string{"users", "groups", "user_groups", "user_group_members", "group_user_groups", "models", "channels", "channel_groups",
-		"channel_models", "api_keys", "request_logs", "balance_adjustments", "settings"}
+		"channel_models", "api_keys", "request_logs", "balance_adjustments", "settings", "registration_codes"}
 	for _, table := range want {
 		var exists bool
 		if err := s.Pool.QueryRow(ctx, `SELECT to_regclass($1) IS NOT NULL`, "public."+table).Scan(&exists); err != nil {

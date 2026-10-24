@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Alert, Button, Card, Form, Input, Typography } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
-import { useNavigate } from 'react-router-dom'
-import { ApiError, post } from '../api'
+import { Link, useNavigate } from 'react-router-dom'
+import { ApiError, get, post } from '../api'
 import { solveCaptcha } from '../captcha'
 import { useApp } from '../app'
 import Logo from '../components/Logo'
@@ -13,7 +13,12 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [needCaptcha, setNeedCaptcha] = useState(false) // 失败几次后服务端会要求人机验证
+  const [registrationEnabled, setRegistrationEnabled] = useState(false)
   const nav = useNavigate()
+
+  useEffect(() => {
+    get<{ enabled: boolean }>('/api/auth/registration').then((status) => setRegistrationEnabled(status.enabled)).catch(() => {})
+  }, [])
 
   const withCaptcha = async (v: { username: string; password: string }) => {
     setVerifying(true)
@@ -52,7 +57,9 @@ export default function Login() {
           灵枢 <span style={{ fontWeight: 400, fontSize: 16, opacity: 0.6 }}>Lingshu</span>
         </Typography.Title>
         <Typography.Paragraph type="secondary">
-          {t('团队统一 AI 模型网关。账号由管理员创建。', 'Team AI model gateway. Accounts are created by admins.')}
+          {registrationEnabled
+            ? t('团队统一 AI 模型网关。可使用注册码加入团队。', 'Team AI model gateway. Join your team with a registration code.')
+            : t('团队统一 AI 模型网关。账号由管理员创建。', 'Team AI model gateway. Accounts are created by admins.')}
         </Typography.Paragraph>
         {error && <Alert type="error" title={error} showIcon style={{ marginBottom: 16 }} />}
         <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
@@ -66,6 +73,7 @@ export default function Login() {
             {verifying ? t('正在进行人机验证…', 'Verifying you are human…') : t('登录', 'Sign in')}
           </Button>
         </Form>
+        {registrationEnabled && <div style={{ marginTop: 12 }}><Link to="/register">{t('使用注册码创建账号', 'Register with a code')}</Link></div>}
         <Button type="link" style={{ padding: 0, marginTop: 12 }} onClick={() => nav('/')}>
           ← {t('返回首页', 'Back to home')}
         </Button>
