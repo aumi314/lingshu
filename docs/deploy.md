@@ -70,3 +70,5 @@ UM 的 OpenRouter 等渠道如需出境，可用 `lingshu-proxy.service` 提供�
 DMIT 整体停用副本的步骤和隔离边界见 [dmit-copy-20261023.md](dmit-copy-20261023.md)。UM 原入口可独立使用。
 
 腾讯云旧部署步骤保留在 Git 历史中；现役操作以上述双机流程为准。
+
+2026-10-23 TypeSafe / Nace 模板说明简化：提交 `717d2ad210644538e3352362856032aa33c5d20b`，两项模板说明均显示 `System One`。无数据库迁移。发布前 DMIT 备份 `/var/backups/lingshu/lingshu-20261024T020742Z-pre-717d2ad.dump`，UM580D 备份 `/var/backups/lingshu/lingshu-20261024T020838Z-pre-717d2ad.dump`；旧程序均保留为 `/opt/lingshu/lingshu.prev-717d2ad`。同一成品 SHA-256 `0679f90942d9dd9481be38696c8e7a6e726713c3f706186d6aa461796a9937bd`。两端服务 active，主机内及公网健康检查均返回 200。
