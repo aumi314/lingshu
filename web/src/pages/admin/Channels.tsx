@@ -31,6 +31,7 @@ import { parseStandardRoot, recoverStandardRoot, standardBases } from '../../cha
 
 
 type Row = { key: number; upstream: string; model_id?: number }
+type ProbeDraft = Pick<Channel, 'id' | 'template' | 'base_url_chat' | 'base_url_messages' | 'base_url_responses' | 'base_url_systemone' | 'proxy_url'> & { api_key: string }
 type FormValues = {
   template: string
   root_url: string
@@ -48,6 +49,8 @@ type FormValues = {
 
 const protocolLabel: Record<string, string> = { chat: 'chat', messages: 'messages', responses: 'responses', systemone: 'System One' }
 const supportsSystemOne = (template?: string) => template === 'typesafe' || template === 'nace'
+const configuredProtocols = (d: ProbeDraft) =>
+  (['chat', 'messages', 'responses', 'systemone'] as const).filter((p) => d[`base_url_${p}`] && (p !== 'systemone' || supportsSystemOne(d.template)))
 let rowSeq = 1
 
 export default function Channels() {
@@ -65,7 +68,12 @@ export default function Channels() {
   const [modelSearch, setModelSearch] = useState('')
   const [fetching, setFetching] = useState(false)
   const [probing, setProbing] = useState(false)
-  const [probe, setProbe] = useState<ProbeResult[] | null>(null)
+  const [probeDraft, setProbeDraft] = useState<ProbeDraft | null>(null)
+  const [probeModels, setProbeModels] = useState<string[]>([])
+  const [probeProtocol, setProbeProtocol] = useState('')
+  const [probeBatch, setProbeBatch] = useState(false)
+  const [probingModel, setProbingModel] = useState('')
+  const [probe, setProbe] = useState<ProbeResult[]>([])
   const [saving, setSaving] = useState(false)
   const [accounts, setAccounts] = useState<UpstreamAccount[]>([])
   const [syncTemplates, setSyncTemplates] = useState<string[]>([])
@@ -207,25 +215,49 @@ export default function Channels() {
     }
   }
 
-  const runProbe = async (d: NonNullable<ReturnType<typeof draft>>, upstreams: string[]) => {
-    const protocols = (['chat', 'messages', 'responses', 'systemone'] as const).filter((p) => d[`base_url_${p}`] && (p !== 'systemone' || supportsSystemOne(d.template)))
-    const targets = upstreams.flatMap((m) => protocols.map((p) => ({ protocol: p, model: m })))
-    if (!targets.length) {
-      message.warning(t('先添加模型、填好协议地址', 'Add models and protocol URLs first'))
+  const openProbe = (d: ProbeDraft, upstreams: string[]) => {
+    const protocols = configuredProtocols(d)
+    if (!protocols.length) {
+      message.warning(t('先填好协议地址', 'Configure a protocol URL first'))
       return
     }
+    const names = [...new Set(upstreams.map((name) => name.trim()).filter(Boolean))]
+    if (!names.length) {
+      message.warning(t('先映射模型', 'Add a model mapping first'))
+      return
+    }
+    setProbeDraft(d)
+    setProbeModels(names)
+    setProbeProtocol(protocols[0])
+    setProbe([])
+  }
+
+  const runProbe = async (upstreams: string[], batch: boolean) => {
+    if (!probeDraft || !probeProtocol) return
+    if (!upstreams.length) {
+      message.warning(t('这个渠道还没有映射模型', 'This channel has no mapped models'))
+      return
+    }
+    const targets = upstreams.map((model) => ({ protocol: probeProtocol, model }))
     if (targets.length > 20) {
-      message.warning(t('一次最多测 20 项，请减少模型数量', 'At most 20 checks at a time'))
+      message.warning(t('一次最多批量测试 20 个模型', 'At most 20 models can be tested at once'))
       return
     }
     setProbing(true)
-    setProbe(null)
+    setProbeBatch(batch)
+    setProbingModel(batch ? '' : upstreams[0])
     try {
-      setProbe(await post<ProbeResult[]>('/api/admin/channels/probe', { ...d, targets }))
+      const results = await post<ProbeResult[]>('/api/admin/channels/probe', { ...probeDraft, targets })
+      setProbe((current) => [
+        ...current.filter((item) => !targets.some((target) => target.protocol === item.protocol && target.model === item.model)),
+        ...results,
+      ])
     } catch (e) {
       message.error((e as Error).message)
     } finally {
       setProbing(false)
+      setProbeBatch(false)
+      setProbingModel('')
     }
   }
 
@@ -301,6 +333,7 @@ export default function Channels() {
   const templateID = Form.useWatch('template', form)
   const rootURL = Form.useWatch('root_url', form)
   const currentTemplate = templates.find((x) => x.id === templateID)
+  const probeByModel = useMemo(() => new Map(probe.filter((item) => item.protocol === probeProtocol).map((item) => [item.model, item])), [probe, probeProtocol])
   const visibleProtocols = supportsSystemOne(templateID)
     ? (['systemone'] as const)
     : (['chat', 'messages', 'responses'] as const)
@@ -396,7 +429,7 @@ export default function Channels() {
             align: 'right',
             render: (_, c) => (
               <Space>
-                <Button size="small" type="link" onClick={() => runProbe({ id: c.id, template: c.template, api_key: '', base_url_chat: c.base_url_chat, base_url_messages: c.base_url_messages, base_url_responses: c.base_url_responses, base_url_systemone: c.base_url_systemone, proxy_url: c.proxy_url }, c.models.map((m) => m.upstream_name || m.model_name))}>
+                <Button size="small" type="link" onClick={() => openProbe({ id: c.id, template: c.template, api_key: '', base_url_chat: c.base_url_chat, base_url_messages: c.base_url_messages, base_url_responses: c.base_url_responses, base_url_systemone: c.base_url_systemone, proxy_url: c.proxy_url }, c.models.map((m) => m.upstream_name || m.model_name))}>
                   {t('测试', 'Test')}
                 </Button>
                 <Button size="small" type="link" onClick={() => openEdit(c)}>
@@ -443,9 +476,9 @@ export default function Channels() {
         title={editing === 'new' ? t('添加渠道', 'Add channel') : `${t('编辑渠道', 'Edit channel')} · ${editing && typeof editing === 'object' ? editing.name : ''}`}
         extra={
           <Space>
-            <Button loading={probing} onClick={() => {
+            <Button onClick={() => {
               const d = draft()
-              if (d) void runProbe(d, rows.map((r) => r.upstream).filter(Boolean))
+              if (d) openProbe(d, rows.map((r) => r.upstream))
               else void form.validateFields(['root_url']).catch(() => {})
             }}>
               {t('测试', 'Test')}
@@ -673,46 +706,110 @@ export default function Channels() {
         </Checkbox.Group>
       </Modal>
 
-      <Modal open={probing || probe !== null} title={t('冒烟测试', 'Smoke test')} footer={null} onCancel={() => setProbe(null)} width={760}>
-        {probing && !probe ? (
-          <Typography.Paragraph>{t('正在用真实请求测试每个模型，推理模型可能要十几秒…', 'Sending real requests to each model; reasoning models may take a few seconds…')}</Typography.Paragraph>
-        ) : (
+      <Modal
+        open={probeDraft !== null}
+        title={t('冒烟测试', 'Smoke test')}
+        footer={null}
+        onCancel={() => {
+          if (!probing) {
+            setProbeDraft(null)
+            setProbe([])
+          }
+        }}
+        width={900}
+      >
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+            <Space>
+              <Typography.Text>{t('协议', 'Protocol')}</Typography.Text>
+              <Select
+                value={probeProtocol || undefined}
+                disabled={probing}
+                style={{ width: 220 }}
+                options={probeDraft ? configuredProtocols(probeDraft).map((protocol) => ({ value: protocol, label: protocolLabel[protocol] })) : []}
+                onChange={setProbeProtocol}
+              />
+            </Space>
+            <Button
+              type="primary"
+              loading={probing && probeBatch}
+              disabled={probing || probeModels.length === 0}
+              onClick={() => void runProbe(probeModels, true)}
+            >
+              {t(`批量测试全部模型（${probeModels.length}）`, `Test all models (${probeModels.length})`)}
+            </Button>
+          </Space>
+          <Typography.Text type="secondary">
+            {t('每项都会发送真实请求到上游，可能产生上游费用。', 'Each check sends a real request upstream and may incur provider charges.')}
+          </Typography.Text>
           <Table
             size="small"
-            rowKey={(r) => r.protocol + r.model}
+            rowKey="model"
             pagination={false}
-            dataSource={probe ?? []}
+            dataSource={probeModels.map((model) => ({ model }))}
             columns={[
-              { title: t('协议', 'Protocol'), dataIndex: 'protocol', render: (v) => protocolLabel[v] ?? v },
-              { title: t('上游模型', 'Upstream model'), dataIndex: 'model', render: (v) => <span className="mono">{v}</span> },
+              { title: t('上游模型', 'Upstream model'), dataIndex: 'model', render: (model) => <span className="mono">{model}</span> },
               {
                 title: t('结果', 'Result'),
-                render: (_, r) =>
-                  r.ok ? (
+                render: (_, row) => {
+                  const result = probeByModel.get(row.model)
+                  if (!result) return <Typography.Text type="secondary">{t('未测试', 'Not tested')}</Typography.Text>
+                  return result.ok ? (
                     <Tag icon={<CheckCircleFilled />} color="success">{t('通过', 'OK')}</Tag>
                   ) : (
-                    <Tooltip title={r.error}>
-                      <Tag icon={<CloseCircleFilled />} color="error">{r.http_status ? `HTTP ${r.http_status}` : t('失败', 'Failed')}</Tag>
-                      <div style={{ maxWidth: 260, fontSize: 12 }} className="muted">{r.error?.slice(0, 120)}</div>
+                    <Tooltip title={result.error}>
+                      <Tag icon={<CloseCircleFilled />} color="error">{result.http_status ? `HTTP ${result.http_status}` : t('失败', 'Failed')}</Tag>
+                      <div style={{ maxWidth: 260, fontSize: 12 }} className="muted">{result.error?.slice(0, 120)}</div>
                     </Tooltip>
-                  ),
+                  )
+                },
               },
-              { title: t('首字', 'First byte'), dataIndex: 'first_byte_ms', render: (v) => (v ? `${(v / 1000).toFixed(1)}s` : '-') },
-              { title: t('总耗时', 'Total'), dataIndex: 'total_ms', render: (v) => `${(v / 1000).toFixed(1)}s` },
+              {
+                title: t('首字', 'First byte'),
+                render: (_, row) => {
+                  const result = probeByModel.get(row.model)
+                  return result?.first_byte_ms ? `${(result.first_byte_ms / 1000).toFixed(1)}s` : '-'
+                },
+              },
+              {
+                title: t('总耗时', 'Total'),
+                render: (_, row) => {
+                  const result = probeByModel.get(row.model)
+                  return result ? `${(result.total_ms / 1000).toFixed(1)}s` : '-'
+                },
+              },
               {
                 title: t('用量（输入 / 输出）', 'Usage (input / output)'),
-                render: (_, r) =>
-                  !r.ok ? '-' : r.usage_reported ? (
-                    <span>{r.input_tokens} / {r.output_tokens}</span>
+                render: (_, row) => {
+                  const result = probeByModel.get(row.model)
+                  if (!result?.ok) return '-'
+                  return result.usage_reported ? (
+                    <span>{result.input_tokens} / {result.output_tokens}</span>
                   ) : (
                     <Tooltip title={t('上游没有返回用量，这个渠道只能按内容估算计费', 'No usage returned; billing will be estimated')}>
                       <Tag icon={<WarningFilled />} color="warning">{t('无', 'none')}</Tag>
                     </Tooltip>
-                  ),
+                  )
+                },
+              },
+              {
+                title: '',
+                align: 'right',
+                render: (_, row) => (
+                  <Button
+                    size="small"
+                    type="link"
+                    loading={probing && !probeBatch && probingModel === row.model}
+                    disabled={probing}
+                    onClick={() => void runProbe([row.model], false)}
+                  >
+                    {t('测试', 'Test')}
+                  </Button>
+                ),
               },
             ]}
           />
-        )}
+        </Space>
       </Modal>
     </div>
   )
