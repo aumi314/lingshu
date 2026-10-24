@@ -40,6 +40,8 @@ WSL 访问 UM 时调用 `/mnt/c/Windows/System32/OpenSSH/ssh.exe minisforum-um58
 
 2026-10-23 DMIT 上线 Kimi K3.1 Pro：数据库变更前备份 `/var/backups/lingshu/lingshu-20261023T233119Z.dump`。新增模型 id=26 `kimi-k3.1-pro`，按官方价格设置输入 `$2`、输出 `$10`、缓存命中 `$0.20`、缓存写入 `$2`/百万 token，并映射到已启用的 Moonshot 渠道 id=4。渠道原有服务分组 `Official` 不变；不含 highspeed，不改 UM。使用该渠道现有 key 向 Moonshot 发真实 Chat Completions 请求，HTTP 200，返回内容非空，usage 为输入 90、输出 58 tokens。
 
+2026-10-23 移除模型启用开关：提交 `a5c056cce8d7512615a18e2c1b89563f6eb525de`，schema 12 删除 `models.enabled`；存在定价记录即视为已配置，零价有效，路由只按渠道、映射、分组和协议判断。DMIT 发布前数据库备份 `/var/backups/lingshu/lingshu-20261024T004621Z-pre-a5c056c.dump`，UM580D 备份 `/var/backups/lingshu/lingshu-20261024T004624Z-pre-a5c056c.dump`；旧程序分别保存在 `/opt/lingshu/lingshu.prev-a5c056c`。两端 schema 12、模型数 26 / 23、无 `models.enabled` 列，服务和公网健康检查均返回 200；同一二进制 SHA-256 为 `224685ee25900d5d2bc824eecfe5cfffb3bec95d01f36eb9bc087f7913797978`。用 aumif 现有账户的临时 key 分别经两端本机监听调用 DeepSeek Chat，均 HTTP 200，输入 / 输出 38 / 13 tokens，日志状态 success，费用 `$0.0000135`；临时 key 已撤销。WSL 经 DMIT 公网域名发送模型请求时收到 403，网关没有对应请求日志；本机监听实测成功，公网 API 请求来源尚未确认。回滚需先恢复对应发布前备份，再换回旧二进制。
+
 ## 现役备份与恢复
 
 两端每日备份保留最近 14 份。DMIT 脚本在 `deploy/backup/lingshu-dmit-backup`，PostgreSQL 数据卷和 PiQode 原有 PostgreSQL 15 完全独立。
@@ -57,7 +59,7 @@ UM 的 OpenRouter 等渠道如需出境，可用 `lingshu-proxy.service` 提供�
 
 ## 现役回滚
 
-两端还保留较早版本 `/opt/lingshu/lingshu.prev-20261023`。最近一次发布前二进制为 `/opt/lingshu/lingshu.prev-102f002`。程序回滚采用临时文件加原子替换，再重启服务；schema 11 改变了用户分组表结构，回滚到旧二进制前必须恢复该次发布前数据库备份。
+两端还保留较早版本 `/opt/lingshu/lingshu.prev-20261023`。发布前二进制按版本保留为 `/opt/lingshu/lingshu.prev-<commit>`。程序回滚采用临时文件加原子替换，再重启服务；回滚到依赖旧结构的程序前必须恢复对应发布前数据库备份。schema 11 的用户分组变更及 schema 12 的模型开关删除都要求先恢复备份。
 
 DMIT 整体停用副本的步骤和隔离边界见 [dmit-copy-20261023.md](dmit-copy-20261023.md)。UM 原入口可独立使用。
 
