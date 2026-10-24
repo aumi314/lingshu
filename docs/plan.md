@@ -34,6 +34,7 @@ lingshu/
 │   │   └── usage/          # 各协议 usage 解析和统一口径
 │   ├── router/             # 选渠道、重试、渠道冷却
 │   ├── billing/            # 算钱、结算、准入检查
+│   ├── payments/           # 五种支付适配、报价、官方验签和查单
 │   ├── auth/               # 登录会话、API key 校验
 │   └── api/                # /api 下的管理端、用户端接口
 ├── web/                    # React 前端
@@ -59,7 +60,9 @@ lingshu/
 | `channel_models` | channel_id、model_id、upstream_name | 名称映射；upstream_name 为空表示和标准名相同 |
 | `api_keys` | user_id、name、key_hash、key_prefix、group_id、quota_limit、quota_used、enabled、last_used_at | 只存哈希，完整 key 创建时只显示一次 |
 | `request_logs` | 见下 | 一个客户端请求一行 |
-| `balance_adjustments` | user_id、amount、balance_after、operator_id、note | 管理员改余额的流水 |
+| `balance_adjustments` | user_id、amount、balance_after、operator_id、note、topup_order_id | 管理员调整及自动充值流水，订单关联唯一 |
+| `payment_config_versions` / `payment_services` | provider、config、secrets / enabled、version_id | 不可变商户配置版本与当前服务开关 |
+| `topup_orders` | user_id、provider、version_id、environment、credit_usd、amount、currency、unit_price、status | 报价、支付会话及到账状态 |
 | `settings` | key、value | 显示汇率（CNY/USD）、用户充值开关（默认关闭） |
 
 `request_logs` 字段：request_id、user_id、api_key_id、group_id、protocol、model、upstream_model、channel_id、stream、status（success / client_cancelled / upstream_error / rejected）、http_status、error、input / cache_read / cache_write / output / reasoning tokens、usage_estimated、价格与倍率快照、cost、attempts、首字节耗时、总耗时、upstream_response_id、created_at。
@@ -206,6 +209,8 @@ lingshu/
 
 团队正式使用前的加固和运营工具。决策细节见 `docs/decisions.md` 对应小节。
 
+多支付服务（2026-10-23，发布验收中）：五种适配、支付配置与版本、USD 充值订单、原子入账及唯一流水、钱包报价和分页记录、管理员验收入口已实现。新增 schema 13；旧库余额和流水保留，重复迁移通过。独立库完整测试、支付并发 race 检测、前端类型检查和构建通过。协议模拟覆盖五家支付创建、错误响应及签名、金额/币种、环境、税费、重复通知；数据库和接口覆盖并发扣费、事务回滚、超时、提前通知、查单补齐、旧凭据和关闭后到账。Pancake 目录读取和显式创建/发布商品均有测试。真实付款仅计划在 DMIT 用现有 aumif 验收 EPay，其余四种未做真实付款；UM 保持关闭。使用及限制见 [支付接入](payments.md)，发布和真实验收状态见 [现役部署](deploy.md)。
+
 System One 接入（2026-10-22 本地完成，2026-10-23 ✅ 发布到 UM580D 与 DMIT）：迁移 `0009` 新增独立渠道地址，加入 TypeSafe / Nace 模板、`/v1/systemone` 透传与用量解析、模型拉取和非流式冒烟测试；管理端及用户端展示协议入口。全量 Go 测试、前端类型检查和 `make build` 通过（构建使用本机已有的 WSL Node 22.22.3）。已验证真实响应样本、鉴权和失败不扣费、529 重试与只结算一次、完整 / 缺失用量、渠道配置读写；两家真实上游的 `noul` / `choice` / `score` 请求经本地最终构建成功，日志金额与输入单价精确一致。2026-10-23 两端发布后 schema 均为第 9 版；模板与入口已上线，未自动创建生产渠道。浏览器检查模板切换、地址预填、渠道测试和用户模型页通过。详情及复验步骤见 [System One 接入记录](research/systemone.md)。
 
 标准渠道模板（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：新增一个根地址输入，自动生成 Chat、Messages、Responses 三个 Base URL；同一地址展开逻辑供保存、冒烟测试和模型拉取使用，编辑可还原根地址，转为自定义时保留展开地址。四项根地址单测、全量 Go 测试、前端类型检查和构建通过。DMIT 用渠道 15 已保存的 key 对 `api.kinght.top` 三个完整 URL 实际请求均 HTTP 200。发布前分别备份，两端健康检查和公网资源均通过；无数据库迁移。实现提交和二进制哈希见 [现役部署记录](deploy.md)。
@@ -214,7 +219,7 @@ TypeSafe / Nace 模板显示（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：模
 
 渠道冒烟测试交互（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：点击“测试”先选协议，按模型单测或批量测试所选协议下的全部模型；弹窗展示单项结果。每次最多批量 20 个模型，后端并发限制保持 3。前端构建和 `go test ./internal/api` 通过；无数据库迁移。提交、备份和线上验收见 [现役部署记录](deploy.md)。
 
-系统设置板块（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：运营设置提供“显示汇率”；支付设置提供默认关闭的“开放用户充值”开关，保存到现有 settings 表，真实支付后续接入。汇率和开关可独立保存，兼容旧客户端只提交汇率。独立测试库运行 `make test`、前端类型检查与构建、程序构建通过；两端用现有 aumif 账户验证设置接口均返回汇率 6.7、充值关闭，临时验证会话已删除。无数据库迁移。提交、备份和线上验收见 [现役部署记录](deploy.md)。
+系统设置板块（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：运营设置提供“显示汇率”；支付设置提供默认关闭的“开放用户充值”开关，保存到现有 settings 表，五种真实支付接入进度见下文。汇率和开关可独立保存，兼容旧客户端只提交汇率。独立测试库运行 `make test`、前端类型检查与构建、程序构建通过；两端用现有 aumif 账户验证设置接口均返回汇率 6.7、充值关闭，临时验证会话已删除。无数据库迁移。提交、备份和线上验收见 [现役部署记录](deploy.md)。
 
 用户钱包入口（2026-10-23 ✅ 发布到 UM580D 与 DMIT）：用户区第五项新增“钱包充值”，页面展示当前登录用户余额，进入时刷新账户数据；沿用货币偏好和显示汇率，普通用户与管理员均可访问。前端类型检查、前端与程序构建通过；Playwright 以模拟账户响应检查普通用户和管理员入口、第五项顺序、中英文、USD/CNY 换算及手机布局通过。无后端或数据库变更；两端服务、公网健康检查、钱包路由与新资源均通过。提交、备份和哈希见 [现役部署记录](deploy.md)。
 

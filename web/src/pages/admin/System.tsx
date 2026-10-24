@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { App, Button, Card, Form, InputNumber, Space, Switch, Typography } from 'antd'
 import { get, put } from '../../api'
 import { useApp } from '../../app'
+import PaymentSettings from '../../components/PaymentSettings'
 
 export default function System() {
   const { t, reload } = useApp()
@@ -80,8 +81,9 @@ export default function System() {
           <Switch checked={paymentEnabled} loading={savingPayment} disabled={loading} onChange={savePayment} />
         </Space>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          {t('支付渠道尚未接入，当前仅保存开关状态。', 'Payment providers are not connected yet; this switch currently saves the setting only.')}
+          {t('开启后，用户可使用下方已配置且启用的生产支付服务充值；关闭后已有订单仍会正常到账。', 'When enabled, users can top up through configured production payment services below. Existing payments continue to settle when disabled.')}
         </Typography.Paragraph>
+        <PaymentSettings />
       </Card>
     </div>
   )

@@ -119,7 +119,7 @@ func serve() error {
 	mux.Handle("POST /v1/systemone", h.Serve(usage.SystemOne))
 	mux.HandleFunc("GET /v1/models", h.ServeModels)
 	dist, _ := fs.Sub(web.Dist, "dist")
-	apiServer := &api.Server{Store: s, Relay: h, Web: dist}
+	apiServer := &api.Server{Store: s, Relay: h, Web: dist, PublicURL: cfg.PublicURL}
 	apiServer.Register(mux)
 	go apiServer.RunBalanceSync(ctx) // 每小时用厂商余额接口校准上游账户
 

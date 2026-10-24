@@ -23,6 +23,7 @@ type env struct {
 	t     *testing.T
 	store *store.Store
 	srv   *httptest.Server
+	api   *Server
 }
 
 func newEnv(t *testing.T) *env {
@@ -64,10 +65,11 @@ func newEnv(t *testing.T) *env {
 		"index.html":      {Data: []byte("<html>lingshu</html>")},
 		"assets/app-1.js": {Data: []byte("console.log(1)")},
 	}
-	(&Server{Store: s, Relay: h, Web: web}).Register(mux)
+	api := &Server{Store: s, Relay: h, Web: web}
+	api.Register(mux)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return &env{t: t, store: s, srv: srv}
+	return &env{t: t, store: s, srv: srv, api: api}
 }
 
 // client 是一个带 cookie 的浏览器会话。
