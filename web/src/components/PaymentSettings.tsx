@@ -42,7 +42,7 @@ function ServiceForm({ service, onSave }: { service: PaymentService; onSave: () 
   }
   const payload = async (enabled?: boolean) => {
     const v = await form.validateFields()
-    return { ...v, ...(enabled === undefined ? {} : { enabled }), clear_secrets: clearSecrets }
+    return { ...v, ...(provider === 'epay' ? { environment: 'prod' } : {}), ...(enabled === undefined ? {} : { enabled }), clear_secrets: clearSecrets }
   }
   const save = () => run('save', async () => {
     await put(`/api/admin/payments/${provider}`, await payload())
@@ -77,7 +77,7 @@ function ServiceForm({ service, onSave }: { service: PaymentService; onSave: () 
       <Form form={form} layout="vertical" requiredMark={false}>
         <Space wrap align="start">
           <Form.Item name="enabled" label={t('启用', 'Enabled')} valuePropName="checked"><Switch /></Form.Item>
-          <Form.Item name="environment" label={t('支付环境', 'Environment')}><Select style={{ width: 150 }} options={[{ value: 'prod', label: t('生产', 'Production') }, { value: 'test', label: t('测试（不增加真实余额）', 'Test (no wallet credit)') }]} /></Form.Item>
+          {provider === 'epay' ? <Form.Item label={t('支付环境', 'Environment')}><Typography.Text>{t('生产', 'Production')}</Typography.Text></Form.Item> : <Form.Item name="environment" label={t('支付环境', 'Environment')}><Select style={{ width: 150 }} options={[{ value: 'prod', label: t('生产', 'Production') }, { value: 'test', label: t('测试（不增加真实余额）', 'Test (no wallet credit)') }]} /></Form.Item>}
           <Form.Item name="currency" label={t('收款币种', 'Currency')}><Input readOnly style={{ width: 90 }} /></Form.Item>
           <Form.Item name="unit_price" label={t('每 $1 到账额度的实付金额', 'Payment per $1 wallet credit')} rules={[{ required: true }]}><InputNumber stringMode min="0.0000000001" style={{ width: 170 }} /></Form.Item>
           <Form.Item name="min_usd" label={t('最低到账额度（USD）', 'Minimum credit (USD)')} rules={[{ required: true }]}><InputNumber stringMode min="0.01" precision={2} /></Form.Item>

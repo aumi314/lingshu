@@ -80,6 +80,16 @@ func TestQuotesAndPaymentValidation(t *testing.T) {
 			}
 		})
 	}
+	epayConfig, _ := configAndOrder("epay")
+	epayConfig.Environment = "test"
+	if err := epayConfig.Validate(); err == nil {
+		t.Fatal("EPay test environment accepted")
+	}
+	stripeConfig, _ := configAndOrder("stripe")
+	stripeConfig.Environment = "test"
+	if err := stripeConfig.Validate(); err != nil {
+		t.Fatal("Stripe test environment rejected")
+	}
 	c, _ := configAndOrder("creem")
 	c.UnitPrice = decimal.RequireFromString("0.5")
 	if _, err := Quote(c, decimal.NewFromInt(1), ""); err == nil {

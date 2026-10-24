@@ -155,6 +155,19 @@ func TestPaymentPermissionsQuotesAndSecretLifecycle(t *testing.T) {
 	}
 }
 
+func TestEPayRejectsTestEnvironment(t *testing.T) {
+	e := newEnv(t)
+	admin := e.login("admin")
+	configurePayment(t, e, admin, "epay")
+	if code, body := admin.do("PUT", "/api/admin/payments/epay", map[string]string{"environment": "test"}, nil); code != 400 || !strings.Contains(body, "EPay 仅支持生产环境") {
+		t.Fatal("EPay test environment was not rejected", code, body)
+	}
+	c, err := e.store.PaymentConfig(context.Background(), "epay")
+	if err != nil || c.Environment != "prod" {
+		t.Fatal("rejected environment changed saved config", err, c.Environment)
+	}
+}
+
 func TestPaymentTimeoutIsPendingAndNoDuplicateSession(t *testing.T) {
 	e := newEnv(t)
 	admin := e.login("admin")

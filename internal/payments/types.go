@@ -104,6 +104,9 @@ func (c Config) Validate() error {
 	if c.Environment != "test" && c.Environment != "prod" {
 		return errors.New("支付环境必须为 test 或 prod")
 	}
+	if c.Provider == "epay" && c.Environment != "prod" {
+		return errors.New("EPay 仅支持生产环境")
+	}
 	if (c.Provider == "epay" && c.Currency != "CNY") || (c.Provider != "epay" && c.Currency != "USD") {
 		return errors.New("EPay 使用 CNY，其他支付服务使用 USD")
 	}
