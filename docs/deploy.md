@@ -50,6 +50,12 @@ WSL 访问 UM 时调用 `/mnt/c/Windows/System32/OpenSSH/ssh.exe minisforum-um58
 
 ## 现役备份与恢复
 
+### DeepSeek 工作日峰谷规则补齐（2026-10-23）
+
+现场核对发现两端模型 id=1 `deepseek-v4.1-flash` 只有周末谷价规则，缺少文档中约定的夜间及午间规则，导致工作日全天按高峰。备份后通过现有 aumif 的临时会话调用 `PUT /api/admin/models/1`，保留基础价及周末规则，增加北京时间 18:00–09:00 与 12:00–14:00 两条谷价规则；接口与数据库读回均为三条。基础价不变：输入/输出/缓存读/缓存写为 0.30/1.20/0.006/0，谷价为 0.15/0.60/0.003/0（USD/百万 tokens），最终乘服务分组倍率。`TestDeepSeekOffPeak` 覆盖高峰边界、周末及自然星期处理，通过。按请求开始时间匹配，已有账单不追溯变更。
+
+修改前 DMIT 数据库备份 `/var/backups/lingshu/lingshu-20261024T051740Z-pre-deepseek-time-rules.dump`（SHA-256 `1f9800dcf05cbb34570a69ed3df4dbee579eaa0c0e57607b1d282454211cf7e6`），UM `/var/backups/lingshu/lingshu-20261024T051751Z-pre-deepseek-time-rules.dump`（SHA-256 `4ccd70b97ae53d16227942d505a8ade650e96433b2159eda9aa250cb56ae990a`），均通过 `pg_restore --list`；同前缀 `-model-before.json` / `-model-after.json` 保留改前改后值。临时会话已删除。无代码或 schema 变更，实时生效，不重启服务。
+
 ### 系统设置标签页（2026-10-23）
 
 提交 `5e5d897`：系统设置改为与定价页一致的顶部“运营设置 / 支付设置”标签，默认运营设置，支付页可用 `?tab=payments` 直达并保留刷新状态，内容宽度与定价页一致。前端类型检查/构建及 Playwright 中英文、切换/刷新、按需加载和手机布局验证通过。没有后端或 schema 变更。
