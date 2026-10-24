@@ -50,6 +50,27 @@ WSL 访问 UM 时调用 `/mnt/c/Windows/System32/OpenSSH/ssh.exe minisforum-um58
 
 ## 现役备份与恢复
 
+### 多支付发布（2026-10-23；备份时间为 UTC 2026-10-24）
+
+应用提交 `ba139c4b7b5df55fd8c81d39581b380bfd3bdbe2` 已推送 GitHub；从干净 detached worktree 构建一次，先发布 DMIT，再发布 UM580D。两端程序 SHA-256 均为 `20b7b92fba2d2ee25322d772a3b61ce9593081b2c7dfae0081ed698edcf13a0c`，`release.json` 记录同一提交，schema 均为 `0013_payments`。新增五种支付适配、配置版本、订单及原子余额入账；迁移时用户、模型和原有余额调整流水完整保留（DMIT 1/26/1，UM 1/23/1）；后续 DMIT 真实充值另新增一条流水。
+
+发布前各自备份数据库、环境文件、程序及发布标记：
+
+| 主机 | 数据库备份 | dump SHA-256 |
+|---|---|---|
+| DMIT | `/var/backups/lingshu/lingshu-20261024T045936Z-pre-ba139c4.dump` | `80ff538eb4c01182b7bdff4919ce442b96398a9054536ccd3369bac193f87afc` |
+| UM580D | `/var/backups/lingshu/lingshu-20261024T050136Z-pre-ba139c4.dump` | `2f7e94d9954c0ca7456ec020bd1c27cec32a9e04c801cc05379070197601de57` |
+
+对应环境备份为相同前缀 `.env`；两端旧程序 `/opt/lingshu/lingshu.prev-ba139c4`，旧标记 `/opt/lingshu/release.prev-ba139c4.json`。两份 dump 均通过 `pg_restore --list`。只增加各自的 `LINGSHU_PUBLIC_URL`，保留监听、数据库和渠道差异。
+
+验证：独立库 `make test`、相关包 `go test -race -p 1`、`go vet ./...`、前端类型检查/构建、程序构建通过。Playwright 模拟账户验证中文/英文钱包、付款方式首次加载、固定报价确认、付款后余额刷新、375px 手机布局、五服务配置及 Pancake 管理入口。两端服务 active，本机与公网 `/healthz`、钱包页面和资源 `index-BypGXaz3.js` 均通过；DMIT 公网通知 GET/POST 可达应用，未签名请求按规范返回 HTTP 400 `fail`。
+
+DMIT 从 PiQode 数据库仅在内存读取现有 EPay 商户凭据，通过 Lingshu 管理接口保存，未修改 PiQode/LMM。ZPAY 网关验证通过；使用现有 aumif（id=1）建立管理员验收订单 `149dd1a4f9e707e1610e21d2317e3ca5`，报价 CNY 6.70，到账 USD 1，通知地址 `https://gateway.piqode.com/api/payments/epay/1/prod/notify`。用户实际付款后，2026-10-24T05:04:08Z 收到有效成功通知，订单自动入账；独立向 ZPAY 查单确认成功、订单一致、实付 CNY 6.70。余额从 `$9.8493093969` 增加至 `$10.8493093969`，只有一条 USD 1 的余额流水，operator 为空；连续两次核对没有重复入账。**EPay 真实付款验收通过，已通过管理接口打开 DMIT EPay 服务及充值总开关**。当前配置版本为 2，通知版本仍为 1，地址不变，钱包仅显示支付宝。开放前另备份已付款数据库 `/var/backups/lingshu/lingshu-20261024T050524Z-post-epay-paid.dump`（SHA-256 `6e06cbae717fa3d0d02e323cc4c1778e1accb7f9f2881951205123178cd8ec1f`），通过 `pg_restore --list`。
+
+UM580D 五服务均未配置商户、均关闭，充值总开关关闭；检查余额 `$9.8492565429`，订单为 0。两端验证均复用 aumif 的短期会话，用完已删除。Stripe、Creem、Waffo、Pancake 只有协议与 SDK 模拟测试，没有真实付款验收。
+
+接入与故障处理见 [支付接入](payments.md)。发生支付故障先关闭新充值并保留通知。产生真实付款后不能用本次发布前数据库备份覆盖新订单和余额。
+
 两端每日备份保留最近 14 份。DMIT 脚本在 `deploy/backup/lingshu-dmit-backup`，PostgreSQL 数据卷和 PiQode 原有 PostgreSQL 15 完全独立。
 
 - UM 手动备份：以 root 执行 `systemctl start lingshu-backup.service`。

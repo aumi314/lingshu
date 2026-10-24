@@ -38,7 +38,19 @@ LINGSHU_PUBLIC_URL=https://gateway.example.com
 | Waffo | 商户 ID、API Key、PKCS8 私钥、X509 平台公钥、环境 | USD，`waffo-go v1.3.2` 托管收银台；密钥填 Base64 DER，通知及通知应答均由 SDK 验签/签名 |
 | Waffo Pancake | 商户 ID、PEM/Base64 私钥、环境、店铺 ID、一次性商品 ID | USD，官方 Go SDK `v0.16.0`，下单固定 price snapshot、外部订单号和用户身份，托管收银台 |
 
-Stripe 订阅事件为 `checkout.session.completed`、`checkout.session.async_payment_succeeded`、`checkout.session.async_payment_failed`、`checkout.session.expired`；completed 必须 payment_status=paid 才入账。Creem 订阅 `checkout.completed`，checkout completed 且 order paid 才入账。Waffo 处理 `PAYMENT_NOTIFICATION` 中 `PAY_SUCCESS`。Pancake 在对应店铺添加 `order.completed` HTTP 通知，测试和生产分别配置对应地址；密钥和 storeId、mode、外部订单及买家身份均需匹配。
+以下是配置字段示例，全部是占位值，须替换为部署者自己的商户。分别提交到 `PUT /api/admin/payments/{provider}` 或在后台填入对应字段。首次保存保持 `enabled: false`，先验证连接和测试支付，再开放。其余金额范围默认 $1–$1000，可在后台调整。
+
+```json
+{
+  "epay": {"enabled": false, "environment": "prod", "currency": "CNY", "unit_price": "6.7", "values": {"gateway": "https://pay.example.com", "merchant_id": "YOUR_MERCHANT_ID"}, "secrets": {"key": "YOUR_MERCHANT_KEY"}, "methods": [{"id": "alipay", "name": "支付宝"}]},
+  "stripe": {"enabled": false, "environment": "test", "values": {}, "secrets": {"api_key": "YOUR_TEST_API_KEY", "webhook_secret": "YOUR_WEBHOOK_SECRET"}},
+  "creem": {"enabled": false, "environment": "test", "values": {"product_id": "YOUR_ONE_TIME_PRODUCT_ID"}, "secrets": {"api_key": "YOUR_TEST_API_KEY", "webhook_secret": "YOUR_WEBHOOK_SECRET"}},
+  "waffo": {"enabled": false, "environment": "test", "values": {"merchant_id": "YOUR_MERCHANT_ID", "public_key": "BASE64_PLATFORM_PUBLIC_KEY"}, "secrets": {"api_key": "YOUR_API_KEY", "private_key": "BASE64_PKCS8_PRIVATE_KEY"}},
+  "waffo_pancake": {"enabled": false, "environment": "test", "values": {"merchant_id": "YOUR_MERCHANT_ID", "store_id": "YOUR_STORE_ID", "product_id": "YOUR_ONE_TIME_PRODUCT_ID"}, "secrets": {"private_key": "YOUR_PEM_PRIVATE_KEY"}}
+}
+```
+
+Stripe webhook 选择 `checkout.session.completed`、`checkout.session.async_payment_succeeded`、`checkout.session.async_payment_failed`、`checkout.session.expired`；completed 必须 payment_status=paid 才入账。Creem webhook 选择 `checkout.completed`，checkout completed 且 order paid 才入账。Waffo 处理 `PAYMENT_NOTIFICATION` 中 `PAY_SUCCESS`。Pancake 在对应店铺添加 `order.completed` HTTP 通知，测试和生产分别配置对应地址；密钥和 storeId、mode、外部订单及买家身份均需匹配。
 
 Pancake 可先“验证连接”或“拉取店铺和商品”，选择已有店铺和一次性商品；也可显式创建 Lingshu 专用商品，店铺 ID 为空时先创建店铺，再创建并发布商品。途中失败会保留已得到的 ID，避免误以为远端什么都没创建。保存配置不会创建店铺、商品或 webhook；通知地址显示后由部署者在支付后台登记。
 
