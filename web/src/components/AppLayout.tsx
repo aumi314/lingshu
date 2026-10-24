@@ -12,6 +12,7 @@ import {
   TagsOutlined,
   TeamOutlined,
   ToolOutlined,
+  WalletOutlined,
 } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../app'
@@ -34,6 +35,7 @@ export default function AppLayout() {
     { key: '/console/keys', icon: <KeyOutlined />, label: 'API keys' },
     { key: '/console/models', icon: <TagsOutlined />, label: t('模型与价格', 'Models & pricing') },
     { key: '/console/logs', icon: <BarChartOutlined />, label: t('使用记录', 'Usage') },
+    { key: '/console/wallet', icon: <WalletOutlined />, label: t('钱包充值', 'Wallet & top-up') },
     ...(user?.role === 'admin'
       ? [
           {

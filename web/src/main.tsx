@@ -14,6 +14,7 @@ import Overview from './pages/Overview'
 import Keys from './pages/Keys'
 import Models from './pages/Models'
 import Logs from './pages/Logs'
+import Wallet from './pages/Wallet'
 import Settings from './pages/Settings'
 import Users from './pages/admin/Users'
 import Pricing from './pages/admin/Pricing'
@@ -73,6 +74,7 @@ function Root() {
                 <Route path="keys" element={<Keys />} />
                 <Route path="models" element={<Models />} />
                 <Route path="logs" element={<Logs />} />
+                <Route path="wallet" element={<Wallet />} />
                 <Route path="settings" element={<Settings />} />
                 {user?.role === 'admin' && (
                   <Route path="admin">
