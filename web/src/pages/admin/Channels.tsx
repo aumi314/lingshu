@@ -301,7 +301,9 @@ export default function Channels() {
   const templateID = Form.useWatch('template', form)
   const rootURL = Form.useWatch('root_url', form)
   const currentTemplate = templates.find((x) => x.id === templateID)
-  const visibleProtocols = (['chat', 'messages', 'responses', 'systemone'] as const).filter((p) => p !== 'systemone' || supportsSystemOne(templateID))
+  const visibleProtocols = supportsSystemOne(templateID)
+    ? (['systemone'] as const)
+    : (['chat', 'messages', 'responses'] as const)
 
   return (
     <div className="page" style={{ maxWidth: 1400 }}>
