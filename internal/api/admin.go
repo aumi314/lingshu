@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -543,23 +545,37 @@ func (s *Server) adminLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"cny_per_usd": s.cnyPerUSD(r)})
+	payment, err := s.Store.Setting(r.Context(), "payment_enabled")
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true"})
 }
 
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		CNYPerUSD decimal.Decimal `json:"cny_per_usd"`
+		CNYPerUSD      *decimal.Decimal `json:"cny_per_usd"`
+		PaymentEnabled *bool            `json:"payment_enabled"`
 	}
 	if !readJSON(w, r, &in) {
 		return
 	}
-	if !in.CNYPerUSD.IsPositive() {
+	if in.CNYPerUSD != nil && !in.CNYPerUSD.IsPositive() {
 		writeError(w, http.StatusBadRequest, "汇率要大于 0")
 		return
 	}
-	if err := s.Store.SetSetting(r.Context(), "cny_per_usd", in.CNYPerUSD.String()); err != nil {
-		writeStoreError(w, err)
-		return
+	if in.CNYPerUSD != nil {
+		if err := s.Store.SetSetting(r.Context(), "cny_per_usd", in.CNYPerUSD.String()); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
+	if in.PaymentEnabled != nil {
+		if err := s.Store.SetSetting(r.Context(), "payment_enabled", strconv.FormatBool(*in.PaymentEnabled)); err != nil {
+			writeStoreError(w, err)
+			return
+		}
 	}
 	ok(w)
 }

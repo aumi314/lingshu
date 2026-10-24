@@ -255,11 +255,11 @@ func TestModelPriceRules(t *testing.T) {
 	}
 }
 
-func TestSystemSettingsOnlyExposeExchangeRate(t *testing.T) {
+func TestSystemSettingsExchangeRate(t *testing.T) {
 	e := newEnv(t)
 	a := e.login("admin")
 	if code, raw := a.do("GET", "/api/admin/settings", nil, nil); code != 200 || strings.Contains(raw, "cn_holidays") {
-		t.Errorf("系统设置只返回汇率，不应返回节假日字段：%d %s", code, raw)
+		t.Errorf("系统设置不应返回节假日字段：%d %s", code, raw)
 	}
 	if code, body := a.do("PUT", "/api/admin/settings", map[string]any{"cny_per_usd": "7"}, nil); code != 200 {
 		t.Fatalf("保存汇率: %d %s", code, body)
@@ -267,4 +267,46 @@ func TestSystemSettingsOnlyExposeExchangeRate(t *testing.T) {
 	if code, raw := a.do("GET", "/api/admin/settings", nil, nil); code != 200 || !strings.Contains(raw, `"cny_per_usd":"7"`) || strings.Contains(raw, "cn_holidays") {
 		t.Errorf("汇率应保存且无节假日字段：%d %s", code, raw)
 	}
+}
+
+func TestPaymentSettingPersistenceAndPartialUpdates(t *testing.T) {
+	e := newEnv(t)
+	a := e.login("admin")
+	var settings struct {
+		CNYPerUSD      string `json:"cny_per_usd"`
+		PaymentEnabled bool   `json:"payment_enabled"`
+	}
+	check := func(rate string, enabled bool) {
+		t.Helper()
+		if code, body := a.do("GET", "/api/admin/settings", nil, &settings); code != 200 || settings.CNYPerUSD != rate || settings.PaymentEnabled != enabled {
+			t.Fatalf("settings: %d %s", code, body)
+		}
+	}
+	check("6.7", false)
+	for _, step := range []struct {
+		body    map[string]any
+		rate    string
+		enabled bool
+	}{
+		{map[string]any{"payment_enabled": true}, "6.7", true},
+		{map[string]any{"cny_per_usd": "7"}, "7", true},
+		{map[string]any{"payment_enabled": false}, "7", false},
+	} {
+		if code, body := a.do("PUT", "/api/admin/settings", step.body, nil); code != 200 {
+			t.Fatalf("save settings: %d %s", code, body)
+		}
+		check(step.rate, step.enabled)
+	}
+	if code, body := a.do("PUT", "/api/admin/settings", map[string]any{"cny_per_usd": "0", "payment_enabled": true}, nil); code != 400 {
+		t.Fatalf("invalid rate: %d %s", code, body)
+	}
+	check("7", false)
+	user := e.login("bob")
+	if code, _ := user.do("GET", "/api/admin/settings", nil, nil); code != 403 {
+		t.Fatalf("user read settings: %d", code)
+	}
+	if code, _ := user.do("PUT", "/api/admin/settings", map[string]any{"payment_enabled": true}, nil); code != 403 {
+		t.Fatalf("user change payment setting: %d", code)
+	}
+	check("7", false)
 }
