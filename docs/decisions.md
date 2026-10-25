@@ -21,6 +21,8 @@
 
 - 渠道编辑表单第一项标为“预设模板”。新建渠道默认选择“标准模板”，管理员填一个根地址生成 Chat、Messages、Responses 三种协议地址。
 - Anthropic Platform 官方 API 作为独立预设，只配置 Messages Base URL `https://api.anthropic.com`，支持上游模型列表；Chat 和 Responses 留空。模板不包含 API key，也不自动创建渠道。
+- Google Gemini API 使用 Google AI Studio 提供的 OpenAI 兼容 Chat Completions 接口，Chat Base URL 为 `https://generativelanguage.googleapis.com/v1beta/openai`，仅启用 Chat，并支持拉取模型列表。
+- 团队的免费额度试用使用 `gemini-3.1-flash-lite`，站内价格设为零；渠道仅映射已有定价的站内模型，API key 只配置在 DMIT 渠道。
 
 ## 渠道冒烟测试交互（2026-10-23 确认）
 

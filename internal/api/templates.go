@@ -50,6 +50,8 @@ var channelTemplates = []ChannelTemplate{
 		HasModelList: true, Note: "OpenAI 官方 Platform API；支持 Chat Completions 和 Responses，不提供 Anthropic Messages 协议"},
 	{ID: "anthropic-platform", Name: "Anthropic Platform", BaseURLMessages: "https://api.anthropic.com",
 		HasModelList: true, Note: "Anthropic 官方 Platform API；仅支持 Messages 协议"},
+	{ID: "google-gemini", Name: "Google AI Studio", BaseURLChat: "https://generativelanguage.googleapis.com/v1beta/openai",
+		HasModelList: true, Note: "Google Gemini API 的 OpenAI 兼容接口；仅支持 Chat Completions"},
 	{ID: "typesafe", Name: "TypeSafe", BaseURLSystemOne: "https://api.typesafe.ai/v1", HasModelList: true,
 		Note: "System One"},
 	{ID: "nace", Name: "Nace", BaseURLSystemOne: "https://console.nace.ai/v1", HasModelList: true,

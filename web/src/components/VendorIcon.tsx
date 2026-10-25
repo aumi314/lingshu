@@ -11,6 +11,7 @@ import xiaomi from '../assets/logos/xiaomi-color.svg?raw'
 import hunyuan from '../assets/logos/hunyuan-color.svg?raw'
 import openrouter from '../assets/logos/openrouter.svg?raw'
 import openai from '../assets/logos/openai.svg?raw'
+import gemini from '../assets/logos/gemini.svg?raw'
 import nace from '../assets/logos/nace.svg?raw'
 import typesafe from '../assets/logos/typesafe.png'
 import { AnthropicFilled } from '@ant-design/icons'
@@ -27,6 +28,7 @@ const icons: Record<string, string> = {
   hunyuan,
   openrouter,
   'openai-platform': openai,
+  'google-gemini': gemini,
   nace,
 }
 
