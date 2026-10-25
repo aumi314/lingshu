@@ -1,7 +1,0 @@
-[Unit]
-Description=Lingshu database backup
-After=postgresql.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/lingshu-backup

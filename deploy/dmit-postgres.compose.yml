@@ -1,4 +1,4 @@
-# DMIT 独立副本；密钥在 /etc/lingshu/postgres.env，不进入仓库。
+# DMIT 独立数据库；密钥在 /etc/lingshu/postgres.env，不进入仓库。
 services:
   postgres:
     image: postgres@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5

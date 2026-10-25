@@ -1,6 +1,6 @@
 # System One：TypeSafe 与 Nace
 
-2026-10-22 完成本地实现和真实上游验证；2026-10-23 随统一应用版本发布到 **UM580D 与 DMIT**。两端 schema 已迁移至第 9 版，TypeSafe / Nace 模板和 `/v1/systemone` 入口已上线。实际生产渠道需另行配置；下文两家真实调用证据来自本地验证。范围与决策见 [decisions.md](../decisions.md)，部署状态见 [deploy.md](../deploy.md)。
+2026-10-22 完成本地实现和真实上游验证；2026-10-23 随统一应用版本发布到 **DMIT 洛杉矶服务器**。当时 schema 已升级至第 9 版，TypeSafe / Nace 模板和 `/v1/systemone` 入口已上线。实际生产渠道需另行配置；下文两家真实调用证据来自本地验证。范围与决策见 [decisions.md](../decisions.md)，部署状态见 [deploy.md](../deploy.md)。
 
 ## 渠道配置与调用
 

@@ -8,8 +8,8 @@ import (
 	"sync"
 )
 
-// 渠道级代理：只有填了代理的渠道走代理（例如 OpenRouter 在中国被按地区拒绝，要经美国出口），
-// 其他渠道直连。请求转发、冒烟测试、拉取模型、查余额都用同一个渠道的代理。
+// 渠道级代理：填了代理地址的渠道走代理，其他渠道直连。
+// 请求转发、冒烟测试、拉取模型、查余额都用同一个渠道的代理。
 
 // ValidateProxyURL 检查代理地址，空表示直连。支持 socks5 / socks5h / http / https。
 func ValidateProxyURL(s string) error {

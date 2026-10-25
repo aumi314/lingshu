@@ -7,7 +7,7 @@
     LINGSHU_KEY=sk-ls-... python3 -I scripts/smoke.py
 可选：LINGSHU_URL（默认 http://127.0.0.1:8300）
 可选：LINGSHU_PSQL，读日志用的 psql 命令（默认本地开发库容器），
-      比如线上：LINGSHU_PSQL="ssh tencent-server sudo -u postgres psql -d lingshu"
+      比如 DMIT：LINGSHU_PSQL="ssh -i /home/aumif/.ssh/dmit_lax_ed25519 -o IdentitiesOnly=yes root@136.175.178.126 docker exec -i lingshu-postgres psql -U lingshu -d lingshu"
 """
 import json
 import os

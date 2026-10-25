@@ -119,7 +119,8 @@
 - `references/` 只读，用来参考，不改、不引用其代码。
 
 ## 运维约定（线上数据）
-- 改线上数据前先确认有备份：`/var/backups/lingshu/` 每天自动备份，`deploy/deploy.sh` 每次发布前也会备份。恢复：`pg_restore -d <库> --no-owner <备份文件>`。
+- 项目维护环境为本机 WSL 与 DMIT 洛杉矶服务器，线上入口为 `https://gateway.piqode.com`。源码与构建在 WSL，部署、备份和恢复步骤以 `docs/deploy.md` 为准。
+- 改线上数据前先确认有备份：DMIT 的 `/var/backups/lingshu/` 每天自动备份；每次发布前手动执行 `/usr/local/bin/lingshu-backup`。恢复在 `lingshu-postgres` 容器内使用 `pg_restore`，具体步骤见 `docs/deploy.md`。
 - 运维 SQL 一律按 id 定位，不按名字：渠道、模型、用户的名字用户随时会在后台改。先查出 id 和当前名字确认对象，再 `WHERE id = …`，改完检查影响行数，0 行就停下来。
 - 能走管理接口的操作优先走接口（有校验），直接改库是最后手段。注意：管理端改价格、开关、渠道目前**没有操作记录**（只有余额调整和上游账户充值 / 校准有流水），改线上配置前先把改前的值记下来。
 - 不把种子脚本（`scripts/seed-dev.py`）跑到线上：它按名字 upsert，会用本地 `.env` 的 key 覆盖线上渠道。

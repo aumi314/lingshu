@@ -1,5 +1,5 @@
 [Unit]
-Description=Lingshu AI API gateway (DMIT independent copy)
+Description=Lingshu AI API gateway (DMIT Los Angeles)
 Requires=lingshu-db.service
 After=network-online.target lingshu-db.service
 Wants=network-online.target
