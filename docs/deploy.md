@@ -1,5 +1,7 @@
 # 现役部署
 
+2026-10-24 模型图标补齐：提交 `9be6d37b368618a18da15e110b5fb8ae6851ca7c`，为 `grok-*` 和 `muse-*` 补上已有 Grok / Meta 图标。按 DMIT 当前 27 个模型建立浏览器检查数据，两张表均为 27/27 个图标，Grok 和 Muse 截图检查通过；前端类型检查、前端和程序构建通过。两端部署同一成品，SHA-256 `138378388c429ec3ce59c53df32f72d9e368b771bb0051e3ddb563bc6478db09`，服务和内部健康检查通过，页面加载 `index-CnxsVh8s.js`。DMIT 发布前备份 `/var/backups/lingshu/lingshu-20261025T044938Z.dump`（SHA-256 `bb0a71a2472beb7d3c0561e06bfab93e5b7b23b2c16c36e46435072d97d1396d`）；UM580D 备份 `/var/backups/lingshu/lingshu-20261025-125028.dump`（SHA-256 `ce1d322a62728bf49cea36ae8740770d4f709ad54ef7d7df96f505b40ac313b3`），均通过 `pg_restore --list`；原程序、配置及发布标记以 `prev-9be6d37` 后缀留存。
+
 2026-10-24 模型图标发布：应用提交 `55a042cf080af74da4513d6c7e6786f387640466`，管理员“定价”和用户“模型与价格”页面在模型名前显示厂商图标，复用本地图标资源。前端类型检查、构建和 Linux amd64 程序构建通过；本地 Playwright 使用模拟账户与模型数据检查了两张表的图标、复制按钮、价格规则标签，并检查桌面和手机视口。干净 worktree 构建一次，两端二进制 SHA-256 均为 `986a6c433eb8e0c97a8470e1085c160b72178f35daf858f131774a6be62302cf`，发布标记提交一致。DMIT 发布前备份 `/var/backups/lingshu/lingshu-20261025T043503Z.dump`（SHA-256 `5897c7c50aed58b8f633da713335957f829081eb862b5a801bd00e462a971b47`），UM580D 备份 `/var/backups/lingshu/lingshu-20261025-124140.dump`（SHA-256 `40dbe4d237c19af1fbbe4ec4f8b1f99a44af17883bc307f5fad24dcf80fd2a68`），均通过 `pg_restore --list`；原程序、配置和标记分别保留为 `lingshu.prev-55a042c`、`env.prev-55a042c` 和 `release.prev-55a042c.json`。两端服务 active，主机内和公网 `/healthz` 返回 `ok`，公网控制台页面均返回 200 并加载 `index-aLIDoBwE.js`。
 
 2026-10-23 核实。源码仓库为 `https://github.com/aumi314/lingshu`。WSL 管理源码和构建；服务器运行成品，通过 `/opt/lingshu/release.json` 记录对应提交和 SHA-256。两端应用统一版本，数据库与余额各自独立，不自动同步。
