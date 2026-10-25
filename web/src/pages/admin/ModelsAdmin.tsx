@@ -3,6 +3,7 @@ import { App, Button, Card, Divider, Form, Input, InputNumber, Modal, Popconfirm
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { del, get, post, put, type Model, type PriceRule } from '../../api'
 import { priceText, useApp } from '../../app'
+import ModelIcon from '../../components/ModelIcon'
 
 const priceFields = ['input_price', 'output_price', 'cache_read_price', 'cache_write_price'] as const
 const clock = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -119,7 +120,7 @@ export default function ModelsAdmin() {
         dataSource={models}
         pagination={false}
         columns={[
-          { title: t('模型名', 'Name'), dataIndex: 'name', render: (v) => <span className="mono">{v}</span> },
+          { title: t('模型名', 'Name'), dataIndex: 'name', render: (v) => <span className="model-name"><ModelIcon name={v} /><span className="mono">{v}</span></span> },
           { title: t('输入', 'Input'), dataIndex: 'input_price', render: price },
           { title: t('输出', 'Output'), dataIndex: 'output_price', render: price },
           { title: t('缓存命中', 'Cache hit'), dataIndex: 'cache_read_price', render: price },

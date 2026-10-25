@@ -3,6 +3,7 @@ import { Alert, Segmented, Table, Tag, Typography } from 'antd'
 import { get, type Group, type PricedModel } from '../api'
 import { priceText, useApp } from '../app'
 import { ruleCondition } from '../pricing'
+import ModelIcon from '../components/ModelIcon'
 
 const entry: Record<string, string> = { chat: '/v1/chat/completions', messages: '/v1/messages', responses: '/v1/responses', systemone: '/v1/systemone' }
 
@@ -78,7 +79,10 @@ export default function Models() {
             dataIndex: 'name',
             render: (v, m) => (
               <>
-                <Typography.Text copyable className="mono">{v}</Typography.Text>
+                <span className="model-name">
+                  <ModelIcon name={v} />
+                  <Typography.Text copyable className="mono">{v}</Typography.Text>
+                </span>
                 {m.price_rules?.length > 0 && <Tag color="purple" style={{ marginLeft: 8 }}>{t('阶梯价', 'Tiered')}</Tag>}
               </>
             ),
