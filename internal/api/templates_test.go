@@ -23,8 +23,8 @@ func TestStandardTemplate(t *testing.T) {
 		if template.Name != "标准模板" || template.BaseURLChat != "" || template.BaseURLMessages != "" || template.BaseURLResponses != "" || !template.HasModelList {
 			t.Fatalf("unexpected standard template: %+v", template)
 		}
-		if channelTemplates[len(channelTemplates)-2].ID != "standard" {
-			t.Fatal("standard template must appear immediately before custom")
+		if channelTemplates[0].ID != "standard" {
+			t.Fatal("standard template must appear first")
 		}
 		return
 	}

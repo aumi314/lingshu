@@ -17,6 +17,7 @@ type ChannelTemplate struct {
 
 // 聊天协议地址见 docs/research/upstream-protocols.md；System One 地址于 2026-10-22 实测，见 docs/research/systemone.md。
 var channelTemplates = []ChannelTemplate{
+	{ID: "standard", Name: "标准模板", HasModelList: true, Note: "填写根地址，自动生成 Chat、Messages 和 Responses 三种协议地址"},
 	{ID: "deepseek", Name: "DeepSeek", BaseURLChat: "https://api.deepseek.com", BaseURLMessages: "https://api.deepseek.com/anthropic",
 		BaseURLResponses: "https://api.deepseek.com", HasModelList: true, Note: "按量计费，三种协议都支持"},
 	{ID: "moonshot", Name: "Kimi（Moonshot 中国站）", BaseURLChat: "https://api.moonshot.cn/v1", BaseURLMessages: "https://api.moonshot.cn/anthropic",
@@ -56,6 +57,5 @@ var channelTemplates = []ChannelTemplate{
 		Note: "System One"},
 	{ID: "nace", Name: "Nace", BaseURLSystemOne: "https://console.nace.ai/v1", HasModelList: true,
 		Note: "System One"},
-	{ID: "standard", Name: "标准模板", HasModelList: true, Note: "填写根地址，自动生成 Chat、Messages 和 Responses 三种协议地址"},
 	{ID: "custom", Name: "自定义", HasModelList: true, Note: "按上游文档填写各协议的地址"},
 }
