@@ -20,6 +20,7 @@
 ## 渠道预设模板（2026-10-23 确认）
 
 - 渠道编辑表单第一项标为“预设模板”。新建渠道默认选择“标准模板”，管理员填一个根地址生成 Chat、Messages、Responses 三种协议地址。
+- Anthropic Platform 官方 API 作为独立预设，只配置 Messages Base URL `https://api.anthropic.com`，支持上游模型列表；Chat 和 Responses 留空。模板不包含 API key，也不自动创建渠道。
 
 ## 渠道冒烟测试交互（2026-10-23 确认）
 

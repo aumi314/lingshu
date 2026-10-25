@@ -13,6 +13,7 @@ import openrouter from '../assets/logos/openrouter.svg?raw'
 import openai from '../assets/logos/openai.svg?raw'
 import nace from '../assets/logos/nace.svg?raw'
 import typesafe from '../assets/logos/typesafe.png'
+import { AnthropicFilled } from '@ant-design/icons'
 
 const icons: Record<string, string> = {
   deepseek,
@@ -30,6 +31,9 @@ const icons: Record<string, string> = {
 }
 
 export default function VendorIcon({ template, size = 18 }: { template?: string; size?: number }) {
+  if (template === 'anthropic-platform') {
+    return <AnthropicFilled aria-hidden style={{ fontSize: size, color: '#d97757' }} />
+  }
   if (template === 'typesafe') {
     return (
       <span aria-hidden style={{ display: 'inline-flex', width: size, height: size }}>

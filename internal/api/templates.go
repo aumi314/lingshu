@@ -48,6 +48,8 @@ var channelTemplates = []ChannelTemplate{
 		Note: "三种协议都支持。从中国访问 Claude、GPT 等模型会被按地区拒绝，需要走代理（已预填本机出境代理）。模型名带厂商前缀，如 anthropic/claude-opus-5.5"},
 	{ID: "openai-platform", Name: "OpenAI Platform", BaseURLChat: "https://api.openai.com/v1", BaseURLResponses: "https://api.openai.com/v1",
 		HasModelList: true, Note: "OpenAI 官方 Platform API；支持 Chat Completions 和 Responses，不提供 Anthropic Messages 协议"},
+	{ID: "anthropic-platform", Name: "Anthropic Platform", BaseURLMessages: "https://api.anthropic.com",
+		HasModelList: true, Note: "Anthropic 官方 Platform API；仅支持 Messages 协议"},
 	{ID: "typesafe", Name: "TypeSafe", BaseURLSystemOne: "https://api.typesafe.ai/v1", HasModelList: true,
 		Note: "System One"},
 	{ID: "nace", Name: "Nace", BaseURLSystemOne: "https://console.nace.ai/v1", HasModelList: true,
