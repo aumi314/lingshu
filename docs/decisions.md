@@ -22,7 +22,7 @@
 - 渠道编辑表单第一项标为“预设模板”。新建渠道默认选择“标准模板”，管理员填一个根地址生成 Chat、Messages、Responses 三种协议地址。
 - Anthropic Platform 官方 API 作为独立预设，只配置 Messages Base URL `https://api.anthropic.com`，支持上游模型列表；Chat 和 Responses 留空。模板不包含 API key，也不自动创建渠道。
 - Google Gemini API 使用 Google AI Studio 提供的 OpenAI 兼容 Chat Completions 接口，Chat Base URL 为 `https://generativelanguage.googleapis.com/v1beta/openai`，仅启用 Chat，并支持拉取模型列表。
-- 团队的免费额度试用使用 `gemini-3.8-flash`，站内价格设为零；渠道仅映射该站内模型，API key 只配置在 DMIT 渠道。
+- DMIT 的 `gemini-3.8-flash` 按 Google Gemini API Standard 付费层当前价格计费（USD / 百万 token）：输入 `$0.75`、输出 `$3.75`、缓存读取 `$0.075`、缓存写入 `$0`。缓存容量存储费按 token-hour 单独计价，Lingshu 当前按 token 计价的模型价格字段无法表达，因此不计入站内价格。渠道仅映射该站内模型，API key 只配置在 DMIT 渠道。
 
 ## 渠道冒烟测试交互（2026-10-23 确认）
 
