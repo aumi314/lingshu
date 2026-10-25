@@ -9,10 +9,12 @@ const vendors: [RegExp, string][] = [
   [/^drex-/i, 'nace'],
   [/^gemini-/i, 'google-gemini'],
   [/^gpt-/i, 'openai-platform'],
+  [/^grok-/i, 'xai'],
   [/^(hy\d|hunyuan)/i, 'hunyuan'],
   [/^jev-/i, 'typesafe'],
   [/^kimi-/i, 'moonshot'],
   [/^mimo-/i, 'mimo'],
+  [/^muse-/i, 'meta'],
   [/^qwen/i, 'dashscope'],
   [/^step-/i, 'stepfun'],
 ]

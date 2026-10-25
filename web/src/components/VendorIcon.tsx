@@ -12,6 +12,8 @@ import hunyuan from '../assets/logos/hunyuan-color.svg?raw'
 import openrouter from '../assets/logos/openrouter.svg?raw'
 import openai from '../assets/logos/openai.svg?raw'
 import gemini from '../assets/logos/gemini.svg?raw'
+import grok from '../assets/logos/grok.svg?raw'
+import meta from '../assets/logos/meta.svg?raw'
 import nace from '../assets/logos/nace.svg?raw'
 import typesafe from '../assets/logos/typesafe.png'
 import { AnthropicFilled } from '@ant-design/icons'
@@ -29,6 +31,8 @@ const icons: Record<string, string> = {
   openrouter,
   'openai-platform': openai,
   'google-gemini': gemini,
+  xai: grok,
+  meta,
   nace,
 }
 
