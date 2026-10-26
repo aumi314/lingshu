@@ -581,6 +581,13 @@ func (s *Server) adminLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
+	deploymentMode, err := s.Store.Setting(r.Context(), "deployment_mode")
+	if errors.Is(err, store.ErrNotFound) {
+		deploymentMode = "company_team_gateway"
+	} else if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	payment, err := s.Store.Setting(r.Context(), "payment_enabled")
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		writeStoreError(w, err)
@@ -599,7 +606,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode, "api_base_url": apiBaseURL,
+		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode, "api_base_url": apiBaseURL, "deployment_mode": deploymentMode,
 	})
 }
 
@@ -647,6 +654,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		PaymentEnabled   *bool            `json:"payment_enabled"`
 		RegistrationMode *string          `json:"registration_mode"`
 		APIBaseURL       *string          `json:"api_base_url"`
+		DeploymentMode   *string          `json:"deployment_mode"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -659,6 +667,10 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "注册方式只能是 manual 或 code；邮箱注册尚未开放")
 		return
 	}
+	if in.DeploymentMode != nil && *in.DeploymentMode != "company_team_gateway" {
+		writeError(w, http.StatusBadRequest, "当前只开放公司团队网关模式")
+		return
+	}
 	if in.APIBaseURL != nil {
 		value, valid := validAPIBaseURL(*in.APIBaseURL)
 		if !valid {
@@ -666,6 +678,12 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.APIBaseURL = &value
+	}
+	if in.DeploymentMode != nil {
+		if err := s.Store.SetSetting(r.Context(), "deployment_mode", *in.DeploymentMode); err != nil {
+			writeStoreError(w, err)
+			return
+		}
 	}
 	if in.CNYPerUSD != nil {
 		if err := s.Store.SetSetting(r.Context(), "cny_per_usd", in.CNYPerUSD.String()); err != nil {
