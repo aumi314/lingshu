@@ -4,6 +4,10 @@
 
 ## 当前运行基线
 
+2026-10-26 发布并复核：DMIT 已发布提交 `225df1800bc4ae52f87cb8a36bf573d82a33037e`，程序 SHA-256 为 `27d2f13bd6c78cd32434d0175fef112df68c45fe87acf2a4e99560a1bcc3de04`，服务、数据库及公网健康检查通过。本次无数据库迁移。发布前备份 `/var/backups/lingshu/lingshu-20261026T042837Z.dump`，SHA-256 为 `842c0635600f915532cf71df7c47cfb2cc1997c852c845494e607119e8a2e58c`，已通过 `pg_restore --list`。旧程序、配置与发布标记保留为 `prev-225df18`。前端资源 `index-CntDraPa.js` 的 SHA-256 为 `eaf87cfb62c5afd432695b8ec2bae8b98f319986422067b9787f9f9ea23105b9`，与干净构建产物一致。
+
+本次新增系统使用模式设置，默认及唯一可选项为“公司团队网关”；管理员设置页可见“自用”和“商业中转”选项但不可选。设置由现有管理接口持久化，无新增数据库迁移。
+
 2026-10-25 发布并复核：DMIT 应用正常，公网 `/healthz`、账户日志页与前端资源均返回 HTTP 200。应用版本为 `a08594cd18bbf66d6623d825952a0f6fab4d6e6a`，程序 SHA-256 为 `603c3d888ba62659bd4cd673c75d9a3ba0c68e30b5fcaf9ede4dcb0b2e2da696`，与 `/opt/lingshu/release.json` 一致。本次无数据库迁移。
 
 该版本将模型调用、在线充值和额度调整统一纳入全站日志及用户账户日志，分页总数和各类金额独立统计。发布前备份为 `/var/backups/lingshu/lingshu-20261026T040328Z.dump`（UTC 时间），SHA-256 为 `8357fd0f9ec49cdf72cc98619ee8ad76dd2340511688fdc276f9fe7a25ddc311`，已通过 `pg_restore --list`；旧程序、配置及发布标记以 `prev-a08594c` 后缀留存。前端资源为 `index-D5w4AcIX.js`，公网内容 SHA-256 为 `08656f8a28bb9c1922f1c0fb3d516e342fd67d37acb21b49abc1d8b2d1b47d31`，与干净检出构建产物一致。
