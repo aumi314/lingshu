@@ -1,0 +1,128 @@
+package api
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/aumi314/lingshu/internal/store"
+	"github.com/shopspring/decimal"
+)
+
+func TestUnifiedUserUpdate(t *testing.T) {
+	e := newEnv(t)
+	a := e.login("admin")
+	bob := e.login("bob")
+	change := map[string]any{
+		"username": "renamed", "password": "new-password-123", "enabled": false,
+		"user_group_ids":     []int64{2},
+		"balance_adjustment": map[string]string{"mode": "add", "amount": "6.7", "currency": "CNY", "note": " unified "},
+	}
+	if code, body := a.do("PATCH", "/api/admin/users/2", change, nil); code != 200 {
+		t.Fatalf("统一提交失败: %d %s", code, body)
+	}
+	u, err := e.store.UserByID(context.Background(), 2)
+	if err != nil || u.Username != "renamed" || u.Enabled || u.Balance.String() != "6" || len(u.UserGroupIDs) != 1 || u.UserGroupIDs[0] != 2 {
+		t.Fatalf("用户未完整更新: %+v %v", u, err)
+	}
+	history, err := e.store.BalanceAdjustments(context.Background(), 2)
+	if err != nil || len(history) != 1 || history[0].Amount.String() != "1" || history[0].Operator != "admin" || history[0].Note != "unified" {
+		t.Fatalf("流水错误: %+v %v", history, err)
+	}
+	if code, _ := bob.do("GET", "/api/me", nil, nil); code != 401 {
+		t.Fatalf("旧会话未失效: %d", code)
+	}
+	// 余额留空对应不发送 balance_adjustment；空密码不重置密码。
+	if code, body := a.do("PATCH", "/api/admin/users/2", map[string]any{"username": "renamed-again", "password": "", "enabled": true}, nil); code != 200 {
+		t.Fatalf("仅资料更新失败: %d %s", code, body)
+	}
+	if code, body := e.client().do("POST", "/api/auth/login", map[string]string{"username": "renamed-again", "password": "new-password-123"}, nil); code != 200 {
+		t.Fatalf("新密码登录失败: %d %s", code, body)
+	}
+	// 设为余额按提交时的实际余额计算差额；零差额不新增流水。
+	for _, amount := range []string{"0", "0"} {
+		if code, body := a.do("PATCH", "/api/admin/users/2", map[string]any{"balance_adjustment": map[string]string{"mode": "set", "amount": amount, "currency": "USD"}}, nil); code != 200 {
+			t.Fatalf("设为余额失败: %d %s", code, body)
+		}
+	}
+	history, _ = e.store.BalanceAdjustments(context.Background(), 2)
+	if len(history) != 2 || history[0].Amount.String() != "-6" || !history[0].BalanceAfter.IsZero() {
+		t.Fatalf("设为余额或零差额流水错误: %+v", history)
+	}
+}
+
+func TestUnifiedBalanceConcurrentDebit(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	errors := make(chan error, 2)
+	go func() {
+		errors <- e.store.UpdateUser(ctx, 2, store.UserPatch{BalanceChange: &store.UserBalanceChange{Mode: "add", Amount: decimal.NewFromInt(3), OperatorID: 1}})
+	}()
+	go func() {
+		_, err := e.store.AdjustBalance(ctx, 2, decimal.NewFromInt(-1), 1, "concurrent debit")
+		errors <- err
+	}()
+	for range 2 {
+		if err := <-errors; err != nil {
+			t.Fatal(err)
+		}
+	}
+	u, _ := e.store.UserByID(ctx, 2)
+	history, _ := e.store.BalanceAdjustments(ctx, 2)
+	if u.Balance.String() != "7" || len(history) != 2 {
+		t.Fatalf("并发调整丢失余额或流水: user=%+v history=%+v", u, history)
+	}
+}
+
+func TestUnifiedUserUpdateRollback(t *testing.T) {
+	e := newEnv(t)
+	a := e.login("admin")
+	bob := e.login("bob")
+	ctx := context.Background()
+	if _, err := e.store.Pool.Exec(ctx, `CREATE FUNCTION reject_user_edit_ledger() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test ledger failure'; END $$; CREATE TRIGGER reject_user_edit_ledger BEFORE INSERT ON balance_adjustments FOR EACH ROW EXECUTE FUNCTION reject_user_edit_ledger()`); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := a.do("PATCH", "/api/admin/users/2", map[string]any{
+		"username": "must-rollback", "password": "new-password-123", "enabled": false, "user_group_ids": []int64{2},
+		"balance_adjustment": map[string]string{"mode": "add", "amount": "3"},
+	}, nil); code < 400 {
+		t.Fatal("流水失败应导致整个提交失败")
+	}
+	u, _ := e.store.UserByID(ctx, 2)
+	if u.Username != "bob" || !u.Enabled || u.Balance.String() != "5" || len(u.UserGroupIDs) != 0 {
+		t.Fatalf("用户资料或余额未回滚: %+v", u)
+	}
+	history, _ := e.store.BalanceAdjustments(ctx, 2)
+	if len(history) != 0 {
+		t.Fatalf("失败后仍产生流水: %+v", history)
+	}
+	if code, _ := bob.do("GET", "/api/me", nil, nil); code != 200 {
+		t.Fatalf("失败提交不应清除会话: %d", code)
+	}
+	e.login("bob")
+}
+
+func TestUnifiedUserUpdateValidation(t *testing.T) {
+	e := newEnv(t)
+	a := e.login("admin")
+	for _, adjustment := range []map[string]string{
+		{"mode": "unknown", "amount": "1"}, {"mode": "add"}, {"mode": "add", "amount": "1", "currency": "EUR"},
+	} {
+		if code, _ := a.do("PATCH", "/api/admin/users/2", map[string]any{"username": "must-not-save", "balance_adjustment": adjustment}, nil); code != 400 {
+			t.Errorf("无效额度调整应返回 400: %d", code)
+		}
+	}
+	if code, _ := a.do("PATCH", "/api/admin/users/2", map[string]any{"username": "admin", "balance_adjustment": map[string]string{"mode": "add", "amount": "3"}}, nil); code != 409 {
+		t.Errorf("重名应返回 409: %d", code)
+	}
+	var users []store.User
+	a.do("GET", "/api/admin/users", nil, &users)
+	for _, u := range users {
+		if u.ID == 2 && (u.Username != "bob" || u.Balance.String() != "5") {
+			t.Fatalf("无效请求修改了用户: %+v", u)
+		}
+	}
+	if code, body := a.do("PATCH", "/api/admin/users/1", map[string]any{"enabled": false, "balance_adjustment": map[string]string{"mode": "add", "amount": "3"}}, nil); code != 400 || !strings.Contains(body, "自己") {
+		t.Fatalf("不得停用自己: %d %s", code, body)
+	}
+}

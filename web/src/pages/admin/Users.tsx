@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Switch, Table, Tag, Typography } from 'antd'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Alert, App, Button, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Switch, Table, Tag, Typography } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { del, get, patch, post, put, type BalanceAdjustment, type User, type UserGroup } from '../../api'
 import { useApp } from '../../app'
 
 export default function Users() {
-  const { user: me, money, t, currency, rate, reload } = useApp()
-  const { message } = App.useApp()
+  const { user: me, money, t, currency, reload } = useApp()
+  const { message, modal } = App.useApp()
   const [users, setUsers] = useState<User[]>([])
   const [userGroups, setUserGroups] = useState<UserGroup[]>([])
   const [loading, setLoading] = useState(true)
@@ -16,9 +16,14 @@ export default function Users() {
   const [editingUserGroup, setEditingUserGroup] = useState<UserGroup | 'new' | null>(null)
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [history, setHistory] = useState<BalanceAdjustment[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const editSession = useRef(0)
+  const historyRequest = useRef(0)
   const [createForm] = Form.useForm()
-  const [editForm] = Form.useForm<{ username: string; password?: string; user_group_ids: number[] }>()
-  const [balanceForm] = Form.useForm<{ mode: 'add' | 'set'; amount: number; note: string }>()
+  const [editForm] = Form.useForm<{ username: string; password?: string; user_group_ids: number[]; enabled: boolean }>()
+  const [balanceForm] = Form.useForm<{ mode: 'add' | 'set'; amount?: string; note: string }>()
   const [userGroupForm] = Form.useForm<{ name: string }>()
 
   const load = useCallback(async () => {
@@ -50,38 +55,78 @@ export default function Users() {
   }
 
   const symbol = currency === 'CNY' ? '¥' : '$'
-  const toUSD = (v: number) => String(currency === 'CNY' ? v / rate : v)
 
-  const openEdit = async (u: User) => {
-    editForm.setFieldsValue({ username: u.username, password: '', user_group_ids: u.user_group_ids ?? [] })
-    balanceForm.setFieldsValue({ mode: 'add', amount: undefined, note: '' })
-    setEditingUser(u)
-    setHistory(await get<BalanceAdjustment[]>(`/api/admin/users/${u.id}/balance`).catch(() => []))
-  }
-
-  const saveBalance = async () => {
-    const v = await balanceForm.validateFields()
-    const done = await run(() => post(`/api/admin/users/${editingUser!.id}/balance`, { mode: v.mode, amount: toUSD(v.amount), note: v.note }), t('余额已更新', 'Balance updated'))
-    if (done && editingUser) {
-      const refreshedUsers = await get<User[]>('/api/admin/users')
-      setEditingUser(refreshedUsers.find((u) => u.id === editingUser.id) ?? editingUser)
-      setHistory(await get<BalanceAdjustment[]>(`/api/admin/users/${editingUser.id}/balance`).catch(() => []))
-      balanceForm.setFieldsValue({ amount: undefined, note: '' })
-      if (editingUser.id === me?.id) reload()
+  const loadHistory = async (id: number) => {
+    const request = ++historyRequest.current
+    const session = editSession.current
+    setHistory([])
+    setHistoryError('')
+    setHistoryLoading(true)
+    try {
+      const rows = await get<BalanceAdjustment[]>(`/api/admin/users/${id}/balance`)
+      if (session === editSession.current && request === historyRequest.current) setHistory(rows)
+    } catch (e) {
+      if (session === editSession.current && request === historyRequest.current) setHistoryError((e as Error).message)
+    } finally {
+      if (session === editSession.current && request === historyRequest.current) setHistoryLoading(false)
     }
   }
 
+  const closeEdit = () => {
+    if (submitting) return
+    ++editSession.current
+    setEditingUser(null)
+  }
+
+  const openEdit = (u: User) => {
+    ++editSession.current
+    setSubmitting(false)
+    editForm.setFieldsValue({ username: u.username, password: '', user_group_ids: u.user_group_ids ?? [], enabled: u.enabled })
+    balanceForm.setFieldsValue({ mode: 'add', amount: undefined, note: '' })
+    setEditingUser(u)
+    void loadHistory(u.id)
+  }
+
   const saveUser = async () => {
-    const v = await editForm.validateFields()
-    if (!editingUser) return
-    const done = await run(() => patch(`/api/admin/users/${editingUser.id}`, {
-      username: v.username,
-      password: v.password ?? '',
-      user_group_ids: v.user_group_ids ?? [],
-    }), t('用户资料已保存', 'User updated'))
-    if (done) {
-      setEditingUser({ ...editingUser, username: v.username.trim(), user_group_ids: v.user_group_ids ?? [] })
-      editForm.setFieldValue('password', '')
+    if (!editingUser || submitting) return
+    const session = editSession.current
+    let v
+    let balance
+    try {
+      ;[v, balance] = await Promise.all([editForm.validateFields(), balanceForm.validateFields()])
+    } catch {
+      return
+    }
+    if (session !== editSession.current) return
+    setSubmitting(true)
+    try {
+      if (editingUser.enabled && !v.enabled) {
+        const confirmed = await modal.confirm({
+          title: t('停用账号？', 'Disable account?'),
+          content: t('停用后，该用户将退出登录，所有 API key 将无法继续调用。余额和历史记录保留。', 'The user will be signed out and all their API keys will stop working. Their balance and history will be retained.'),
+          okText: t('提交', 'Submit'),
+          cancelText: t('取消', 'Cancel'),
+        })
+        if (!confirmed) return
+      }
+      await patch(`/api/admin/users/${editingUser.id}`, {
+        username: v.username,
+        password: v.password ?? '',
+        user_group_ids: v.user_group_ids ?? [],
+        enabled: v.enabled,
+        ...(balance.amount != null && balance.amount !== '' ? {
+          balance_adjustment: { mode: balance.mode, amount: balance.amount, currency, note: balance.note ?? '' },
+        } : {}),
+      })
+      message.success(t('用户已更新', 'User updated'))
+      ++editSession.current
+      setEditingUser(null)
+      await load()
+      if (editingUser.id === me?.id) void reload()
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -125,9 +170,9 @@ export default function Users() {
             render: (v) => <span style={{ color: Number(v) <= 0 ? '#ff4d4f' : undefined }}>{money(v)}</span>,
           },
           {
-            title: t('启用', 'Enabled'),
+            title: t('状态', 'Status'),
             dataIndex: 'enabled',
-            render: (v, u) => <Switch size="small" checked={v} disabled={u.id === me?.id} onChange={(enabled) => run(() => patch(`/api/admin/users/${u.id}`, { enabled }))} />,
+            render: (v) => <Tag color={v ? 'green' : undefined}>{v ? t('已启用', 'Enabled') : t('已停用', 'Disabled')}</Tag>,
           },
           { title: t('创建时间', 'Created'), dataIndex: 'created_at', render: (v) => dayjs(v).format('YYYY-MM-DD') },
           {
@@ -221,13 +266,19 @@ export default function Users() {
       <Modal
         open={!!editingUser}
         title={`${t('编辑用户', 'Edit user')} · ${editingUser?.username}`}
-        okText={t('保存资料', 'Save details')}
-        onCancel={() => setEditingUser(null)}
+        okText={t('提交', 'Submit')}
+        cancelText={t('取消', 'Cancel')}
+        onCancel={closeEdit}
         onOk={saveUser}
+        confirmLoading={submitting}
+        cancelButtonProps={{ disabled: submitting }}
+        closable={!submitting}
+        keyboard={!submitting}
+        maskClosable={!submitting}
         width={720}
         destroyOnHidden
       >
-        <Form form={editForm} layout="vertical" requiredMark={false}>
+        <Form form={editForm} layout="vertical" requiredMark={false} disabled={submitting}>
           <Form.Item name="username" label={t('用户名', 'Username')} rules={[{ required: true, whitespace: true, message: t('用户名不能为空', 'Username is required') }]}>
             <Input autoComplete="off" />
           </Form.Item>
@@ -242,13 +293,16 @@ export default function Users() {
           <Form.Item name="user_group_ids" label={t('用户分组', 'User groups')}>
             <Select mode="multiple" options={userGroups.map((g) => ({ value: g.id, label: g.name }))} placeholder={t('选择用户分组', 'Select user groups')} />
           </Form.Item>
+          <Form.Item name="enabled" label={t('账号状态', 'Account status')} valuePropName="checked" extra={editingUser?.id === me?.id ? t('不能停用当前登录账号', 'You cannot disable your own account') : undefined}>
+            <Switch checkedChildren={t('启用', 'Enabled')} unCheckedChildren={t('停用', 'Disabled')} disabled={submitting || editingUser?.id === me?.id} />
+          </Form.Item>
         </Form>
 
         <Typography.Title level={5} style={{ marginTop: 24 }}>{t('额度调整', 'Quota adjustment')}</Typography.Title>
         <Typography.Paragraph>
           {t('当前余额', 'Current balance')}：<b>{editingUser && money(editingUser.balance)}</b>
         </Typography.Paragraph>
-        <Form form={balanceForm} layout="vertical" requiredMark={false}>
+        <Form form={balanceForm} layout="vertical" requiredMark={false} disabled={submitting}>
           <Form.Item name="mode" style={{ marginBottom: 12 }}>
             <Segmented options={[{ value: 'add', label: t('加减', 'Add / subtract') }, { value: 'set', label: t('设为余额', 'Set balance') }]} />
           </Form.Item>
@@ -257,9 +311,9 @@ export default function Users() {
               <Form.Item
                 name="amount"
                 label={getFieldValue('mode') === 'set' ? t('调整后的余额', 'New balance') : t('变动金额（负数为扣减）', 'Change (negative to subtract)')}
-                rules={[{ required: true, message: t('填写金额', 'Enter an amount') }]}
+                extra={t('留空不调整额度，填写后随资料一起提交。', 'Leave blank to keep the balance. Changes are saved with the user details.')}
               >
-                <InputNumber style={{ width: '100%' }} prefix={symbol} step={1} />
+                <InputNumber stringMode style={{ width: '100%' }} prefix={symbol} step="1" />
               </Form.Item>
             )}
           </Form.Item>
@@ -267,8 +321,9 @@ export default function Users() {
             <Input placeholder={t('例如：10 月额度', 'e.g. October allowance')} />
           </Form.Item>
         </Form>
-        <Button type="primary" onClick={saveBalance}>{t('确认调整额度', 'Confirm quota adjustment')}</Button>
-        {history.length > 0 && (
+        {historyError ? (
+          <Alert style={{ marginTop: 16 }} type="error" title={historyError} action={<Button size="small" onClick={() => editingUser && loadHistory(editingUser.id)}>{t('重试', 'Retry')}</Button>} />
+        ) : (
           <>
             <Typography.Text type="secondary">{t('最近调整', 'Recent adjustments')}</Typography.Text>
             <Table
@@ -276,6 +331,8 @@ export default function Users() {
               rowKey="id"
               pagination={false}
               dataSource={history.slice(0, 10)}
+              loading={historyLoading}
+              locale={{ emptyText: historyLoading ? t('加载中…', 'Loading…') : t('暂无流水', 'No adjustments yet') }}
               style={{ marginTop: 8 }}
               columns={[
                 { title: t('时间', 'Time'), dataIndex: 'created_at', render: (v) => dayjs(v).format('MM-DD HH:mm') },

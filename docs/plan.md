@@ -253,6 +253,8 @@ API 接入地址（2026-10-24 ✅ 已发布 DMIT）：运营设置可编辑当�
 
 用户表右侧统一“编辑”入口；编辑窗口支持修改用户名、留空不变的密码重置、用户分组和单独确认的额度调整，余额流水保留。PATCH `/api/admin/users/{id}` 支持用户名和用户分组更新，服务端清理用户名首尾空白、拒绝空用户名，重复用户名返回 HTTP 409；用户资料、密码和用户分组在同一数据库事务更新。无数据库迁移。前端类型检查/构建和 Linux amd64 程序构建通过；本轮未运行测试套件。
 
+用户启停与流水隔离（2026-10-25 ✅ 本地完成，未部署）：列表显示状态标签；编辑弹窗中资料、启停状态与可选额度调整统一由右下角“提交”保存，取消不生效，提交停用需确认，不能停用自己。PATCH `/api/admin/users/{id}` 新增可选 `balance_adjustment`（mode 为 add/set、amount 为十进制字符串、currency 为 USD/CNY、note 为备注）；不传则不调余额，人民币由后端 decimal 换算。资料、余额、流水与会话失效在同一事务内处理，设为余额按锁定后的实际余额算差额，零差额不记流水。保留流水查询的请求隔离、加载、空记录和失败重试。无数据库迁移。独立测试库 `make test`、前端类型检查与构建通过；回归覆盖统一保存、失败回滚、币种换算、留空与零额、重名校验、并发扣减，以及浏览器中的取消、确认、失败保留草稿、中英文和手机布局。浏览器脚本 `web/tests/users.browser.cjs` 需在可解析 playwright 包且已安装 Chromium 的 Node 环境运行，会自行启停本地 Vite，也可通过 `USERS_TEST_URL` 指定已有本地服务。未修改线上账号状态。
+
 Anthropic Platform 官方模板（2026-10-24 ✅ 已发布 DMIT）：新增 Anthropic 官方 API 预设，根地址为 `https://api.anthropic.com`，只提供 Messages 协议和官方模型列表获取。当前没有创建渠道或保存 API key；管理员选用模板后再自行填写凭据和映射模型。无数据库迁移。
 
 Google Gemini 官方渠道（2026-10-24 ✅ 已发布 DMIT）：新增 Google AI Studio 预设，走 Gemini OpenAI 兼容 Chat Completions，支持模型列表。DMIT 新增启用渠道 `Google AI Studio`，映射站内零价模型 `gemini-3.8-flash`（仅 Chat、Official API 分组）。无数据库迁移。

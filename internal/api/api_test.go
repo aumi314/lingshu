@@ -152,6 +152,16 @@ func TestLoginAndSession(t *testing.T) {
 	if code, _ := c.do("GET", "/api/me", nil, nil); code != 401 {
 		t.Errorf("账号停用后会话应失效，实际 %d", code)
 	}
+	if code, _ := e.client().do("POST", "/api/auth/login", map[string]string{"username": "bob", "password": "password-1"}, nil); code != 403 {
+		t.Errorf("停用账号登录应返回 403，实际 %d", code)
+	}
+	if code, body := admin.do("PATCH", "/api/admin/users/2", map[string]any{"enabled": true}, nil); code != 200 {
+		t.Fatalf("重新启用失败: %d %s", code, body)
+	}
+	if code, _ := c.do("GET", "/api/me", nil, nil); code != 401 {
+		t.Errorf("重新启用不应恢复旧会话，实际 %d", code)
+	}
+	e.login("bob")
 }
 
 func TestPreferences(t *testing.T) {
@@ -293,6 +303,10 @@ func TestAdminUsersAndBalance(t *testing.T) {
 	a.do("GET", "/api/admin/users/2/balance", nil, &history)
 	if len(history) != 2 || history[0].Amount != "-12" || history[1].Note != "月度额度" || history[0].Operator != "admin" {
 		t.Errorf("余额流水 = %+v", history)
+	}
+	var otherHistory []store.BalanceAdjustment
+	if code, body := a.do("GET", "/api/admin/users/1/balance", nil, &otherHistory); code != 200 || len(otherHistory) != 0 {
+		t.Errorf("管理员自己的流水不应包含成员流水: %d %s", code, body)
 	}
 
 	if code, body := a.do("PATCH", "/api/admin/users/1", map[string]any{"enabled": false}, nil); code != 400 || !strings.Contains(body, "自己") {

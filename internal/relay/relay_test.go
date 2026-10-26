@@ -468,6 +468,24 @@ func TestGroupRatioApplied(t *testing.T) {
 	}
 }
 
+func TestDisabledUserKeyAndReenable(t *testing.T) {
+	e := newEnv(t)
+	e.exec(`UPDATE users SET enabled = false`)
+	e.upstream = func(w http.ResponseWriter, r *http.Request) { t.Error("停用用户不应请求上游") }
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("停用用户应返回 403，实际 %d", resp.StatusCode)
+	}
+	e.exec(`UPDATE users SET enabled = true`)
+	e.upstream = okUpstream
+	resp = e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("重新启用后原 key 应恢复，实际 %d", resp.StatusCode)
+	}
+}
+
 func TestAdmissionRejections(t *testing.T) {
 	cases := []struct {
 		name       string

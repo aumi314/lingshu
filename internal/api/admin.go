@@ -74,11 +74,17 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Username     *string  `json:"username"`
-		Role         *string  `json:"role"`
-		Enabled      *bool    `json:"enabled"`
-		Password     *string  `json:"password"`
-		UserGroupIDs *[]int64 `json:"user_group_ids"`
+		Username      *string  `json:"username"`
+		Role          *string  `json:"role"`
+		Enabled       *bool    `json:"enabled"`
+		Password      *string  `json:"password"`
+		UserGroupIDs  *[]int64 `json:"user_group_ids"`
+		BalanceChange *struct {
+			Mode     string           `json:"mode"`
+			Amount   *decimal.Decimal `json:"amount"`
+			Currency string           `json:"currency"`
+			Note     string           `json:"note"`
+		} `json:"balance_adjustment"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -115,12 +121,29 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		p.PasswordHash = &hash
 	}
 	p.UserGroupIDs = in.UserGroupIDs
+	if in.BalanceChange != nil {
+		if in.BalanceChange.Amount == nil {
+			writeError(w, http.StatusBadRequest, "额度调整金额不能为空")
+			return
+		}
+		change := store.UserBalanceChange{Mode: in.BalanceChange.Mode, Amount: *in.BalanceChange.Amount, Note: strings.TrimSpace(in.BalanceChange.Note), OperatorID: me.ID}
+		if change.Mode != "add" && change.Mode != "set" {
+			writeError(w, http.StatusBadRequest, "额度调整方式只能是 add 或 set")
+			return
+		}
+		switch in.BalanceChange.Currency {
+		case "", "USD":
+		case "CNY":
+			change.Amount = change.Amount.Div(s.Store.CNYPerUSD(r.Context())).Round(10)
+		default:
+			writeError(w, http.StatusBadRequest, "币种只能是 USD 或 CNY")
+			return
+		}
+		p.BalanceChange = &change
+	}
 	if err := s.Store.UpdateUser(r.Context(), id, p); err != nil {
 		writeStoreError(w, err)
 		return
-	}
-	if (in.Enabled != nil && !*in.Enabled) || passwordChanged {
-		s.Store.DeleteUserSessions(r.Context(), id) // 停用或重置密码后让对方重新登录
 	}
 	ok(w)
 }

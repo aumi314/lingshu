@@ -128,11 +128,19 @@ func (s *Store) PasswordHash(ctx context.Context, userID int64) (string, error) 
 }
 
 type UserPatch struct {
-	Username     *string
-	Role         *string
-	Enabled      *bool
-	PasswordHash *string
-	UserGroupIDs *[]int64
+	Username      *string
+	Role          *string
+	Enabled       *bool
+	PasswordHash  *string
+	UserGroupIDs  *[]int64
+	BalanceChange *UserBalanceChange
+}
+
+type UserBalanceChange struct {
+	Mode       string          `json:"mode"`
+	Amount     decimal.Decimal `json:"amount"`
+	Note       string          `json:"note"`
+	OperatorID int64           `json:"-"`
 }
 
 func (s *Store) UpdateUser(ctx context.Context, id int64, p UserPatch) error {
@@ -157,6 +165,32 @@ func (s *Store) UpdateUser(ctx context.Context, id int64, p UserPatch) error {
 			}
 			if _, err := tx.Exec(ctx, `INSERT INTO user_group_members (user_id, user_group_id) SELECT $1, unnest($2::bigint[])`, id, *p.UserGroupIDs); err != nil {
 				return translate(err)
+			}
+		}
+		if p.BalanceChange != nil {
+			change := p.BalanceChange
+			var beforeText string
+			if err := tx.QueryRow(ctx, `SELECT balance::text FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&beforeText); err != nil {
+				return err
+			}
+			before := mustDecimal(beforeText)
+			delta := change.Amount
+			if change.Mode == "set" {
+				delta = delta.Sub(before)
+			}
+			if !delta.IsZero() {
+				var after string
+				if err := tx.QueryRow(ctx, `UPDATE users SET balance=balance+$2::numeric WHERE id=$1 RETURNING balance::text`, id, delta.String()).Scan(&after); err != nil {
+					return err
+				}
+				if _, err := tx.Exec(ctx, `INSERT INTO balance_adjustments(user_id,amount,balance_after,operator_id,note) VALUES($1,$2::numeric,$3::numeric,$4,$5)`, id, delta.String(), after, change.OperatorID, change.Note); err != nil {
+					return err
+				}
+			}
+		}
+		if (p.Enabled != nil && !*p.Enabled) || p.PasswordHash != nil {
+			if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, id); err != nil {
+				return err
 			}
 		}
 		return nil
