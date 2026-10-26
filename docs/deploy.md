@@ -4,9 +4,9 @@
 
 ## 当前运行基线
 
-2026-10-25 复核：DMIT 应用、数据库和备份 timer 正常，公网 `/healthz` 返回 HTTP 200。应用版本为 `9be6d37b368618a18da15e110b5fb8ae6851ca7c`，程序 SHA-256 为 `138378388c429ec3ce59c53df32f72d9e368b771bb0051e3ddb563bc6478db09`，与 `/opt/lingshu/release.json` 一致。数据库为 schema 14（`0014_registration_codes`）。
+2026-10-25 发布并复核：DMIT 应用正常，公网 `/healthz`、用户页与前端资源均返回 HTTP 200。应用版本为 `45bb106341a39b99bef51ad8d02b067c93f76a33`，程序 SHA-256 为 `dd730bbc9859b032d2198bf0bd554e41c0dc620d6cca5c4b55e2004851ad6b3e`，与 `/opt/lingshu/release.json` 一致。本次无数据库迁移。
 
-该版本为 Grok / Muse 补齐模型图标。发布前 DMIT 备份为 `/var/backups/lingshu/lingshu-20261025T044938Z.dump`，SHA-256 为 `bb0a71a2472beb7d3c0561e06bfab93e5b7b23b2c16c36e46435072d97d1396d`，已通过 `pg_restore --list`；原程序、配置及发布标记以 `prev-9be6d37` 后缀留存。前端资源为 `index-CnxsVh8s.js`。
+该版本将用户资料、启停状态和额度调整统一提交，余额与流水同事务保存，并修复编辑弹窗流水串显。发布前备份为 `/var/backups/lingshu/lingshu-20261026T033638Z.dump`（UTC 时间），SHA-256 为 `bf899df8d1ea3c3c1c0cc95f20fcde0351cc91431189467acc932445247703e7`，已通过 `pg_restore --list`；旧程序、配置及发布标记以 `prev-45bb106` 后缀留存。前端资源为 `index--RN4Rgtl.js`，公网内容 SHA-256 为 `353a5defbf95ea0c776be9f7c48c176a97382be3b3721b7f07c99a5659b85676`，与干净检出构建产物一致。
 
 ## 连接、安装和隔离
 
