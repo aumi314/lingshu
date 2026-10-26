@@ -368,7 +368,7 @@ export default function Channels() {
             render: () => <DragHandle title={t('拖动排序（只影响列表显示，不影响优先级）', 'Drag to reorder (display only, not routing priority)')} />,
           },
           {
-            title: '#',
+            title: 'ID',
             dataIndex: 'id',
             width: 48,
             render: (v) => <span className="muted">{v}</span>,

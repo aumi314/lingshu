@@ -149,7 +149,7 @@ export default function Users() {
         dataSource={users}
         pagination={false}
         columns={[
-          { title: '#', dataIndex: 'id', width: 48, render: (v) => <span className="muted">{v}</span> },
+          { title: 'ID', dataIndex: 'id', width: 48, render: (v) => <span className="muted">{v}</span> },
           { title: t('用户名', 'Username'), dataIndex: 'username' },
           {
             title: t('角色', 'Role'),

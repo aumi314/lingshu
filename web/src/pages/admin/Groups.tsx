@@ -79,7 +79,7 @@ export default function Groups() {
         dataSource={groups}
         pagination={false}
         columns={[
-          { title: '#', dataIndex: 'id', width: 48, render: (v) => <span className="muted">{v}</span> },
+          { title: 'ID', dataIndex: 'id', width: 48, render: (v) => <span className="muted">{v}</span> },
           { title: t('名称', 'Name'), dataIndex: 'name' },
           { title: t('倍率', 'Ratio'), dataIndex: 'ratio', render: (v) => `×${Number(v)}` },
           { title: t('适用范围', 'Availability'), dataIndex: 'is_public', render: (v, g) => v
