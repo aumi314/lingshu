@@ -4,9 +4,9 @@
 
 ## 当前运行基线
 
-2026-10-26 发布并复核：DMIT 已发布提交 `225df1800bc4ae52f87cb8a36bf573d82a33037e`，程序 SHA-256 为 `27d2f13bd6c78cd32434d0175fef112df68c45fe87acf2a4e99560a1bcc3de04`，服务、数据库及公网健康检查通过。本次无数据库迁移。发布前备份 `/var/backups/lingshu/lingshu-20261026T042837Z.dump`，SHA-256 为 `842c0635600f915532cf71df7c47cfb2cc1997c852c845494e607119e8a2e58c`，已通过 `pg_restore --list`。旧程序、配置与发布标记保留为 `prev-225df18`。前端资源 `index-CntDraPa.js` 的 SHA-256 为 `eaf87cfb62c5afd432695b8ec2bae8b98f319986422067b9787f9f9ea23105b9`，与干净构建产物一致。
+2026-10-26 发布并复核：DMIT 已发布提交 `5f0ee4f475debb41d4e120f2e92cec32ea1dca81`，运行中程序 SHA-256 为 `d3e759a08f960cd6959f83187d868786a22dbe75c84225c92142cf2e8fc928d7`，服务及内外网健康检查通过。发布前备份 `/var/backups/lingshu/lingshu-20261026T234615Z.dump`，SHA-256 为 `dd22f00caa17cd4e5d94555528f5d75f5ba2ed7e68f80284055aa76515a98e92`，已通过 `pg_restore --list`。旧程序、配置与发布标记保留为 `prev-5f0ee4f`。前端资源 `index-Br285SK3.js` 的 SHA-256 为 `3cbe34a584e4dff178591701323cc0b22a691ad54bf7462edc77599c8d23fd9d`，与已推送提交的干净构建产物一致。
 
-本次新增系统使用模式设置，默认及唯一可选项为“公司团队网关”；管理员设置页可见“自用”和“商业中转”选项但不可选。设置由现有管理接口持久化，无新增数据库迁移。
+本次在用户和服务分组列表新增 ID 列，并将渠道列表表头统一为 `ID`。前端类型检查、前端及程序构建通过；登录后的三处页面已只读核对，用户及服务分组的显示 ID 与接口返回值一致，无接口或数据库变更。系统使用模式仍默认且仅开放“公司团队网关”。
 
 2026-10-25 发布并复核：DMIT 应用正常，公网 `/healthz`、账户日志页与前端资源均返回 HTTP 200。应用版本为 `a08594cd18bbf66d6623d825952a0f6fab4d6e6a`，程序 SHA-256 为 `603c3d888ba62659bd4cd673c75d9a3ba0c68e30b5fcaf9ede4dcb0b2e2da696`，与 `/opt/lingshu/release.json` 一致。本次无数据库迁移。
 
