@@ -15,6 +15,7 @@ import (
 
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/aumi314/lingshu/internal/payments"
+	"github.com/aumi314/lingshu/internal/store"
 	"github.com/shopspring/decimal"
 )
 
@@ -149,6 +150,13 @@ func TestPaymentPermissionsQuotesAndSecretLifecycle(t *testing.T) {
 	e.store.Pool.QueryRow(context.Background(), `SELECT count(*) FROM balance_adjustments WHERE topup_order_id=$1 AND operator_id IS NULL`, o.ID).Scan(&entries)
 	if !decimal.RequireFromString(balance).Equal(decimal.NewFromInt(7)) || entries != 1 {
 		t.Fatal("duplicate credit", balance, entries)
+	}
+	var logs struct {
+		Total   int64            `json:"total"`
+		Summary store.LogSummary `json:"summary"`
+	}
+	if code, body := bob.do("GET", "/api/me/logs?type=topup", nil, &logs); code != 200 || logs.Total != 1 || logs.Summary.TopupTotal.String() != "2" {
+		t.Fatalf("重复通知产生重复日志: %d %s", code, body)
 	}
 	if code, _ := bob.do("GET", fmt.Sprintf("/api/payments/epay/%d/test/notify?%s", c.CallbackVersionID, v.Encode()), nil, nil); code != 404 {
 		t.Fatal("wrong environment accepted")

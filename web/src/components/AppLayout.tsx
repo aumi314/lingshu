@@ -34,7 +34,7 @@ export default function AppLayout() {
     { key: '/console', icon: <DashboardOutlined />, label: t('概览', 'Overview') },
     { key: '/console/keys', icon: <KeyOutlined />, label: 'API keys' },
     { key: '/console/models', icon: <TagsOutlined />, label: t('模型与价格', 'Models & pricing') },
-    { key: '/console/logs', icon: <BarChartOutlined />, label: t('使用记录', 'Usage') },
+    { key: '/console/logs', icon: <BarChartOutlined />, label: t('账户日志', 'Account logs') },
     { key: '/console/wallet', icon: <WalletOutlined />, label: t('钱包充值', 'Wallet & top-up') },
     ...(user?.role === 'admin'
       ? [

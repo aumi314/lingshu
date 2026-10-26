@@ -258,3 +258,7 @@ API 接入地址（2026-10-24 ✅ 已发布 DMIT）：运营设置可编辑当�
 Anthropic Platform 官方模板（2026-10-24 ✅ 已发布 DMIT）：新增 Anthropic 官方 API 预设，根地址为 `https://api.anthropic.com`，只提供 Messages 协议和官方模型列表获取。当前没有创建渠道或保存 API key；管理员选用模板后再自行填写凭据和映射模型。无数据库迁移。
 
 Google Gemini 官方渠道（2026-10-24 ✅ 已发布 DMIT）：新增 Google AI Studio 预设，走 Gemini OpenAI 兼容 Chat Completions，支持模型列表。DMIT 新增启用渠道 `Google AI Studio`，映射站内零价模型 `gemini-3.8-flash`（仅 Chat、Official API 分组）。无数据库迁移。
+
+### 统一账户日志（2026-10-25，本地验证完成，待发布）
+
+全站日志与用户“账户日志”统一查询调用、在线充值及额度调整，复用原请求表、余额流水及订单，在数据库合并分页。type 支持 all/request/topup/adjustment；不传保持旧接口语义。独立 total 控制分页，消费和 tokens 仅统计调用，充值到账和额度净调整独立计算。普通用户强制限定自身并隐藏上游信息，订单只返回摘要。历史零额与极小金额保留，详情提高精度。无数据库迁移，也不修改扣费、入账事务。独立测试库 make test、类型检查、前端构建及管理员中文／成员英文手机浏览器回归通过；测试覆盖分页、分类、隔离、重复通知、订单脱敏及延迟响应。浏览器脚本为 web/tests/activity-logs.browser.cjs，运行条件同用户编辑回归脚本。

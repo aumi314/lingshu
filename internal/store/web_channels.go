@@ -228,6 +228,8 @@ func (s *Store) DeleteAPIKey(ctx context.Context, userID, keyID int64) error {
 // ---- 请求日志 ----
 
 type LogFilter struct {
+	Type      string
+	IDs       []int64
 	UserID    int64 // 0 表示全部用户（管理端）
 	Model     string
 	ChannelID int64
@@ -269,11 +271,13 @@ type LogEntry struct {
 }
 
 type LogSummary struct {
-	Requests     int64           `json:"requests"`
-	Failed       int64           `json:"failed"`
-	InputTokens  int64           `json:"input_tokens"` // 含缓存读写
-	OutputTokens int64           `json:"output_tokens"`
-	Cost         decimal.Decimal `json:"cost"`
+	TopupTotal    decimal.Decimal `json:"topup_total"`
+	AdjustmentNet decimal.Decimal `json:"adjustment_net"`
+	Requests      int64           `json:"requests"`
+	Failed        int64           `json:"failed"`
+	InputTokens   int64           `json:"input_tokens"` // 含缓存读写
+	OutputTokens  int64           `json:"output_tokens"`
+	Cost          decimal.Decimal `json:"cost"`
 }
 
 func (f LogFilter) where() (string, []any) {
@@ -285,6 +289,9 @@ func (f LogFilter) where() (string, []any) {
 	}
 	if f.UserID != 0 {
 		add("l.user_id = $%d", f.UserID)
+	}
+	if len(f.IDs) > 0 {
+		add("l.id = ANY($%d::bigint[])", f.IDs)
 	}
 	if f.Model != "" {
 		add("l.model = $%d", f.Model)

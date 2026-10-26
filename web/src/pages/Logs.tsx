@@ -1,21 +1,25 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, Card, Col, DatePicker, Descriptions, Drawer, Row, Select, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
-import { get, type LogEntry, type LogsResponse, type User } from '../api'
+import { get, type LogEntry, type ActivityEntry, type ActivityLogsResponse, type LogType, type RequestActivity, type User } from '../api'
 import { priceText, tokens, useApp } from '../app'
 
-type Filter = { range: [Dayjs, Dayjs]; model?: string; status?: string; user_id?: number }
+type Filter = { type: LogType; range: [Dayjs, Dayjs]; model?: string; status?: string; user_id?: number }
 
 export default function Logs({ admin = false }: { admin?: boolean }) {
   const { money, t } = useApp()
-  const [filter, setFilter] = useState<Filter>({ range: [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')] })
+  const [filter, setFilter] = useState<Filter>({ type: 'all', range: [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')] })
   const [page, setPage] = useState(1)
-  const [data, setData] = useState<LogsResponse | null>(null)
+  const [data, setData] = useState<ActivityLogsResponse | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [detail, setDetail] = useState<LogEntry | null>(null)
+  const [detail, setDetail] = useState<ActivityEntry | null>(null)
   const pageSize = 50
+  const requestSequence = useRef(0)
+  const typeLabel = (type: LogType) => ({ all: t('全部', 'All'), request: t('模型调用', 'Model calls'), topup: t('在线充值', 'Online top-ups'), adjustment: t('额度调整', 'Balance adjustments') })[type]
+  const operatorLabel = (entry: ActivityEntry) => entry.type === 'topup' ? t('系统', 'System') : entry.operator || t('未知', 'Unknown')
+
 
   const statusTag: Record<LogEntry['status'], [string, string]> = {
     success: ['green', t('成功', 'Success')],
@@ -25,8 +29,11 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
   }
 
   const load = useCallback(async () => {
+    const sequence = ++requestSequence.current
     setLoading(true)
+    setDetail(null)
     const q = new URLSearchParams({
+      type: filter.type,
       page: String(page),
       page_size: String(pageSize),
       from: filter.range[0].toISOString(),
@@ -36,17 +43,18 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
     if (filter.status) q.set('status', filter.status)
     if (filter.user_id) q.set('user_id', String(filter.user_id))
     try {
-      setData(await get<LogsResponse>(`${admin ? '/api/admin/logs' : '/api/me/logs'}?${q}`))
-      setError('')
+      const result = await get<ActivityLogsResponse>(`${admin ? '/api/admin/logs' : '/api/me/logs'}?${q}`)
+      if (sequence === requestSequence.current) { setData(result); setError('') }
     } catch (e) {
-      setError((e as Error).message)
+      if (sequence === requestSequence.current) { setData(null); setError((e as Error).message) }
     } finally {
-      setLoading(false)
+      if (sequence === requestSequence.current) setLoading(false)
     }
   }, [admin, filter, page])
 
   useEffect(() => {
-    load()
+    void load()
+    return () => { ++requestSequence.current }
   }, [load])
 
   useEffect(() => {
@@ -62,7 +70,7 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
   return (
     <div className="page" style={{ maxWidth: 1400 }}>
       <Typography.Title level={3} className="page-title">
-        {admin ? t('全站日志', 'All logs') : t('使用记录', 'Usage')}
+        {admin ? t('全站日志', 'All logs') : t('账户日志', 'Account logs')}
       </Typography.Title>
       {error && <Alert type="error" title={error} showIcon style={{ marginBottom: 16 }} />}
 
@@ -89,6 +97,14 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
           />
         )}
         <Select
+          aria-label={t('日志类型', 'Log type')}
+          value={filter.type}
+          style={{ width: 180 }}
+          options={(['all', 'request', 'topup', 'adjustment'] as LogType[]).map((type) => ({ value: type, label: typeLabel(type) }))}
+          onChange={(type) => update({ type, model: undefined, status: undefined })}
+        />
+        {filter.type === 'request' && <>
+        <Select
           allowClear
           placeholder={t('全部模型', 'All models')}
           style={{ width: 200 }}
@@ -104,39 +120,60 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
           onChange={(v) => update({ status: v })}
           options={Object.entries(statusTag).map(([k, [, label]]) => ({ value: k, label }))}
         />
+        </>}
       </div>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={12} md={6}>
+        <Col xs={12} md={8}>
           <Card size="small">
-            <Statistic title={t('花费', 'Cost')} value={s ? money(s.cost) : '-'} />
+            <Statistic title={t('消费金额', 'Consumption')} value={s ? money(s.cost) : '-'} />
           </Card>
         </Col>
-        <Col xs={12} md={6}>
+        <Col xs={12} md={8}>
           <Card size="small">
             <Statistic title={t('请求数', 'Requests')} value={s?.requests ?? '-'} suffix={s?.failed ? <Typography.Text type="danger" style={{ fontSize: 14 }}>{s.failed} {t('失败', 'failed')}</Typography.Text> : null} />
           </Card>
         </Col>
-        <Col xs={12} md={6}>
+        <Col xs={12} md={8}><Card size="small"><Statistic title={t('充值到账', 'Top-up credits')} value={s ? money(s.topup_total) : '-'} /></Card></Col>
+        <Col xs={12} md={8}><Card size="small"><Statistic title={t('额度净调整', 'Net adjustments')} value={s ? money(s.adjustment_net) : '-'} /></Card></Col>
+        <Col xs={12} md={8}>
           <Card size="small">
             <Statistic title={t('输入 tokens', 'Input tokens')} value={s ? tokens(s.input_tokens) : '-'} />
           </Card>
         </Col>
-        <Col xs={12} md={6}>
+        <Col xs={12} md={8}>
           <Card size="small">
             <Statistic title={t('输出 tokens', 'Output tokens')} value={s ? tokens(s.output_tokens) : '-'} />
           </Card>
         </Col>
       </Row>
 
-      <Table
-        rowKey="id"
+      {filter.type !== 'request' ? <Table<ActivityEntry>
+        rowKey="event_key"
         size="small"
         loading={loading}
         dataSource={data?.logs}
+        onRow={(entry) => ({ onClick: () => setDetail(entry), style: { cursor: 'pointer' } })}
+        pagination={{ current: page, pageSize, total: data?.total ?? 0, onChange: setPage, showSizeChanger: false }}
+        locale={{ emptyText: t('这段时间没有日志记录', 'No logs in this period') }}
+        columns={[
+          { title: t('时间', 'Time'), dataIndex: 'created_at', render: (v) => <span className="nowrap">{dayjs(v).format('MM-DD HH:mm:ss')}</span> },
+          ...(admin ? [{ title: t('用户', 'User'), dataIndex: 'username' }] : []),
+          { title: t('类型', 'Type'), render: (_, entry) => <Tag color={entry.type === 'request' ? 'blue' : entry.type === 'topup' ? 'green' : 'orange'}>{typeLabel(entry.type)}</Tag> },
+          { title: t('事件摘要', 'Summary'), render: (_, entry) => entry.type === 'request' ? <><span className="mono">{entry.model}</span><div className="muted">{entry.key_name || '—'}</div></> : entry.type === 'topup' ? entry.order?.provider || t('在线充值', 'Online top-up') : entry.note || t('额度调整', 'Balance adjustment') },
+          { title: t('状态', 'Status'), render: (_, entry) => <Tag color={statusTag[entry.status][0]}>{statusTag[entry.status][1]}</Tag> },
+          { title: t('余额变动', 'Balance change'), align: 'right', render: (_, entry) => <span style={{ color: Number(entry.balance_delta) < 0 ? '#ff4d4f' : Number(entry.balance_delta) > 0 ? '#52c41a' : undefined }}>{Number(entry.balance_delta) > 0 ? '+' : ''}{money(entry.balance_delta)}</span> },
+          { title: t('调整后余额', 'Balance after'), align: 'right', render: (_, entry) => entry.type === 'request' ? '—' : money(entry.balance_after) },
+          { title: t('操作人', 'Operator'), render: (_, entry) => entry.type === 'request' ? '—' : operatorLabel(entry) },
+        ]}
+      /> : <Table<RequestActivity>
+        rowKey="event_key"
+        size="small"
+        loading={loading}
+        dataSource={data?.logs.filter((entry): entry is RequestActivity => entry.type === 'request')}
         onRow={(r) => ({ onClick: () => setDetail(r), style: { cursor: 'pointer' } })}
-        pagination={{ current: page, pageSize, total: s?.requests ?? 0, onChange: setPage, showSizeChanger: false }}
-        locale={{ emptyText: t('这段时间没有请求记录', 'No requests in this period') }}
+        pagination={{ current: page, pageSize, total: data?.total ?? 0, onChange: setPage, showSizeChanger: false }}
+        locale={{ emptyText: t('这段时间没有日志记录', 'No logs in this period') }}
         columns={[
           { title: t('时间', 'Time'), dataIndex: 'created_at', render: (v) => <span className="nowrap">{dayjs(v).format('MM-DD HH:mm:ss')}</span> },
           ...(admin ? [{ title: t('用户', 'User'), dataIndex: 'username' }] : []),
@@ -168,10 +205,29 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
           { title: t('首字 / 总耗时', 'First byte / total'), render: (_, r) => <span className="nowrap">{(r.first_byte_ms / 1000).toFixed(1)}s / {(r.total_ms / 1000).toFixed(1)}s</span> },
           { title: t('花费', 'Cost'), dataIndex: 'cost', align: 'right', render: (v) => <span className="nowrap">{money(v, 6)}</span> },
         ]}
-      />
+      />}
 
-      <Drawer open={!!detail} onClose={() => setDetail(null)} title={t('请求详情', 'Request details')} size={520}>
-        {detail && (
+      <Drawer open={!!detail} onClose={() => setDetail(null)} title={detail?.type === 'request' ? t('请求详情', 'Request details') : t('资金变动详情', 'Balance details')} size={520}>
+        {detail && detail.type !== 'request' && (
+          <Descriptions column={1} size="small" bordered>
+            <Descriptions.Item label={t('时间', 'Time')}>{dayjs(detail.created_at).format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
+            <Descriptions.Item label={t('用户', 'User')}>{detail.username}</Descriptions.Item>
+            <Descriptions.Item label={t('类型', 'Type')}>{typeLabel(detail.type)}</Descriptions.Item>
+            <Descriptions.Item label={t('余额变动', 'Balance change')}>{money(detail.balance_delta, 10)}</Descriptions.Item>
+            <Descriptions.Item label={t('调整后余额', 'Balance after')}>{money(detail.balance_after, 10)}</Descriptions.Item>
+            <Descriptions.Item label={t('操作人', 'Operator')}>{operatorLabel(detail)}</Descriptions.Item>
+            <Descriptions.Item label={t('备注', 'Note')}>{detail.note || '—'}</Descriptions.Item>
+            {detail.order && <>
+              <Descriptions.Item label={t('订单号', 'Order ID')}><Typography.Text copyable>{detail.order.id}</Typography.Text></Descriptions.Item>
+              <Descriptions.Item label={t('支付服务 / 方式', 'Provider / method')}>{detail.order.provider} / {detail.order.method || '—'}</Descriptions.Item>
+              <Descriptions.Item label={t('付款报价', 'Payment quote')}>{detail.order.amount} {detail.order.currency}</Descriptions.Item>
+              <Descriptions.Item label={t('税费', 'Tax')}>{detail.order.tax} {detail.order.currency}</Descriptions.Item>
+              <Descriptions.Item label={t('实际支付合计', 'Total paid')}>{detail.order.total} {detail.order.currency}</Descriptions.Item>
+              <Descriptions.Item label={t('完成时间', 'Completed')}>{detail.order.completed_at ? dayjs(detail.order.completed_at).format('YYYY-MM-DD HH:mm:ss') : '—'}</Descriptions.Item>
+            </>}
+          </Descriptions>
+        )}
+        {detail?.type === 'request' && (
           <Descriptions column={1} size="small" bordered>
             <Descriptions.Item label={t('请求 ID', 'Request ID')}>
               <Typography.Text copyable className="mono">{detail.request_id}</Typography.Text>

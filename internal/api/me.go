@@ -180,7 +180,15 @@ func (s *Server) deleteKey(w http.ResponseWriter, r *http.Request) {
 // parseLogFilter 解析日志筛选参数：model、status、channel_id、user_id、from、to（RFC3339）、page、page_size。
 func parseLogFilter(r *http.Request) (store.LogFilter, string) {
 	q := r.URL.Query()
-	f := store.LogFilter{Model: q.Get("model"), Status: q.Get("status")}
+	f := store.LogFilter{Type: q.Get("type"), Model: q.Get("model"), Status: q.Get("status")}
+	switch f.Type {
+	case "", "all", "request", "topup", "adjustment":
+	default:
+		return f, "日志类型不正确"
+	}
+	if f.Type != "" && f.Type != "request" {
+		f.Model, f.Status = "", ""
+	}
 	for _, p := range []struct {
 		name string
 		dst  **time.Time
@@ -194,6 +202,9 @@ func parseLogFilter(r *http.Request) (store.LogFilter, string) {
 		}
 	}
 	f.ChannelID, _ = strconv.ParseInt(q.Get("channel_id"), 10, 64)
+	if f.Type != "" && f.Type != "request" {
+		f.ChannelID = 0
+	}
 	f.UserID, _ = strconv.ParseInt(q.Get("user_id"), 10, 64)
 	pageSize, _ := strconv.Atoi(q.Get("page_size"))
 	if pageSize <= 0 || pageSize > 200 {
@@ -218,6 +229,27 @@ func (s *Server) myLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) writeLogs(w http.ResponseWriter, r *http.Request, f store.LogFilter, admin bool) {
+	if f.Type != "" {
+		logs, sum, total, err := s.Store.ListActivityLogs(r.Context(), f)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		if !admin {
+			for i := range logs {
+				if logs[i].LogEntry != nil {
+					logs[i].ChannelName, logs[i].UpstreamModel = "", ""
+				}
+			}
+		}
+		models, err := s.Store.LogModels(r.Context(), f.UserID)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"logs": logs, "summary": sum, "total": total, "models": models})
+		return
+	}
 	logs, sum, err := s.Store.ListLogs(r.Context(), f)
 	if err != nil {
 		writeStoreError(w, err)
@@ -237,5 +269,5 @@ func (s *Server) writeLogs(w http.ResponseWriter, r *http.Request, f store.LogFi
 	if logs == nil {
 		logs = []store.LogEntry{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"logs": logs, "summary": sum, "models": models})
+	writeJSON(w, http.StatusOK, map[string]any{"logs": logs, "summary": sum, "total": sum.Requests, "models": models})
 }

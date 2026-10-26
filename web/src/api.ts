@@ -142,6 +142,18 @@ export type LogEntry = {
 export type LogSummary = { requests: number; failed: number; input_tokens: number; output_tokens: number; cost: string }
 export type LogsResponse = { logs: LogEntry[]; summary: LogSummary; models: string[] }
 
+export type LogType = 'all' | 'request' | 'topup' | 'adjustment'
+type ActivityFields = { id: number; event_key: string; user_id: number; username: string; created_at: string; balance_delta: string; operator: string; note: string }
+export type RequestActivity = LogEntry & ActivityFields & { type: 'request' }
+export type BalanceActivity = ActivityFields & {
+  type: 'topup' | 'adjustment'
+  status: 'success'
+  balance_after: string
+  order?: { id: string; provider: string; method: string; currency: string; amount: string; tax: string; total: string; completed_at: string | null }
+}
+export type ActivityEntry = RequestActivity | BalanceActivity
+export type ActivityLogsResponse = { logs: ActivityEntry[]; total: number; summary: LogSummary & { topup_total: string; adjustment_net: string }; models: string[] }
+
 export type ChannelModel = { model_id: number; model_name: string; upstream_name: string }
 
 export type Channel = {
