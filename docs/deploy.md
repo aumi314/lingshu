@@ -4,9 +4,11 @@
 
 ## 当前运行基线
 
-2026-10-25 发布并复核：DMIT 应用正常，公网 `/healthz`、用户页与前端资源均返回 HTTP 200。应用版本为 `45bb106341a39b99bef51ad8d02b067c93f76a33`，程序 SHA-256 为 `dd730bbc9859b032d2198bf0bd554e41c0dc620d6cca5c4b55e2004851ad6b3e`，与 `/opt/lingshu/release.json` 一致。本次无数据库迁移。
+2026-10-25 发布并复核：DMIT 应用正常，公网 `/healthz`、账户日志页与前端资源均返回 HTTP 200。应用版本为 `a08594cd18bbf66d6623d825952a0f6fab4d6e6a`，程序 SHA-256 为 `603c3d888ba62659bd4cd673c75d9a3ba0c68e30b5fcaf9ede4dcb0b2e2da696`，与 `/opt/lingshu/release.json` 一致。本次无数据库迁移。
 
-该版本将用户资料、启停状态和额度调整统一提交，余额与流水同事务保存，并修复编辑弹窗流水串显。发布前备份为 `/var/backups/lingshu/lingshu-20261026T033638Z.dump`（UTC 时间），SHA-256 为 `bf899df8d1ea3c3c1c0cc95f20fcde0351cc91431189467acc932445247703e7`，已通过 `pg_restore --list`；旧程序、配置及发布标记以 `prev-45bb106` 后缀留存。前端资源为 `index--RN4Rgtl.js`，公网内容 SHA-256 为 `353a5defbf95ea0c776be9f7c48c176a97382be3b3721b7f07c99a5659b85676`，与干净检出构建产物一致。
+该版本将模型调用、在线充值和额度调整统一纳入全站日志及用户账户日志，分页总数和各类金额独立统计。发布前备份为 `/var/backups/lingshu/lingshu-20261026T040328Z.dump`（UTC 时间），SHA-256 为 `8357fd0f9ec49cdf72cc98619ee8ad76dd2340511688fdc276f9fe7a25ddc311`，已通过 `pg_restore --list`；旧程序、配置及发布标记以 `prev-a08594c` 后缀留存。前端资源为 `index-D5w4AcIX.js`，公网内容 SHA-256 为 `08656f8a28bb9c1922f1c0fb3d516e342fd67d37acb21b49abc1d8b2d1b47d31`，与干净检出构建产物一致。
+
+使用已有账号的短期验证会话，只读验证管理员全站日志与用户账户日志页面，以及全部、充值、额度调整和调用筛选，响应与页面均通过；验证会话已删除。未新增充值、未调整真实用户余额。
 
 ## 连接、安装和隔离
 
