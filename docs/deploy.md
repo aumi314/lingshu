@@ -4,6 +4,12 @@
 
 ## 当前运行基线
 
+2026-10-27 发布并复核：DMIT 已发布提交 `030f94751af51f2509d936f2ae51b0c250319698`，运行中程序 SHA-256 为 `493daa23191fcafd438c48493a1754c971898dd3d12b90f72b15be683e1efbe7`，服务及内外网健康检查通过。发布前备份 `/var/backups/lingshu/lingshu-20261027T155013Z.dump`，SHA-256 为 `f07af5f6a9aea19f561e994adf03ec529aa4ff87a59e7829fc82f8e3b46e26df`，已通过 `pg_restore --list`。旧程序、配置与发布标记保留为 `prev-030f947`。
+
+本次取消上游余额估算，改为渠道「额度」按需查询：迁移 0015 删除 `upstream_accounts`、`upstream_account_entries` 两表及 `channels.upstream_account_id`、`request_logs.upstream_account_id`、`request_logs.upstream_cost`，渠道新增 `balance_detail` / `balance_checked_at` / `balance_error`。线上 schema 由 14 升到 `0015_channel_balance`，19 个渠道保留。用临时管理员在生产实测 DeepSeek、Moonshot、OpenRouter 三个渠道查询成功（¥8.93、¥71.345474、$9.97802656），无余额接口的智谱返回 400；验证账号与会话已删除。公网资源 `index-DhYQCzPW.js` 的 SHA-256 为 `cb18849d99b4cf4e728d0f97a2c324373d6790dd42d76251280970793950bf12`，与干净构建产物一致。
+
+0015 是删表删字段的不可逆变更：旧程序依赖已删除的表和列，回滚不能只换程序，必须恢复发布前备份并接受备份之后的请求日志丢失；保留的 `prev-030f947` 只用于同一 schema 下的紧急替换。
+
 2026-10-26 发布并复核：DMIT 已发布提交 `5f0ee4f475debb41d4e120f2e92cec32ea1dca81`，运行中程序 SHA-256 为 `d3e759a08f960cd6959f83187d868786a22dbe75c84225c92142cf2e8fc928d7`，服务及内外网健康检查通过。发布前备份 `/var/backups/lingshu/lingshu-20261026T234615Z.dump`，SHA-256 为 `dd22f00caa17cd4e5d94555528f5d75f5ba2ed7e68f80284055aa76515a98e92`，已通过 `pg_restore --list`。旧程序、配置与发布标记保留为 `prev-5f0ee4f`。前端资源 `index-Br285SK3.js` 的 SHA-256 为 `3cbe34a584e4dff178591701323cc0b22a691ad54bf7462edc77599c8d23fd9d`，与已推送提交的干净构建产物一致。
 
 本次在用户和服务分组列表新增 ID 列，并将渠道列表表头统一为 `ID`。前端类型检查、前端及程序构建通过；登录后的三处页面已只读核对，用户及服务分组的显示 ID 与接口返回值一致，无接口或数据库变更。系统使用模式仍默认且仅开放“公司团队网关”。

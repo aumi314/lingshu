@@ -235,7 +235,7 @@ API 接入地址（2026-10-24 ✅ 已发布 DMIT）：运营设置可编辑当�
 
 用户钱包入口及消费统计（2026-10-24 ✅ 发布到 DMIT）：用户区第五项新增“钱包充值”，页面顶部并排展示当前余额和累计消费金额，累计金额按当前用户全部请求日志汇总，移动端上下排列；沿用货币偏好和显示汇率，普通用户与管理员均可访问。进入时刷新余额和累计消费。全量 Go 测试、前端类型检查和构建通过；累计汇总测试确认覆盖所有分页并按用户隔离。无 schema 变化；现役版本与运维步骤见 [现役部署记录](deploy.md)。
 
-上游余额查询（2026-10-27 ✅ 已实现，待发布）：取消上游余额估算，渠道列表「额度」列改为按需查询。删除成本系数、充值 / 校准流水、每小时自动校准和逐请求上游成本；迁移 0015 删除 `upstream_accounts`、`upstream_account_entries` 两表及 `channels.upstream_account_id`、`request_logs.upstream_account_id`、`request_logs.upstream_cost`，渠道新增 `balance_detail` / `balance_checked_at` / `balance_error`。查询支持 DeepSeek、Moonshot、OpenRouter 三个模板，结果按厂商原始币种保存，不做汇率换算；失败保留上一次的数字并记错误。全量 Go 测试、前端类型检查与构建、本地浏览器检查（列表、弹窗、手机宽度）通过。
+上游余额查询（2026-10-27 ✅ 已发布 DMIT）：取消上游余额估算，渠道列表「额度」列改为按需查询。删除成本系数、充值 / 校准流水、每小时自动校准和逐请求上游成本；迁移 0015 删除 `upstream_accounts`、`upstream_account_entries` 两表及 `channels.upstream_account_id`、`request_logs.upstream_account_id`、`request_logs.upstream_cost`，渠道新增 `balance_detail` / `balance_checked_at` / `balance_error`。查询支持 DeepSeek、Moonshot、OpenRouter 三个模板，结果按厂商原始币种保存，不做汇率换算；失败保留上一次的数字并记错误。全量 Go 测试、前端类型检查与构建、本地浏览器检查（列表、弹窗、手机宽度）通过；DMIT 迁移到 `0015_channel_balance`，生产实测三个渠道查询成功，发布凭证见 [现役部署](deploy.md)。
 
 | 项 | 状态 | 说明 |
 |---|---|---|
