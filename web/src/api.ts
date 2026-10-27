@@ -172,6 +172,10 @@ export type Channel = {
   group_ids: number[]
   models: ChannelModel[]
   cooling?: boolean
+  // 上次查到的厂商余额，原样保存；只有 DeepSeek、Kimi、OpenRouter 能查
+  balance: { currency: string; amount: string }[]
+  balance_checked_at: string | null
+  balance_error: string
 }
 
 export type ChannelTemplate = {
@@ -207,35 +211,4 @@ export type BalanceAdjustment = {
   operator: string
   note: string
   created_at: string
-}
-
-// 上游账户（运维工具，金额 USD）
-export type UpstreamAccount = {
-  id: number
-  name: string
-  balance: string
-  cost_factor: string
-  alert_below: string | null
-  auto_sync: boolean
-  synced_at: string | null
-  sync_error: string
-  note: string
-  channel_ids: number[]
-  cost_7d: string
-  revenue_7d: string
-  calibrated_at: string | null
-}
-
-export type AccountEntry = {
-  id: number
-  kind: 'recharge' | 'calibrate' | 'sync'
-  amount: string
-  balance_before: string
-  balance_after: string
-  original_amount: string | null
-  original_currency: string
-  operator: string
-  note: string
-  created_at: string
-  estimated_spent?: string
 }

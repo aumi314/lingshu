@@ -21,10 +21,10 @@ import {
   Typography,
 } from 'antd'
 import { CheckCircleFilled, CloseCircleFilled, DeleteOutlined, PlusOutlined, WarningFilled } from '@ant-design/icons'
-import { del, get, post, put, type Channel, type ChannelTemplate, type Group, type Model, type ProbeResult, type UpstreamAccount } from '../../api'
+import { del, get, post, put, type Channel, type ChannelTemplate, type Group, type Model, type ProbeResult } from '../../api'
 import { useApp } from '../../app'
 import VendorIcon from '../../components/VendorIcon'
-import { BalanceCell, BalanceDrawer } from '../../components/ChannelBalance'
+import { BalanceCell, BalanceModal } from '../../components/ChannelBalance'
 import { DragHandle, SortableBody, SortableRow } from '../../components/SortableRows'
 import { arrayMove } from '@dnd-kit/sortable'
 import { parseStandardRoot, recoverStandardRoot, standardBases } from '../../channelUrls'
@@ -75,23 +75,18 @@ export default function Channels() {
   const [probingModel, setProbingModel] = useState('')
   const [probe, setProbe] = useState<ProbeResult[]>([])
   const [saving, setSaving] = useState(false)
-  const [accounts, setAccounts] = useState<UpstreamAccount[]>([])
-  const [syncTemplates, setSyncTemplates] = useState<string[]>([])
   const [balanceOf, setBalanceOf] = useState<Channel | null>(null)
   const [form] = Form.useForm<FormValues>()
 
   const load = useCallback(async () => {
     try {
-      const [c, tpl, g, m, a] = await Promise.all([
+      const [c, tpl, g, m] = await Promise.all([
         get<Channel[]>('/api/admin/channels'),
         get<ChannelTemplate[]>('/api/admin/channel-templates'),
         get<Group[]>('/api/admin/groups'),
         get<Model[]>('/api/admin/models'),
-        get<{ accounts: UpstreamAccount[]; sync_templates: string[] }>('/api/admin/upstream-accounts'),
       ])
       setChannels(c)
-      setAccounts(a.accounts)
-      setSyncTemplates(a.sync_templates)
       setTemplates(tpl)
       setGroups(g)
       setModels(m)
@@ -108,8 +103,6 @@ export default function Channels() {
 
   const modelByID = useMemo(() => new Map(models.map((m) => [m.id, m])), [models])
   const groupByID = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups])
-  // 渠道 id → 它的上游账户（一个渠道最多一个）
-  const accountOf = useMemo(() => new Map(accounts.flatMap((a) => a.channel_ids.map((id) => [id, a] as const))), [accounts])
 
   // 上游名和站内名一致（不区分大小写）时自动对上，管理员只需确认
   const matchModel = (upstream: string) => models.find((m) => m.name.toLowerCase() === upstream.toLowerCase())?.id
@@ -418,11 +411,11 @@ export default function Channels() {
           { title: t('优先级', 'Priority'), dataIndex: 'priority' },
           {
             title: (
-              <Tooltip title={t('上游账号的估算余额，只有管理员能看到，和用户余额无关', 'Estimated vendor account balance; admin-only, unrelated to user balances')}>
-                {t('余额', 'Balance')}
+              <Tooltip title={t('厂商后台的余额，只有管理员能看到，和用户余额无关', 'Vendor account balance; admin-only, unrelated to user balances')}>
+                {t('额度', 'Balance')}
               </Tooltip>
             ),
-            render: (_, c) => <BalanceCell account={accountOf.get(c.id)} onOpen={() => setBalanceOf(c)} />,
+            render: (_, c) => <BalanceCell channel={c} onOpen={() => setBalanceOf(c)} />,
           },
           {
             title: '',
@@ -460,14 +453,7 @@ export default function Channels() {
       />
       </SortableBody>
 
-      <BalanceDrawer
-        key={balanceOf?.id ?? 0} // 换渠道时整个重建，表单不带上一个渠道的值
-        channel={balanceOf}
-        account={balanceOf ? accountOf.get(balanceOf.id) : undefined}
-        canSync={!!balanceOf && syncTemplates.includes(balanceOf.template)}
-        onClose={() => setBalanceOf(null)}
-        onChanged={load}
-      />
+      <BalanceModal channel={balanceOf} onClose={() => setBalanceOf(null)} onChanged={load} />
 
       <Drawer
         open={editing !== null}

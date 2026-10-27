@@ -84,14 +84,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/admin/channels/{id}", s.admin(s.deleteChannel))
 	mux.HandleFunc("POST /api/admin/channels/fetch-models", s.admin(s.fetchModels))
 	mux.HandleFunc("POST /api/admin/channels/probe", s.admin(s.probeChannel))
-
-	mux.HandleFunc("GET /api/admin/upstream-accounts", s.admin(s.listUpstreamAccounts))
-	mux.HandleFunc("POST /api/admin/upstream-accounts", s.admin(s.saveUpstreamAccount))
-	mux.HandleFunc("PUT /api/admin/upstream-accounts/{id}", s.admin(s.saveUpstreamAccount))
-	mux.HandleFunc("DELETE /api/admin/upstream-accounts/{id}", s.admin(s.deleteUpstreamAccount))
-	mux.HandleFunc("GET /api/admin/upstream-accounts/{id}/entries", s.admin(s.upstreamEntries))
-	mux.HandleFunc("POST /api/admin/upstream-accounts/{id}/entries", s.admin(s.addUpstreamEntry))
-	mux.HandleFunc("POST /api/admin/upstream-accounts/{id}/sync", s.admin(s.syncUpstreamAccount))
+	mux.HandleFunc("POST /api/admin/channels/{id}/balance", s.admin(s.queryChannelBalance))
 
 	mux.HandleFunc("GET /api/admin/logs", s.admin(s.adminLogs))
 	mux.HandleFunc("GET /api/admin/settings", s.admin(s.getSettings))

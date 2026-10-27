@@ -108,8 +108,6 @@ func TestSystemOneRelayAndSettlement(t *testing.T) {
 	e := newEnv(t)
 	e.enableSystemOne()
 	e.exec(`UPDATE groups SET ratio = 1.5 WHERE id = 1`)
-	e.exec(`INSERT INTO upstream_accounts (id, name, balance, cost_factor) VALUES (1, 'decision-account', 5, 0.5)`)
-	e.exec(`UPDATE channels SET upstream_account_id = 1 WHERE id = 1`)
 	raw, err := os.ReadFile("usage/testdata/nace_systemone.json")
 	if err != nil {
 		t.Fatal(err)
@@ -144,10 +142,6 @@ func TestSystemOneRelayAndSettlement(t *testing.T) {
 	}
 	if !e.balance().Equal(decimal.NewFromInt(10).Sub(want)) || !e.decimal(`SELECT quota_used::text FROM api_keys WHERE user_id = 1`).Equal(want) {
 		t.Error("balance or key quota differs from exact cost")
-	}
-	upCost := decimal.RequireFromString("0.00000078")
-	if !e.decimal(`SELECT upstream_cost::text FROM request_logs WHERE request_id = $1`, id).Equal(upCost) || !e.decimal(`SELECT balance::text FROM upstream_accounts WHERE id = 1`).Equal(decimal.NewFromInt(5).Sub(upCost)) {
-		t.Error("upstream cost or balance differs from input-only price")
 	}
 	var proto string
 	e.store.Pool.QueryRow(context.Background(), `SELECT protocol FROM request_logs WHERE request_id = $1`, id).Scan(&proto)

@@ -619,57 +619,6 @@ func TestSuccessWithoutUsageIsEstimated(t *testing.T) {
 	}
 }
 
-func TestUpstreamCostDeductsAccount(t *testing.T) {
-	e := newEnv(t)
-	e.exec(`INSERT INTO upstream_accounts (id, name, balance, cost_factor) VALUES (1, 'acc', 5, 0.5)`)
-	e.exec(`UPDATE channels SET upstream_account_id = 1 WHERE id = 1`)
-	e.exec(`UPDATE groups SET ratio = 2`) // 分组倍率只影响向用户收费，不影响上游成本
-	e.upstream = okUpstream
-	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
-	resp.Body.Close()
-	id := resp.Header.Get("X-Lingshu-Request-Id")
-	e.cost(id)
-	// 基础价算出 0.00182，× 系数 0.5
-	want := decimal.RequireFromString("0.00091")
-	if got := e.decimal(`SELECT upstream_cost::text FROM request_logs WHERE request_id = $1`, id); !got.Equal(want) {
-		t.Errorf("upstream_cost = %s，期望 %s", got, want)
-	}
-	if got := e.decimal(`SELECT balance::text FROM upstream_accounts WHERE id = 1`); !got.Equal(decimal.NewFromInt(5).Sub(want)) {
-		t.Errorf("上游账户估算余额 = %s", got)
-	}
-}
-
-func TestTruncatedStreamStillCostsUpstream(t *testing.T) {
-	e := newEnv(t)
-	e.exec(`INSERT INTO upstream_accounts (id, name, balance) VALUES (1, 'acc', 5)`)
-	e.exec(`UPDATE channels SET upstream_account_id = 1 WHERE id = 1`)
-	e.upstream = func(w http.ResponseWriter, r *http.Request) {
-		sse(w, `{"choices":[{"delta":{"content":"partial answer"}}]}`)
-	}
-	resp := e.post("/v1/chat/completions", `{"model":"std-chat","stream":true,"messages":[{"role":"user","content":"hello there"}]}`, nil)
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
-	id := resp.Header.Get("X-Lingshu-Request-Id")
-	if got, _ := e.cost(id); !got.IsZero() {
-		t.Errorf("上游断流不向用户收费，实际 %s", got)
-	}
-	if got := e.decimal(`SELECT upstream_cost::text FROM request_logs WHERE request_id = $1`, id); !got.IsPositive() {
-		t.Errorf("上游已经输出了内容，应估算上游成本，实际 %s", got)
-	}
-}
-
-func TestNoAccountNoDeduction(t *testing.T) {
-	e := newEnv(t)
-	e.exec(`INSERT INTO upstream_accounts (id, name, balance) VALUES (1, 'acc', 5)`)
-	e.upstream = okUpstream
-	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
-	resp.Body.Close()
-	e.cost(resp.Header.Get("X-Lingshu-Request-Id"))
-	if got := e.decimal(`SELECT balance::text FROM upstream_accounts WHERE id = 1`); !got.Equal(decimal.NewFromInt(5)) {
-		t.Errorf("渠道没关联账户，不应扣账户: %s", got)
-	}
-}
-
 func TestFetchBalance(t *testing.T) {
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer sk-test" {
@@ -681,6 +630,8 @@ func TestFetchBalance(t *testing.T) {
 			io.WriteString(w, `{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"12.19"},{"currency":"USD","total_balance":"1.5"}]}`)
 		case "/v1/users/me/balance":
 			io.WriteString(w, `{"code":0,"data":{"available_balance":71.43,"voucher_balance":13.21,"cash_balance":58.22},"status":true}`)
+		case "/api/v1/credits":
+			io.WriteString(w, `{"data":{"total_credits":10,"total_usage":0.022}}`)
 		default:
 			w.WriteHeader(404)
 		}
@@ -695,6 +646,10 @@ func TestFetchBalance(t *testing.T) {
 	if err != nil || !b["USD"].Equal(decimal.RequireFromString("71.43")) {
 		t.Errorf("moonshot（非 .cn 域名记美元）: %v %v", b, err)
 	}
+	b, err = h.FetchBalance(context.Background(), "openrouter", up.URL+"/api/v1", "sk-test", "")
+	if err != nil || !b["USD"].Equal(decimal.RequireFromString("9.978")) {
+		t.Errorf("openrouter（剩余 = 总额 − 已用）: %v %v", b, err)
+	}
 	if _, err := h.FetchBalance(context.Background(), "deepseek", up.URL, "sk-wrong", ""); err == nil || !strings.Contains(err.Error(), "401") {
 		t.Errorf("key 不对应报错: %v", err)
 	}
@@ -707,8 +662,6 @@ func TestPriceRuleAppliedAtSettlement(t *testing.T) {
 	e := newEnv(t)
 	// okUpstream 的用量：输入 800 + 缓存命中 200 = 总输入 1000
 	e.exec(`UPDATE models SET price_rules = '[{"name":"长上下文","input_above":999,"input_price":"2","output_price":"4","cache_read_price":"0.2","cache_write_price":"0"}]' WHERE name = 'std-chat'`)
-	e.exec(`INSERT INTO upstream_accounts (id, name, balance) VALUES (1, 'acc', 5)`)
-	e.exec(`UPDATE channels SET upstream_account_id = 1 WHERE id = 1`)
 	e.upstream = okUpstream
 	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
 	resp.Body.Close()
@@ -722,9 +675,6 @@ func TestPriceRuleAppliedAtSettlement(t *testing.T) {
 	e.store.Pool.QueryRow(context.Background(), `SELECT price_rule, input_price::text FROM request_logs WHERE request_id = $1`, id).Scan(&rule, &inPrice)
 	if rule != "长上下文" || !decimal.RequireFromString(inPrice).Equal(decimal.NewFromInt(2)) {
 		t.Errorf("日志应记命中的规则和生效单价: %q %s", rule, inPrice)
-	}
-	if got := e.decimal(`SELECT upstream_cost::text FROM request_logs WHERE request_id = $1`, id); !got.Equal(want) {
-		t.Errorf("上游成本也应按规则价: %s", got)
 	}
 
 	// 门槛调高到不触发：回到基础价，规则名为空

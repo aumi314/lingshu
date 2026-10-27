@@ -13,8 +13,18 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// BalanceTemplates 是能用接口查上游余额的渠道模板。其他厂商没有公开的余额接口，只能手动校准。
-var BalanceTemplates = []string{"deepseek", "moonshot"}
+// BalanceTemplates 是能用接口查上游余额的渠道模板。其他厂商没有公开的余额接口。
+var BalanceTemplates = []string{"deepseek", "moonshot", "openrouter"}
+
+// CanQueryBalance 表示这个模板能不能用渠道的 key 查余额。
+func CanQueryBalance(template string) bool {
+	for _, t := range BalanceTemplates {
+		if t == template {
+			return true
+		}
+	}
+	return false
+}
 
 // Balance 是厂商余额接口返回的可用余额，按币种分开（DeepSeek 一个账户可能同时有人民币和美元余额）。
 type Balance map[string]decimal.Decimal
@@ -32,6 +42,8 @@ func (h *Handler) FetchBalance(ctx context.Context, template, baseURL, apiKey, p
 		path = "/user/balance"
 	case "moonshot":
 		path = "/v1/users/me/balance"
+	case "openrouter":
+		path = "/api/v1/credits"
 	default:
 		return nil, fmt.Errorf("%s 没有余额接口", template)
 	}
@@ -71,6 +83,18 @@ func (h *Handler) FetchBalance(ctx context.Context, template, baseURL, apiKey, p
 			b[cur] = b[cur].Add(info.TotalBalance)
 		}
 		return b, nil
+	case "openrouter":
+		// {"data":{"total_credits":10,"total_usage":0.02197344}}，剩余 = 总额 − 已用
+		var out struct {
+			Data *struct {
+				TotalCredits decimal.Decimal `json:"total_credits"`
+				TotalUsage   decimal.Decimal `json:"total_usage"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(raw, &out); err != nil || out.Data == nil {
+			return nil, fmt.Errorf("看不懂返回内容: %s", truncate(string(raw), 200))
+		}
+		return Balance{"USD": out.Data.TotalCredits.Sub(out.Data.TotalUsage)}, nil
 	default: // moonshot
 		// {"code":0,"data":{"available_balance":71.43,"voucher_balance":13.21,"cash_balance":58.22},"status":true}
 		var out struct {

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -34,6 +35,10 @@ type Channel struct {
 	ProxyURL         string         `json:"proxy_url"` // 空表示直连
 	GroupIDs         []int64        `json:"group_ids"`
 	Models           []ChannelModel `json:"models"`
+	// 上次查询到的厂商余额，原样保存；只有 DeepSeek、Kimi、OpenRouter 能查。
+	Balance          []BalanceItem `json:"balance"`
+	BalanceCheckedAt *time.Time    `json:"balance_checked_at"`
+	BalanceError     string        `json:"balance_error"`
 }
 
 func maskKey(k string) string {
@@ -47,7 +52,8 @@ func (s *Store) ListChannels(ctx context.Context) ([]*Channel, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT c.id, c.name, c.template, c.api_key, c.priority, c.enabled,
 		       c.base_url_chat, c.base_url_messages, c.base_url_responses, c.base_url_systemone, c.proxy_url,
-		       COALESCE((SELECT array_agg(group_id ORDER BY group_id) FROM channel_groups WHERE channel_id = c.id), '{}')
+		       COALESCE((SELECT array_agg(group_id ORDER BY group_id) FROM channel_groups WHERE channel_id = c.id), '{}'),
+		       c.balance_detail, c.balance_checked_at, c.balance_error
 		FROM channels c ORDER BY c.sort_order, c.id`)
 	if err != nil {
 		return nil, err
@@ -57,12 +63,19 @@ func (s *Store) ListChannels(ctx context.Context) ([]*Channel, error) {
 	for rows.Next() {
 		c := &Channel{Models: []ChannelModel{}}
 		var key string
+		var detail []byte
 		if err := rows.Scan(&c.ID, &c.Name, &c.Template, &key, &c.Priority, &c.Enabled,
-			&c.BaseURLChat, &c.BaseURLMessages, &c.BaseURLResponses, &c.BaseURLSystemOne, &c.ProxyURL, &c.GroupIDs); err != nil {
+			&c.BaseURLChat, &c.BaseURLMessages, &c.BaseURLResponses, &c.BaseURLSystemOne, &c.ProxyURL, &c.GroupIDs,
+			&detail, &c.BalanceCheckedAt, &c.BalanceError); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		c.APIKeyMasked = maskKey(key)
+		c.Balance = []BalanceItem{}
+		if err := json.Unmarshal(detail, &c.Balance); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("解析渠道 %d 的余额快照失败: %w", c.ID, err)
+		}
 		byID[c.ID] = c
 		out = append(out, c)
 	}
@@ -159,14 +172,9 @@ func (s *Store) ReorderChannels(ctx context.Context, ids []int64) error {
 	return err
 }
 
-// DeleteChannel 删除渠道，连同它的余额估算和流水（请求日志里的上游成本保留）。
+// DeleteChannel 删除渠道；余额快照随渠道一起删，请求日志不受影响。
 func (s *Store) DeleteChannel(ctx context.Context, id int64) error {
-	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DELETE FROM upstream_accounts WHERE id = (SELECT upstream_account_id FROM channels WHERE id = $1)`, id); err != nil {
-			return err
-		}
-		return execOne(ctx, tx, `DELETE FROM channels WHERE id = $1`, id)
-	})
+	return execOne(ctx, s.Pool, `DELETE FROM channels WHERE id = $1`, id)
 }
 
 // ---- 用户的 API key ----

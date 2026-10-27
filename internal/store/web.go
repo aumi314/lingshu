@@ -493,3 +493,18 @@ func (s *Store) SetSetting(ctx context.Context, key, value string) error {
 		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value)
 	return err
 }
+
+// CNYPerUSD 是系统设置的汇率，没设置或格式不对时用默认值。
+func (s *Store) CNYPerUSD(ctx context.Context) decimal.Decimal {
+	v, err := s.Setting(ctx, "cny_per_usd")
+	if err != nil {
+		return defaultCNYPerUSD
+	}
+	d, err := decimal.NewFromString(v)
+	if err != nil || !d.IsPositive() {
+		return defaultCNYPerUSD
+	}
+	return d
+}
+
+var defaultCNYPerUSD = decimal.RequireFromString("6.7")

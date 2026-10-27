@@ -15,8 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shopspring/decimal"
-
 	"github.com/aumi314/lingshu/internal/auth"
 	"github.com/aumi314/lingshu/internal/billing"
 	"github.com/aumi314/lingshu/internal/relay/usage"
@@ -84,8 +82,7 @@ type call struct {
 	body    []byte // 客户端原始请求体，上游没给 usage 时用来估算输入
 	gotResp bool   // 是否收到了上游的响应头（收到才说明上游开始处理了）
 
-	costFactor decimal.Decimal // 当前渠道所属上游账户的成本系数，没关联账户时为 1
-	basePrices billing.Prices  // 模型基础价，结算时按价格规则换成实际单价
+	basePrices billing.Prices // 模型基础价，结算时按价格规则换成实际单价
 	rules      []billing.PriceRule
 }
 
@@ -264,7 +261,6 @@ func (h *Handler) attemptAll(w http.ResponseWriter, r *http.Request, c *call, re
 // useRoute 切换到一个渠道，重置上一次尝试留下的状态。
 func (c *call) useRoute(route store.Route, attempt int) {
 	c.log.ChannelID, c.log.ChannelName, c.log.UpstreamModel, c.log.Prices = route.ChannelID, route.ChannelName, route.UpstreamModel, route.Prices
-	c.log.UpstreamAccountID, c.costFactor = route.AccountID, route.CostFactor
 	c.basePrices, c.rules = route.Prices, route.PriceRules
 	c.log.Attempts = attempt
 	c.tracker = usage.NewTracker(c.proto)
@@ -454,12 +450,6 @@ func (h *Handler) finish(reqCtx context.Context, c *call) {
 	if c.log.Status == "success" || c.log.Status == "client_cancelled" {
 		c.log.Cost = billing.Cost(u, c.log.Prices, c.log.GroupRatio)
 	}
-	// 上游成本：只要上游产生了用量就算（包括上游中途出错、不向用户收费的请求）
-	if c.log.ChannelID != 0 && !c.costFactor.IsZero() {
-		up := c.upstreamUsage(u)
-		prices, _ := billing.Select(c.basePrices, c.rules, up, c.start)
-		c.log.UpstreamCost = billing.Cost(up, prices, c.costFactor)
-	}
 
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(reqCtx), 10*time.Second)
 	defer cancel()
@@ -493,15 +483,6 @@ func (c *call) settledUsage() (usage.Usage, bool) {
 		return u, estimated
 	}
 	return u, false
-}
-
-// upstreamUsage 是估算上游成本用的用量。和向用户计费的区别：上游已经开始输出、中途出错又没给 usage 时，
-// 不向用户收费，但上游多半照样收我们的钱，按估算算。
-func (c *call) upstreamUsage(billed usage.Usage) usage.Usage {
-	if c.log.Status == "upstream_error" && c.log.FirstByteMS > 0 && !c.tracker.Seen() {
-		return usage.Usage{Input: usage.EstimateRequest(c.body), Output: c.tracker.EstimatedOutput()}
-	}
-	return billed
 }
 
 func redactKey(b []byte, key string) []byte {
