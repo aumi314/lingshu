@@ -4,6 +4,14 @@
 
 ## 当前运行基线
 
+2026-11-01 发布并复核：DMIT 已发布提交 `a716f27161e93c0fca6c99fb2cce890ad43c0131`，运行中程序 SHA-256 为 `51becc46e164ec1614d46c6e72acb05b69d0593f1ffe3b627e1c780441b83f2e`，服务及内外网健康检查通过。发布前备份 `/var/backups/lingshu/lingshu-20261101T151309Z.dump`，SHA-256 为 `da3a5cfeda473da641ce9abe6a3bbf7bae21ed8f8b73cbb687d86b2b63ed17c7`，已通过 `pg_restore --list`。旧程序、配置与发布标记保留为 `prev-a716f27`。
+
+本次新增管理员用户备注：迁移 `0016_user_note` 给 `users` 加 `note TEXT NOT NULL DEFAULT ''`，线上 schema 由 `0015_channel_balance` 升到 `0016_user_note`；该字段只在管理端用户列表返回，`/api/me` 不含。用户编辑弹窗同时把额度区的「备注」改名「额度备注」，并去掉「最近调整」列表（流水仍写库，可在账户日志与全站日志查看）。发布后用临时管理员会话只读核对：`/api/admin/users` 返回 `note` 字段、`/api/me` 不含该字段，会话已删除。公网首页与入口资源 `index-HpP6EULs.js` 的 SHA-256 为 `367755f967692605d101c7470865b5045b9210dec3a3001dcaace4e0ee230f74`，与干净构建产物逐字节一致。复核公网时注意：用 Python 默认 `Python-urllib` UA 访问首页会得到 403（Cloudflare），需换浏览器 UA。
+
+0016 是纯增列迁移，旧程序不读该列：回滚只需换回 `prev-a716f27` 程序，不需要数据库恢复。
+
+构建备注：本次 `npm ci` 因 registry 单包下载耗时过长（个别包 10–30 分钟）中断，改为复用已安装的 `web/node_modules`，并在复制前后校验 `package-lock.json` 与 `node_modules/.package-lock.json` 的 SHA-256 完全一致；构建仍取自干净的 detached worktree（提交 `a716f27`），worktree 除 `node_modules`、`web/dist` 外无改动。
+
 2026-10-27 发布并复核：DMIT 已发布提交 `030f94751af51f2509d936f2ae51b0c250319698`，运行中程序 SHA-256 为 `493daa23191fcafd438c48493a1754c971898dd3d12b90f72b15be683e1efbe7`，服务及内外网健康检查通过。发布前备份 `/var/backups/lingshu/lingshu-20261027T155013Z.dump`，SHA-256 为 `f07af5f6a9aea19f561e994adf03ec529aa4ff87a59e7829fc82f8e3b46e26df`，已通过 `pg_restore --list`。旧程序、配置与发布标记保留为 `prev-030f947`。
 
 本次取消上游余额估算，改为渠道「额度」按需查询：迁移 0015 删除 `upstream_accounts`、`upstream_account_entries` 两表及 `channels.upstream_account_id`、`request_logs.upstream_account_id`、`request_logs.upstream_cost`，渠道新增 `balance_detail` / `balance_checked_at` / `balance_error`。线上 schema 由 14 升到 `0015_channel_balance`，19 个渠道保留。用临时管理员在生产实测 DeepSeek、Moonshot、OpenRouter 三个渠道查询成功（¥8.93、¥71.345474、$9.97802656），无余额接口的智谱返回 400；验证账号与会话已删除。公网资源 `index-DhYQCzPW.js` 的 SHA-256 为 `cb18849d99b4cf4e728d0f97a2c324373d6790dd42d76251280970793950bf12`，与干净构建产物一致。
