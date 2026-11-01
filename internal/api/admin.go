@@ -30,6 +30,9 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 
 func validRole(role string) bool { return role == "admin" || role == "user" }
 
+// userNoteLimit 是管理员内部备注的字数上限，避免无界文本进库。
+const userNoteLimit = 500
+
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Username string `json:"username"`
@@ -75,6 +78,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Username      *string  `json:"username"`
+		Note          *string  `json:"note"`
 		Role          *string  `json:"role"`
 		Enabled       *bool    `json:"enabled"`
 		Password      *string  `json:"password"`
@@ -102,6 +106,14 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p.Username = &username
+	}
+	if in.Note != nil {
+		note := strings.TrimSpace(*in.Note)
+		if len([]rune(note)) > userNoteLimit {
+			writeError(w, http.StatusBadRequest, "备注太长，最多 "+strconv.Itoa(userNoteLimit)+" 个字")
+			return
+		}
+		p.Note = &note
 	}
 	if in.Role != nil {
 		if !validRole(*in.Role) {

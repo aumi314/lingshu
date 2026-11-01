@@ -78,15 +78,24 @@ type User struct {
 	Preferences  json.RawMessage `json:"preferences"`
 	UserGroupIDs []int64         `json:"user_group_ids"`
 	CreatedAt    time.Time       `json:"created_at"`
+	// Note 是管理员写的内部备注。只有 ListUsers 会带出来，不进 /api/me，成员看不到。
+	Note string `json:"note,omitempty"`
 }
 
 const userColumns = `u.id, u.username, u.role, u.balance::text, u.enabled, u.preferences, u.created_at,
 	COALESCE((SELECT array_agg(ugm.user_group_id ORDER BY ugm.user_group_id) FROM user_group_members ugm WHERE ugm.user_id = u.id), '{}')`
 
-func scanUser(row pgx.Row) (*User, error) {
+func scanUser(row pgx.Row) (*User, error) { return scanUserRow(row, false) }
+
+// scanUserRow 按 userColumns 的顺序扫描；withNote 对应末尾多带的 u.note（管理端列表用）。
+func scanUserRow(row pgx.Row, withNote bool) (*User, error) {
 	var u User
 	var balance string
-	if err := row.Scan(&u.ID, &u.Username, &u.Role, &balance, &u.Enabled, &u.Preferences, &u.CreatedAt, &u.UserGroupIDs); err != nil {
+	dest := []any{&u.ID, &u.Username, &u.Role, &balance, &u.Enabled, &u.Preferences, &u.CreatedAt, &u.UserGroupIDs}
+	if withNote {
+		dest = append(dest, &u.Note)
+	}
+	if err := row.Scan(dest...); err != nil {
 		return nil, translate(err)
 	}
 	u.Balance = mustDecimal(balance)
@@ -98,14 +107,14 @@ func (s *Store) UserByID(ctx context.Context, id int64) (*User, error) {
 }
 
 func (s *Store) ListUsers(ctx context.Context) ([]*User, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT `+userColumns+` FROM users u ORDER BY u.id`)
+	rows, err := s.Pool.Query(ctx, `SELECT `+userColumns+`, u.note FROM users u ORDER BY u.id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []*User
 	for rows.Next() {
-		u, err := scanUser(rows)
+		u, err := scanUserRow(rows, true)
 		if err != nil {
 			return nil, err
 		}
@@ -129,6 +138,7 @@ func (s *Store) PasswordHash(ctx context.Context, userID int64) (string, error) 
 
 type UserPatch struct {
 	Username      *string
+	Note          *string
 	Role          *string
 	Enabled       *bool
 	PasswordHash  *string
@@ -147,8 +157,9 @@ func (s *Store) UpdateUser(ctx context.Context, id int64, p UserPatch) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx, `
 			UPDATE users SET username = COALESCE($2, username), role = COALESCE($3, role),
-			       enabled = COALESCE($4, enabled), password_hash = COALESCE($5, password_hash)
-			WHERE id = $1`, id, p.Username, p.Role, p.Enabled, p.PasswordHash)
+			       enabled = COALESCE($4, enabled), password_hash = COALESCE($5, password_hash),
+			       note = COALESCE($6, note)
+			WHERE id = $1`, id, p.Username, p.Role, p.Enabled, p.PasswordHash, p.Note)
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "users_username_key" {

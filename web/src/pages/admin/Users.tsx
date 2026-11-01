@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, App, Button, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Switch, Table, Tag, Typography } from 'antd'
+import { App, Button, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Switch, Table, Tag, Typography } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { del, get, patch, post, put, type BalanceAdjustment, type User, type UserGroup } from '../../api'
+import { del, get, patch, post, put, type User, type UserGroup } from '../../api'
 import { useApp } from '../../app'
 
 export default function Users() {
@@ -15,14 +15,10 @@ export default function Users() {
   const [managingGroups, setManagingGroups] = useState(false)
   const [editingUserGroup, setEditingUserGroup] = useState<UserGroup | 'new' | null>(null)
   const [editingUser, setEditingUser] = useState<User | null>(null)
-  const [history, setHistory] = useState<BalanceAdjustment[]>([])
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [historyError, setHistoryError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const editSession = useRef(0)
-  const historyRequest = useRef(0)
   const [createForm] = Form.useForm()
-  const [editForm] = Form.useForm<{ username: string; password?: string; user_group_ids: number[]; enabled: boolean }>()
+  const [editForm] = Form.useForm<{ username: string; password?: string; note?: string; user_group_ids: number[]; enabled: boolean }>()
   const [balanceForm] = Form.useForm<{ mode: 'add' | 'set'; amount?: string; note: string }>()
   const [userGroupForm] = Form.useForm<{ name: string }>()
 
@@ -56,22 +52,6 @@ export default function Users() {
 
   const symbol = currency === 'CNY' ? '¥' : '$'
 
-  const loadHistory = async (id: number) => {
-    const request = ++historyRequest.current
-    const session = editSession.current
-    setHistory([])
-    setHistoryError('')
-    setHistoryLoading(true)
-    try {
-      const rows = await get<BalanceAdjustment[]>(`/api/admin/users/${id}/balance`)
-      if (session === editSession.current && request === historyRequest.current) setHistory(rows)
-    } catch (e) {
-      if (session === editSession.current && request === historyRequest.current) setHistoryError((e as Error).message)
-    } finally {
-      if (session === editSession.current && request === historyRequest.current) setHistoryLoading(false)
-    }
-  }
-
   const closeEdit = () => {
     if (submitting) return
     ++editSession.current
@@ -81,10 +61,9 @@ export default function Users() {
   const openEdit = (u: User) => {
     ++editSession.current
     setSubmitting(false)
-    editForm.setFieldsValue({ username: u.username, password: '', user_group_ids: u.user_group_ids ?? [], enabled: u.enabled })
+    editForm.setFieldsValue({ username: u.username, password: '', note: u.note ?? '', user_group_ids: u.user_group_ids ?? [], enabled: u.enabled })
     balanceForm.setFieldsValue({ mode: 'add', amount: undefined, note: '' })
     setEditingUser(u)
-    void loadHistory(u.id)
   }
 
   const saveUser = async () => {
@@ -111,6 +90,7 @@ export default function Users() {
       }
       await patch(`/api/admin/users/${editingUser.id}`, {
         username: v.username,
+        note: v.note ?? '',
         password: v.password ?? '',
         user_group_ids: v.user_group_ids ?? [],
         enabled: v.enabled,
@@ -291,6 +271,14 @@ export default function Users() {
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
+          <Form.Item name="note" label={t('用户备注', 'User note')}>
+            <Input.TextArea
+              rows={2}
+              maxLength={500}
+              showCount
+              placeholder={t('例如：外部合作方，额度按月给', 'e.g. External partner, monthly allowance')}
+            />
+          </Form.Item>
           <Form.Item name="user_group_ids" label={t('用户分组', 'User groups')}>
             <Select mode="multiple" options={userGroups.map((g) => ({ value: g.id, label: g.name }))} placeholder={t('选择用户分组', 'Select user groups')} />
           </Form.Item>
@@ -318,33 +306,10 @@ export default function Users() {
               </Form.Item>
             )}
           </Form.Item>
-          <Form.Item name="note" label={t('备注', 'Note')}>
+          <Form.Item name="note" label={t('额度备注', 'Adjustment note')}>
             <Input placeholder={t('例如：10 月额度', 'e.g. October allowance')} />
           </Form.Item>
         </Form>
-        {historyError ? (
-          <Alert style={{ marginTop: 16 }} type="error" title={historyError} action={<Button size="small" onClick={() => editingUser && loadHistory(editingUser.id)}>{t('重试', 'Retry')}</Button>} />
-        ) : (
-          <>
-            <Typography.Text type="secondary">{t('最近调整', 'Recent adjustments')}</Typography.Text>
-            <Table
-              size="small"
-              rowKey="id"
-              pagination={false}
-              dataSource={history.slice(0, 10)}
-              loading={historyLoading}
-              locale={{ emptyText: historyLoading ? t('加载中…', 'Loading…') : t('暂无流水', 'No adjustments yet') }}
-              style={{ marginTop: 8 }}
-              columns={[
-                { title: t('时间', 'Time'), dataIndex: 'created_at', render: (v) => dayjs(v).format('MM-DD HH:mm') },
-                { title: t('变动', 'Change'), dataIndex: 'amount', render: (v) => <Tag color={Number(v) >= 0 ? 'green' : 'red'}>{Number(v) >= 0 ? '+' : ''}{money(v)}</Tag> },
-                { title: t('调整后', 'After'), dataIndex: 'balance_after', render: (v) => money(v) },
-                { title: t('操作人', 'By'), dataIndex: 'operator' },
-                { title: t('备注', 'Note'), dataIndex: 'note' },
-              ]}
-            />
-          </>
-        )}
       </Modal>
     </div>
   )

@@ -51,6 +51,55 @@ func TestUnifiedUserUpdate(t *testing.T) {
 	}
 }
 
+// TestUserNote 覆盖管理员内部备注：随 PATCH 写入、管理端列表读回、
+// 空串表示清空，以及最重要的——不出现在成员自己的 /api/me 里。
+func TestUserNote(t *testing.T) {
+	e := newEnv(t)
+	a := e.login("admin")
+	bob := e.login("bob")
+
+	if code, body := a.do("PATCH", "/api/admin/users/2", map[string]any{"note": "  外部合作方，额度按月给  "}, nil); code != 200 {
+		t.Fatalf("写备注失败: %d %s", code, body)
+	}
+	users, err := e.store.ListUsers(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range users {
+		if u.ID == 2 && u.Note != "外部合作方，额度按月给" {
+			t.Fatalf("备注未去除首尾空白或未写入: %q", u.Note)
+		}
+	}
+
+	var meBody struct {
+		User store.User `json:"user"`
+	}
+	if code, _ := bob.do("GET", "/api/me", nil, &meBody); code != 200 {
+		t.Fatalf("成员读取自身资料失败: %d", code)
+	}
+	if meBody.User.Note != "" {
+		t.Fatalf("内部备注泄漏给了成员: %q", meBody.User.Note)
+	}
+
+	if code, body := a.do("PATCH", "/api/admin/users/2", map[string]any{"note": "   "}, nil); code != 200 {
+		t.Fatalf("清空备注失败: %d %s", code, body)
+	}
+	if users, err = e.store.ListUsers(context.Background()); err != nil {
+		t.Fatal(err)
+	} else {
+		for _, u := range users {
+			if u.ID == 2 && u.Note != "" {
+				t.Fatalf("备注没有被清空: %q", u.Note)
+			}
+		}
+	}
+
+	tooLong := strings.Repeat("字", userNoteLimit+1)
+	if code, _ := a.do("PATCH", "/api/admin/users/2", map[string]any{"note": tooLong}, nil); code != 400 {
+		t.Fatalf("超长备注应被拒绝，实际 %d", code)
+	}
+}
+
 func TestUnifiedBalanceConcurrentDebit(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()

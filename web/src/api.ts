@@ -54,6 +54,8 @@ export type User = {
   preferences: Preferences
   user_group_ids: number[]
   created_at: string
+  /** 管理员写的内部备注，只有管理端用户列表返回 */
+  note?: string
 }
 
 export type UserGroup = { id: number; name: string; is_default: boolean }
