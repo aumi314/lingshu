@@ -80,6 +80,8 @@ type User struct {
 	CreatedAt    time.Time       `json:"created_at"`
 	// Note 是管理员写的内部备注。只有 ListUsers 会带出来，不进 /api/me，成员看不到。
 	Note string `json:"note,omitempty"`
+	// LastUsedAt 是该用户所有 key 最近一次调用的时间，只在管理端列表里带出来。
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 }
 
 const userColumns = `u.id, u.username, u.role, u.balance::text, u.enabled, u.preferences, u.created_at,
@@ -87,13 +89,13 @@ const userColumns = `u.id, u.username, u.role, u.balance::text, u.enabled, u.pre
 
 func scanUser(row pgx.Row) (*User, error) { return scanUserRow(row, false) }
 
-// scanUserRow 按 userColumns 的顺序扫描；withNote 对应末尾多带的 u.note（管理端列表用）。
+// scanUserRow 按 userColumns 的顺序扫描；withNote 对应末尾多带的 u.note 和最近调用时间（管理端列表用）。
 func scanUserRow(row pgx.Row, withNote bool) (*User, error) {
 	var u User
 	var balance string
 	dest := []any{&u.ID, &u.Username, &u.Role, &balance, &u.Enabled, &u.Preferences, &u.CreatedAt, &u.UserGroupIDs}
 	if withNote {
-		dest = append(dest, &u.Note)
+		dest = append(dest, &u.Note, &u.LastUsedAt)
 	}
 	if err := row.Scan(dest...); err != nil {
 		return nil, translate(err)
@@ -107,7 +109,8 @@ func (s *Store) UserByID(ctx context.Context, id int64) (*User, error) {
 }
 
 func (s *Store) ListUsers(ctx context.Context) ([]*User, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT `+userColumns+`, u.note FROM users u ORDER BY u.id`)
+	rows, err := s.Pool.Query(ctx, `SELECT `+userColumns+`, u.note,
+		(SELECT max(k.last_used_at) FROM api_keys k WHERE k.user_id = u.id) FROM users u ORDER BY u.id`)
 	if err != nil {
 		return nil, err
 	}

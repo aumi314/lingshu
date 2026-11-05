@@ -55,7 +55,8 @@ export type User = {
   user_group_ids: number[]
   created_at: string
   /** 管理员写的内部备注，只有管理端用户列表返回 */
-  note?: string
+  note?: string  /** 该用户所有 key 最近一次调用的时间，只有管理端用户列表返回 */
+  last_used_at?: string
 }
 
 export type UserGroup = { id: number; name: string; is_default: boolean }

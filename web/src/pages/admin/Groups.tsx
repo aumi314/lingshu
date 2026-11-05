@@ -3,6 +3,7 @@ import { App, Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space
 import { PlusOutlined } from '@ant-design/icons'
 import { del, get, post, put, type Group, type UserGroup } from '../../api'
 import { useApp } from '../../app'
+import UserGroupManager from '../../components/UserGroupManager'
 
 // 放在「定价」页的标签里（pages/admin/Pricing.tsx），不单独成页
 export default function Groups() {
@@ -12,6 +13,7 @@ export default function Groups() {
   const [userGroups, setUserGroups] = useState<UserGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Group | 'new' | null>(null)
+  const [managingUserGroups, setManagingUserGroups] = useState(false)
   const [form] = Form.useForm()
 
   const load = useCallback(async () => {
@@ -58,20 +60,23 @@ export default function Groups() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 12 }}>
         <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
           {t(
-            '服务分组决定倍率和使用哪些渠道。适用范围可以设为所有用户，或指定一个或多个用户分组；新用户默认加入 default。',
-            'Service groups set the price ratio and available channels. Limit access to all users or selected user groups. New users join default automatically.',
+            '服务分组决定倍率和使用哪些渠道。适用范围设为所有用户，或只开放给指定的用户分组（名单在「用户分组」里维护，成员在用户编辑里调整）。',
+            'Service groups set the price ratio and available channels. Open one to all users, or only to selected user groups (maintain the lists under User groups; change membership when editing a user).',
           )}
         </Typography.Paragraph>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            form.setFieldsValue({ name: '', ratio: 1, enabled: true, is_public: true, user_group_ids: [], description: '' })
-            setEditing('new')
-          }}
-        >
-          {t('创建服务分组', 'Create service group')}
-        </Button>
+        <Space>
+          <Button onClick={() => setManagingUserGroups(true)}>{t('用户分组', 'User groups')}</Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              form.setFieldsValue({ name: '', ratio: 1, enabled: true, is_public: true, user_group_ids: [], description: '' })
+              setEditing('new')
+            }}
+          >
+            {t('创建服务分组', 'Create service group')}
+          </Button>
+        </Space>
       </div>
       <Table
         rowKey="id"
@@ -127,7 +132,12 @@ export default function Groups() {
           </Form.Item>
           <Form.Item noStyle dependencies={['is_public']}>
             {({ getFieldValue }) => getFieldValue('is_public') ? null : (
-              <Form.Item name="user_group_ids" label={t('允许的用户分组', 'Allowed user groups')} rules={[{ required: true, type: 'array', min: 1, message: t('至少选择一个用户分组', 'Select at least one user group') }]}>
+              <Form.Item
+                name="user_group_ids"
+                label={t('允许的用户分组', 'Allowed user groups')}
+                rules={[{ required: true, type: 'array', min: 1, message: t('至少选择一个用户分组', 'Select at least one user group') }]}
+                extra={<Button type="link" size="small" style={{ padding: 0 }} onClick={() => setManagingUserGroups(true)}>{t('没有合适的？新建或管理用户分组', 'None fits? Create or manage user groups')}</Button>}
+              >
                 <Select mode="multiple" options={userGroups.map((g) => ({ value: g.id, label: g.name }))} />
               </Form.Item>
             )}
@@ -137,6 +147,7 @@ export default function Groups() {
           </Form.Item>
         </Form>
       </Modal>
+      <UserGroupManager open={managingUserGroups} userGroups={userGroups} onClose={() => setManagingUserGroups(false)} onChanged={load} />
     </div>
   )
 }

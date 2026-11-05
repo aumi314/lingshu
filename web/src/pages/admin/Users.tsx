@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { App, Button, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Switch, Table, Tag, Typography } from 'antd'
+import { App, Button, Form, Input, InputNumber, Modal, Segmented, Select, Space, Switch, Table, Tag, Tooltip, Typography } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { del, get, patch, post, put, type User, type UserGroup } from '../../api'
+import { get, patch, post, type Group, type User, type UserGroup } from '../../api'
 import { useApp } from '../../app'
 
 export default function Users() {
@@ -10,23 +10,23 @@ export default function Users() {
   const { message, modal } = App.useApp()
   const [users, setUsers] = useState<User[]>([])
   const [userGroups, setUserGroups] = useState<UserGroup[]>([])
+  const [groups, setGroups] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
-  const [managingGroups, setManagingGroups] = useState(false)
-  const [editingUserGroup, setEditingUserGroup] = useState<UserGroup | 'new' | null>(null)
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const editSession = useRef(0)
   const [createForm] = Form.useForm()
-  const [editForm] = Form.useForm<{ username: string; password?: string; note?: string; user_group_ids: number[]; enabled: boolean }>()
+  const [editForm] = Form.useForm<{ username: string; password?: string; note?: string; role: User['role']; user_group_ids: number[]; enabled: boolean }>()
   const [balanceForm] = Form.useForm<{ mode: 'add' | 'set'; amount?: string; note: string }>()
-  const [userGroupForm] = Form.useForm<{ name: string }>()
+  const editingGroupIDs = Form.useWatch('user_group_ids', editForm)
 
   const load = useCallback(async () => {
     try {
-      const [u, g] = await Promise.all([get<User[]>('/api/admin/users'), get<UserGroup[]>('/api/admin/user-groups')])
+      const [u, g, sg] = await Promise.all([get<User[]>('/api/admin/users'), get<UserGroup[]>('/api/admin/user-groups'), get<Group[]>('/api/admin/groups')])
       setUsers(u)
       setUserGroups(g)
+      setGroups(sg)
     } catch (e) {
       message.error((e as Error).message)
     } finally {
@@ -52,6 +52,27 @@ export default function Users() {
 
   const symbol = currency === 'CNY' ? '¥' : '$'
 
+  // 用户能用的服务分组：启用中，且对所有用户开放或开放给他所在的某个用户分组
+  const accessible = (userGroupIDs: number[]) => groups.filter((g) => g.enabled && (g.is_public || g.user_group_ids.some((id) => userGroupIDs.includes(id))))
+  const groupNames = (ids: number[]) => ids.map((id) => userGroups.find((g) => g.id === id)?.name ?? id).join('、')
+  const accessCell = (userGroupIDs: number[]) => {
+    const list = accessible(userGroupIDs)
+    const open = list.filter((g) => g.is_public)
+    const granted = list.filter((g) => !g.is_public)
+    return (
+      <Space size={4} wrap>
+        {granted.map((g) => (
+          <Tooltip key={g.id} title={t(`通过用户分组：${groupNames(g.user_group_ids.filter((id) => userGroupIDs.includes(id)))}`, `Via user groups: ${groupNames(g.user_group_ids.filter((id) => userGroupIDs.includes(id)))}`)}>
+            <Tag color="gold">{g.name}</Tag>
+          </Tooltip>
+        ))}
+        <Tooltip title={open.map((g) => g.name).join('、') || undefined}>
+          <span className="muted">{granted.length ? '+ ' : ''}{t(`公开分组 ${open.length} 个`, `${open.length} open groups`)}</span>
+        </Tooltip>
+      </Space>
+    )
+  }
+
   const closeEdit = () => {
     if (submitting) return
     ++editSession.current
@@ -61,7 +82,7 @@ export default function Users() {
   const openEdit = (u: User) => {
     ++editSession.current
     setSubmitting(false)
-    editForm.setFieldsValue({ username: u.username, password: '', note: u.note ?? '', user_group_ids: u.user_group_ids ?? [], enabled: u.enabled })
+    editForm.setFieldsValue({ username: u.username, password: '', note: u.note ?? '', role: u.role, user_group_ids: u.user_group_ids ?? [], enabled: u.enabled })
     balanceForm.setFieldsValue({ mode: 'add', amount: undefined, note: '' })
     setEditingUser(u)
   }
@@ -92,6 +113,7 @@ export default function Users() {
         username: v.username,
         note: v.note ?? '',
         password: v.password ?? '',
+        role: v.role,
         user_group_ids: v.user_group_ids ?? [],
         enabled: v.enabled,
         ...(balance.amount != null && balance.amount !== '' ? {
@@ -116,46 +138,41 @@ export default function Users() {
         <Typography.Title level={3} style={{ margin: 0 }}>
           {t('用户', 'Users')}
         </Typography.Title>
-        <Space>
-          <Button onClick={() => setManagingGroups(true)}>{t('用户分组管理', 'Manage user groups')}</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreating(true) }}>
-            {t('创建用户', 'Create user')}
-          </Button>
-        </Space>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreating(true) }}>
+          {t('创建用户', 'Create user')}
+        </Button>
       </Space>
       <Table
         rowKey="id"
         loading={loading}
         dataSource={users}
         pagination={false}
+        scroll={{ x: 'max-content' }}
         columns={[
           { title: 'ID', dataIndex: 'id', width: 48, render: (v) => <span className="muted">{v}</span> },
-          { title: t('用户名', 'Username'), dataIndex: 'username' },
           {
-            title: t('角色', 'Role'),
-            dataIndex: 'role',
+            title: t('用户', 'User'),
+            dataIndex: 'username',
             render: (v, u) => (
-              <Select
-                size="small"
-                value={v}
-                style={{ width: 100 }}
-                disabled={u.id === me?.id}
-                onChange={(role) => run(() => patch(`/api/admin/users/${u.id}`, { role }))}
-                options={[{ value: 'user', label: t('成员', 'Member') }, { value: 'admin', label: t('管理员', 'Admin') }]}
-              />
+              <div style={{ maxWidth: 240 }}>
+                <div>{v}</div>
+                {u.note && <Typography.Text type="secondary" ellipsis={{ tooltip: u.note }} style={{ display: 'block', fontSize: 12 }}>{u.note}</Typography.Text>}
+              </div>
             ),
           },
+          { title: t('角色', 'Role'), dataIndex: 'role', render: (v) => v === 'admin' ? <Tag color="blue">{t('管理员', 'Admin')}</Tag> : <span className="muted">{t('成员', 'Member')}</span> },
+          { title: t('可用服务分组', 'Service groups'), render: (_, u) => accessCell(u.user_group_ids ?? []) },
           {
             title: t('余额', 'Balance'),
             dataIndex: 'balance',
             render: (v) => <span style={{ color: Number(v) <= 0 ? '#ff4d4f' : undefined }}>{money(v)}</span>,
           },
+          { title: t('最近调用', 'Last call'), dataIndex: 'last_used_at', render: (v?: string) => v ? <span className="nowrap">{dayjs(v).format('MM-DD HH:mm')}</span> : <span className="muted">{t('从未', 'Never')}</span> },
           {
             title: t('状态', 'Status'),
             dataIndex: 'enabled',
             render: (v) => <Tag color={v ? 'green' : undefined}>{v ? t('已启用', 'Enabled') : t('已停用', 'Disabled')}</Tag>,
           },
-          { title: t('创建时间', 'Created'), dataIndex: 'created_at', render: (v) => dayjs(v).format('YYYY-MM-DD') },
           {
             title: '',
             align: 'right',
@@ -165,60 +182,6 @@ export default function Users() {
           },
         ]}
       />
-
-      <Modal open={managingGroups} title={t('用户分组', 'User groups')} footer={null} onCancel={() => setManagingGroups(false)} destroyOnHidden>
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Typography.Text type="secondary">
-            {t('用户分组只用于授权服务分组，不影响管理员或成员角色。新用户会自动加入 default。', 'User groups grant access to service groups and do not change admin or member roles. New users join default automatically.')}
-          </Typography.Text>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { userGroupForm.resetFields(); setEditingUserGroup('new') }}>
-            {t('新建用户分组', 'Create user group')}
-          </Button>
-          <Table
-            rowKey="id"
-            size="small"
-            dataSource={userGroups}
-            pagination={false}
-            columns={[
-              { title: t('名称', 'Name'), dataIndex: 'name' },
-              { title: t('用途', 'Type'), render: (_, g) => g.is_default ? <Tag color="blue">{t('默认', 'Default')}</Tag> : null },
-              {
-                title: '', align: 'right', render: (_, g) => (
-                  <Space>
-                    <Button size="small" type="link" onClick={() => { userGroupForm.setFieldsValue({ name: g.name }); setEditingUserGroup(g) }}>{t('编辑', 'Edit')}</Button>
-                    {!g.is_default && (
-                      <Popconfirm title={t(`删除「${g.name}」？`, `Delete “${g.name}”?`)} description={t('成员会失去通过此分组获得的服务分组权限。', 'Members will lose service-group access granted through this group.')} onConfirm={() => run(() => del(`/api/admin/user-groups/${g.id}`))}>
-                        <Button size="small" type="link" danger>{t('删除', 'Delete')}</Button>
-                      </Popconfirm>
-                    )}
-                  </Space>
-                ),
-              },
-            ]}
-          />
-        </Space>
-      </Modal>
-
-      <Modal
-        open={editingUserGroup !== null}
-        title={editingUserGroup === 'new' ? t('新建用户分组', 'Create user group') : t('编辑用户分组', 'Edit user group')}
-        okText={t('保存', 'Save')}
-        onCancel={() => setEditingUserGroup(null)}
-        onOk={async () => {
-          const v = await userGroupForm.validateFields()
-          const done = await run(() => editingUserGroup === 'new'
-            ? post('/api/admin/user-groups', v)
-            : put(`/api/admin/user-groups/${editingUserGroup!.id}`, v), t('用户分组已保存', 'User group saved'))
-          if (done) setEditingUserGroup(null)
-        }}
-        destroyOnHidden
-      >
-        <Form form={userGroupForm} layout="vertical" requiredMark={false}>
-          <Form.Item name="name" label={t('名称', 'Name')} rules={[{ required: true }]}>
-            <Input autoFocus />
-          </Form.Item>
-        </Form>
-      </Modal>
 
       <Modal
         open={creating}
@@ -279,7 +242,10 @@ export default function Users() {
               placeholder={t('例如：外部合作方，额度按月给', 'e.g. External partner, monthly allowance')}
             />
           </Form.Item>
-          <Form.Item name="user_group_ids" label={t('用户分组', 'User groups')}>
+          <Form.Item name="role" label={t('角色', 'Role')} extra={editingUser?.id === me?.id ? t('不能取消自己的管理员身份', 'You cannot remove your own admin role') : t('管理员能进入后台管理；能用哪些模型由下面的用户分组决定', 'Admins can manage the console; model access is decided by user groups below')}>
+            <Segmented disabled={submitting || editingUser?.id === me?.id} options={[{ value: 'user', label: t('成员', 'Member') }, { value: 'admin', label: t('管理员', 'Admin') }]} />
+          </Form.Item>
+          <Form.Item name="user_group_ids" label={t('用户分组', 'User groups')} extra={<span>{t('可用服务分组：', 'Service groups: ')}{accessible(editingGroupIDs ?? []).map((g) => g.name).join('、') || t('无', 'None')}</span>}>
             <Select mode="multiple" options={userGroups.map((g) => ({ value: g.id, label: g.name }))} placeholder={t('选择用户分组', 'Select user groups')} />
           </Form.Item>
           <Form.Item name="enabled" label={t('账号状态', 'Account status')} valuePropName="checked" extra={editingUser?.id === me?.id ? t('不能停用当前登录账号', 'You cannot disable your own account') : undefined}>

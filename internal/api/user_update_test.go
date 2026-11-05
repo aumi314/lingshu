@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aumi314/lingshu/internal/store"
 	"github.com/shopspring/decimal"
@@ -173,5 +174,35 @@ func TestUnifiedUserUpdateValidation(t *testing.T) {
 	}
 	if code, body := a.do("PATCH", "/api/admin/users/1", map[string]any{"enabled": false, "balance_adjustment": map[string]string{"mode": "add", "amount": "3"}}, nil); code != 400 || !strings.Contains(body, "自己") {
 		t.Fatalf("不得停用自己: %d %s", code, body)
+	}
+}
+
+// 管理端用户列表带出最近调用时间（取该用户所有 key 的最近一次），成员自己的 /api/me 不带。
+func TestAdminUserListLastUsed(t *testing.T) {
+	e := newEnv(t)
+	a, bob := e.login("admin"), e.login("bob")
+	bob.do("POST", "/api/me/keys", map[string]any{"name": "old", "group_id": 1}, nil)
+	bob.do("POST", "/api/me/keys", map[string]any{"name": "new", "group_id": 1}, nil)
+	if _, err := e.store.Pool.Exec(context.Background(), `UPDATE api_keys SET last_used_at = CASE name WHEN 'old' THEN '2026-11-01T00:00:00Z'::timestamptz ELSE '2026-11-03T00:00:00Z'::timestamptz END`); err != nil {
+		t.Fatal(err)
+	}
+	var users []store.User
+	if code, body := a.do("GET", "/api/admin/users", nil, &users); code != 200 {
+		t.Fatalf("%d %s", code, body)
+	}
+	for _, u := range users {
+		switch u.Username {
+		case "bob":
+			if u.LastUsedAt == nil || !u.LastUsedAt.Equal(time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC)) {
+				t.Fatalf("bob 最近调用应取最新的 key: %v", u.LastUsedAt)
+			}
+		case "admin":
+			if u.LastUsedAt != nil {
+				t.Fatalf("没调用过的用户不应有最近调用: %v", u.LastUsedAt)
+			}
+		}
+	}
+	if _, body := bob.do("GET", "/api/me", nil, nil); strings.Contains(body, "last_used_at") {
+		t.Fatalf("/api/me 不应带最近调用: %s", body)
 	}
 }
