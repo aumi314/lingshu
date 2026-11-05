@@ -20,8 +20,10 @@ const fs = require('node:fs')
       const user = { id: 2, username: 'member-fixture', role: admin ? 'admin' : 'user', balance: '8', preferences: { language: en ? 'en' : 'zh', theme: 'dark' }, enabled: true, user_group_ids: [], created_at: new Date().toISOString() }
       const common = { id: 1, user_id: 2, username: user.username, created_at: new Date().toISOString(), status: 'success', operator: '', note: '' }
       const request = { ...common, type: 'request', event_key: 'request:1', request_id: 'req-fixture', key_name: 'fixture-key', model: 'fixture-model', upstream_model: admin ? 'upstream-fixture' : '', channel_name: admin ? 'fixture-channel' : '', group_name: 'fixture-group', group_ratio: '1', protocol: 'chat', stream: false, error: '', http_status: 200, input_tokens: 100, cache_read_tokens: 0, cache_write_tokens: 0, output_tokens: 20, reasoning_tokens: 0, cost: '0.25', balance_delta: '-0.25', attempts: 1, first_byte_ms: 100, total_ms: 200, input_price: '1', output_price: '2', price_rule: '' }
-      // 流式：输入 100 + 缓存读 300 → 命中 75%；200 输出 ÷（3.0s − 1.0s）→ 100 tok/s
-      const streamed = { ...request, id: 3, event_key: 'request:3', request_id: 'req-stream', model: 'stream-model', stream: true, cache_read_tokens: 300, output_tokens: 200, first_byte_ms: 1000, total_ms: 3000 }
+      // 流式：输入 100 + 缓存读 300 → 命中 75%；可见输出 200 − 推理 100 ÷（3.0s − 1.0s）→ 50 tok/s
+      const streamed = { ...request, id: 3, event_key: 'request:3', request_id: 'req-stream', model: 'stream-model', stream: true, cache_read_tokens: 300, output_tokens: 200, reasoning_tokens: 100, first_byte_ms: 1000, total_ms: 3000 }
+      // 上游攒好整段一次发出：首字后 0.05s 就结束，测不出速度
+      const burst = { ...request, id: 4, event_key: 'request:4', request_id: 'req-burst', model: 'burst-model', stream: true, output_tokens: 300, first_byte_ms: 2000, total_ms: 2050 }
       const op = { created_at: common.created_at, user_id: 2, target_id: '2', target_name: 'member-fixture', note: '' }
       const topup = { ...op, id: 1, actor_id: null, actor: '', action: 'topup.credit', target_type: 'balance', changes: [{ field: 'balance', from: '5', to: '6' }], note: '在线充值 · epay', amount: '1', order: { id: 'order-fixture', provider: 'epay', method: 'alipay', currency: 'CNY', amount: '6.70', tax: '0.00', total: '6.70', completed_at: common.created_at } }
       const adjustment = { ...op, id: 2, actor_id: 1, actor: 'admin-fixture', action: 'balance.adjust', target_type: 'balance', changes: [{ field: 'balance', from: '6', to: '5.5' }], note: 'manual fixture', amount: '-0.5' }
@@ -41,7 +43,7 @@ const fs = require('node:fs')
         queries.push(url.searchParams)
         if (fail) return json({ error: 'fixture load error' }, 500)
         const type = url.searchParams.get('type')
-        const logs = type === 'request' ? [request, streamed] : type === 'operation' && !emptyBalance ? [topup, adjustment, ...(admin ? [channelOp] : [])] : []
+        const logs = type === 'request' ? [request, streamed, burst] : type === 'operation' && !emptyBalance ? [topup, adjustment, ...(admin ? [channelOp] : [])] : []
         const body = { logs, total: logs.length, summary, models: ['fixture-model', 'stream-model'] }
         if (hold && type === 'request') delayed.push(() => json(body))
         else return json(body)
@@ -54,9 +56,11 @@ const fs = require('node:fs')
       await page.getByText('fixture-model', { exact: true }).waitFor()
       assert.equal(queries.at(-1).get('type'), 'request')
       await page.getByText('fixture-group', { exact: true }).first().waitFor()
-      await page.getByText('1.0s · 100 tok/s', { exact: true }).waitFor()
+      await page.getByText('1.0s · 50 tok/s', { exact: true }).waitFor()
+      await page.getByText('2.0s', { exact: true }).waitFor()
+      assert.equal(await page.getByText(/tok\/s/).count(), 1)
       await page.getByText(text('缓存 75%', 'Cache 75%'), { exact: true }).waitFor()
-      await page.getByText(text('缓存 0%', 'Cache 0%'), { exact: true }).waitFor()
+      await page.getByText(text('缓存 0%', 'Cache 0%'), { exact: true }).first().waitFor()
       await page.getByText('60%', { exact: true }).waitFor() // 汇总卡片：缓存读 300 ÷ 输入 500
       await page.getByText('fixture-model', { exact: true }).click()
       await page.getByText('req-fixture', { exact: true }).waitFor()

@@ -13,11 +13,13 @@ const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`
 // 缓存命中率 = 缓存读 ÷（输入 + 缓存读 + 缓存写），向下取整，避免没全中却显示 100%
 const cacheRate = (read: number, total: number) => total > 0 ? `${Math.floor((read * 100) / total)}%` : '—'
 
-// 输出速度只对有意义的流式请求计算：分母扣掉首字等待，输出太少时数值不稳定，不给
+// 输出速度 = 可见输出 ÷ 首字之后的传输时间。推理 token 在首字前的等待里生成、测不到时间，不算进分子。
+// 上游攒好整段一次发出时（传输不足 1 秒）测不出生成速度，可见输出太少时也不稳定，都不给。
 function outputTPS(r: LogEntry): number | null {
-  const generating = r.total_ms - r.first_byte_ms
-  if (!r.stream || r.first_byte_ms <= 0 || generating <= 0 || r.output_tokens < 50) return null
-  return Math.round((r.output_tokens * 1000) / generating)
+  const streaming = r.total_ms - r.first_byte_ms
+  const visible = r.output_tokens - r.reasoning_tokens
+  if (!r.stream || r.first_byte_ms <= 0 || streaming < 1000 || visible < 50) return null
+  return Math.round((visible * 1000) / streaming)
 }
 
 export default function Logs({ admin = false }: { admin?: boolean }) {
