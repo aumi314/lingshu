@@ -595,7 +595,7 @@ func (s *Server) adminLogs(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	deploymentMode, err := s.Store.Setting(r.Context(), "deployment_mode")
 	if errors.Is(err, store.ErrNotFound) {
-		deploymentMode = "company_team_gateway"
+		deploymentMode = "commercial_relay"
 	} else if err != nil {
 		writeStoreError(w, err)
 		return
@@ -679,8 +679,8 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "注册方式只能是 manual 或 code；邮箱注册尚未开放")
 		return
 	}
-	if in.DeploymentMode != nil && *in.DeploymentMode != "company_team_gateway" {
-		writeError(w, http.StatusBadRequest, "当前只开放公司团队网关模式")
+	if in.DeploymentMode != nil && *in.DeploymentMode != "commercial_relay" {
+		writeError(w, http.StatusBadRequest, "当前只开放商业中转模式，公司团队网关还在开发")
 		return
 	}
 	if in.APIBaseURL != nil {
