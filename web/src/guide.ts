@@ -64,7 +64,11 @@ Steps:
       '统一管理 Claude Code、Codex 等 Agent 用哪家模型的开源工具。装好 Magpie 后点下面的按钮，地址和协议自动填好，只需粘贴你的 key。',
       'An open-source manager for which models your agents (Claude Code, Codex, …) use. With Magpie installed, click the button below: URLs and protocols are filled in, you only paste your key.',
     ],
+    // Magpie 的导入链接不支持预填余额查询，在服务商设置里手动填这两项
+    code: ({ base }) => `余额查询地址（GET）  ${base}/usage
+余额字段            $available`,
     notes: [
+      ['想在 Magpie 用量页看余额：导入后编辑这个服务商，按上面填「余额查询地址」和「余额字段」。$available 是这个 key 实际还能花的钱（账户余额和 key 剩余限额取小）。', 'To see your balance in Magpie: after importing, edit the provider and fill in the balance URL and field above. $available is what this key can still spend (the lower of your balance and the key\'s remaining limit).'],
       ['创建 API key 时的弹窗里也有这个按钮，会连同 key 一起导入。', 'The dialog shown right after you create an API key has this button too, and imports the key as well.'],
       ['导入前 Magpie 会弹窗让你确认，不会静默覆盖已有配置。', 'Magpie asks you to confirm before saving and never silently overwrites an existing provider.'],
     ],
