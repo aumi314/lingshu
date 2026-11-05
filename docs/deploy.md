@@ -4,6 +4,12 @@
 
 ## 当前运行基线
 
+2026-11-05 发布并复核（操作日志）：DMIT 已发布提交 `4ac5a7a56f887be66100e8b6c86262d2512166bc`，运行中程序 SHA-256 为 `e1541a729f2ac256267e7a44bbe838474008c4066f73e815c32e347d5c43ed86`，属主 `lingshu:lingshu` 0755。发布前备份 `/var/backups/lingshu/lingshu-20261105T104022Z.dump`，SHA-256 为 `b24c51029a7f7410cde04ed9e15d4e2f426cbf93ef5a9d00b7e9afaa583d006b`，`pg_restore --list` 可读（19 张表数据）。旧程序、配置与发布标记保留为 `prev-4ac5a7a`。
+
+迁移 `0018_operation_logs` 新建操作日志表并回填历史余额流水，线上 schema 由 `0017_log_group_name` 升到 `0018_operation_logs`；10 条 `balance_adjustments` 全部回填，逐条核对无遗漏。服务启动、内网与公网健康检查通过，服务日志无 ERROR。公网入口资源 `index-YxoBAqJh.js` 与干净构建产物 SHA-256 `856a68a982db7fea5e48bf66d48c9cfd57148109849c34ce09c91df467d3a3db` 一致。上一版发布后的 72 条新请求均写入了分组名快照。
+
+0018 只新建表并回填，旧程序不读该表：回滚只需换回 `prev-4ac5a7a` 程序。回滚后新产生的操作不会被记录，再次升级时表和已有记录保留。
+
 2026-11-05 发布并复核：DMIT 已发布提交 `186bcc883cee3e4d073c9900deacf41ad65e8ae6`，运行中程序 SHA-256 为 `2c43284acb99cc22d694bef72fc8e451ce80a14cb81f80f7c57d33c6a939f81e`，属主保持 `lingshu:lingshu` 0755。发布前备份 `/var/backups/lingshu/lingshu-20261105T092701Z.dump`，SHA-256 为 `813a62c93e41922a54deddafbefc79176e8e431435732153d81ab48bdb7d6410`，`pg_restore --list` 可读（19 张表数据）。旧程序、配置与发布标记保留为 `prev-186bcc8`。
 
 本次日志分为调用日志 / 操作日志两个标签：迁移 `0017_log_group_name` 给 `request_logs` 加服务分组名快照并按现有分组回填，线上 schema 由 `0016_user_note` 升到 `0017_log_group_name`。回填时 3185 条请求日志中 1190 条补上分组名；1995 条的 `group_id` 早已因分组删除置空（倍率快照 0.2、0.1、1 各有一批，2026-10-28 至 11-05），新迁移无法补回，可按 request_id 从删除前的每日备份恢复。旧进程等待进行中请求结束后退出，新进程启动、内网健康检查通过，服务日志无 ERROR。公网首页引用的 `index-B0Hsk727.js` 与干净构建产物 SHA-256 `4b0617cd224271183e28d25205035751f71f9894cc534714e8292f4c4d36a4fa` 一致。
