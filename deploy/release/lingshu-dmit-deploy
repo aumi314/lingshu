@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# DMIT 自动发布：lingshu-deploy.timer 每分钟触发。从 GitHub 滚动预发布 main-latest 取清单，
+# 发现新提交就下载成品、核对哈希、单独备份、保存旧版本、替换、健康检查；失败自动换回旧版本。
+# 规则见 docs/decisions.md「CI 与自动发布」，安装与排障见 docs/deploy.md。
+# 破坏性迁移暂停：确认后执行  touch /var/lib/lingshu-deploy/approve-<完整提交号>
+set -euo pipefail
+
+release_url=https://github.com/aumi314/lingshu/releases/download/main-latest
+state=/var/lib/lingshu-deploy
+opt=/opt/lingshu
+backup_dir=/var/backups/lingshu
+listen=$(sed -n 's/^LINGSHU_LISTEN=//p' /etc/lingshu/env | tr -d '"')
+listen=${listen:-172.18.0.1:8300}
+
+install -d -m 0700 "$state"
+exec 9>"$state/lock"
+flock -n 9 || exit 0
+work=$(mktemp -d "$state/work.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+
+json() { python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); print(v.get(sys.argv[2], ""))' "$@"; }
+
+curl -fsSL --max-time 60 -o "$work/manifest.json" "$release_url/manifest.json" || { echo "取清单失败，下一分钟再试"; exit 0; }
+commit=$(json "$work/manifest.json" commit)
+want_sha=$(json "$work/manifest.json" sha256)
+current=$(json "$opt/release.json" commit 2>/dev/null || true)
+[[ -n "$commit" && "$commit" != "$current" ]] || exit 0
+short=${commit:0:7}
+
+# 同一个提交失败过就不再重试，等下一个提交或人工处理
+[[ -e "$state/failed-$commit" ]] && exit 0
+
+# 待执行的迁移里有破坏性迁移：暂停，等人确认
+applied=$(docker exec lingshu-postgres psql -U lingshu -d lingshu -tAc 'SELECT version FROM schema_migrations')
+pending_destructive=$(APPLIED="$applied" python3 -c '
+import json, os, sys
+m = json.load(open(sys.argv[1]))
+applied = set(os.environ["APPLIED"].split())
+print(" ".join(x for x in m.get("destructive_migrations", []) if x not in applied))' "$work/manifest.json")
+if [[ -n "$pending_destructive" && ! -e "$state/approve-$commit" ]]; then
+  if [[ ! -e "$state/hold-$commit" ]]; then
+    touch "$state/hold-$commit"
+    echo "提交 $short 含破坏性迁移（$pending_destructive），暂停自动发布。确认后执行：touch $state/approve-$commit"
+  fi
+  exit 0
+fi
+
+curl -fsSL --max-time 600 -o "$work/lingshu" "$release_url/lingshu" || { echo "下载 $short 成品失败，下一分钟再试"; exit 0; }
+got_sha=$(sha256sum "$work/lingshu" | cut -d' ' -f1)
+if [[ "$got_sha" != "$want_sha" ]]; then
+  echo "$short 成品哈希与清单不符（可能正在发布中），下一分钟再试"
+  exit 0
+fi
+echo "开始发布 $short（当前 ${current:0:7}）"
+
+# 发布前备份单独命名、单独保留 10 份，不占每日备份的名额
+install -d -m 0700 "$backup_dir"
+backup="$backup_dir/lingshu-deploy-$(date -u +%Y%m%dT%H%M%SZ)-$short.dump"
+(umask 077; docker exec lingshu-postgres pg_dump -U lingshu -d lingshu -Fc >"$backup.part")
+mv "$backup.part" "$backup"
+(umask 077; sha256sum "$backup" >"$backup.sha256")
+tables=$(docker exec -i lingshu-postgres pg_restore --list <"$backup" | grep -c 'TABLE DATA' || true)
+if [[ "$tables" -lt 1 ]]; then
+  echo "发布前备份不可读，中止发布 $short"
+  touch "$state/failed-$commit"
+  exit 1
+fi
+mapfile -t old < <(find "$backup_dir" -maxdepth 1 -type f -name 'lingshu-deploy-*.dump' -printf '%f\n' | sort -r | tail -n +11)
+for f in "${old[@]}"; do rm -f -- "$backup_dir/$f" "$backup_dir/$f.sha256"; done
+echo "备份 $backup（$tables 张表数据）"
+
+cp -a "$opt/lingshu" "$opt/lingshu.prev-$short"
+cp -a /etc/lingshu/env "$opt/env.prev-$short"
+chmod 600 "$opt/env.prev-$short"
+cp -a "$opt/release.json" "$opt/release.prev-$short.json"
+
+install -m 0755 -o lingshu -g lingshu "$work/lingshu" "$opt/lingshu.new-$short"
+mv -f "$opt/lingshu.new-$short" "$opt/lingshu"
+systemctl restart lingshu.service
+
+healthy=0
+for _ in $(seq 1 30); do
+  if systemctl is-active --quiet lingshu.service && curl -fsS --max-time 3 "http://$listen/healthz" >/dev/null 2>&1; then
+    healthy=1
+    break
+  fi
+  sleep 1
+done
+if [[ $healthy -ne 1 ]]; then
+  echo "$short 启动后健康检查失败，换回旧版本"
+  install -m 0755 -o lingshu -g lingshu "$opt/lingshu.prev-$short" "$opt/lingshu.rollback-$short"
+  mv -f "$opt/lingshu.rollback-$short" "$opt/lingshu"
+  systemctl restart lingshu.service
+  touch "$state/failed-$commit"
+  exit 1
+fi
+
+python3 - "$work/manifest.json" "$opt/release.json.new" <<'PY'
+import datetime, json, sys
+m = json.load(open(sys.argv[1]))
+json.dump({
+    "commit": m["commit"],
+    "binary_sha256": m["sha256"],
+    "source": "github-actions main-latest",
+    "build": m.get("build", ""),
+    "built_at_utc": m.get("built_at_utc", ""),
+    "deployed_at_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+}, open(sys.argv[2], "w"))
+PY
+mv -f "$opt/release.json.new" "$opt/release.json"
+schema=$(docker exec lingshu-postgres psql -U lingshu -d lingshu -tAc 'SELECT max(version) FROM schema_migrations')
+echo "已发布 $short，schema $schema"

@@ -1,0 +1,66 @@
+# PR 和推送到 main 都跑全部检查；main 上通过后由 release.yml 构建发布（见 docs/decisions.md「CI 与自动发布」）。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go 测试
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: lingshu
+          POSTGRES_PASSWORD: lingshu_dev
+          POSTGRES_DB: lingshu_test
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U lingshu"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: go vet
+        run: go vet ./...
+      - name: 全量测试（测试会重建测试库的 public schema）
+        env:
+          LINGSHU_TEST_DATABASE_URL: postgres://lingshu:lingshu_dev@127.0.0.1:55432/lingshu_test?sslmode=disable
+        run: go test -count=1 -p 1 ./...
+
+  web:
+    name: 前端检查与浏览器回归
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: 类型检查与构建
+        run: npm run build
+      - name: 安装浏览器回归用的 Playwright（只在 CI 里装，不进依赖）
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.60.0
+          npx playwright install --with-deps chromium-headless-shell
+      - name: 浏览器回归
+        run: |
+          node tests/overview.browser.cjs
+          node tests/activity-logs.browser.cjs
+          node tests/users.browser.cjs

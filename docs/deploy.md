@@ -85,6 +85,36 @@ ssh -i ~/.ssh/dmit_lax_ed25519 -o IdentitiesOnly=yes root@136.175.178.126
 
 ## 发布
 
+### 自动发布（默认，2026-11-05 起）
+
+规则见 `docs/decisions.md`「CI 与自动发布」。流程：分支开发 → PR → CI 全绿 → 合并到 main → GitHub 构建发布到滚动预发布 `main-latest` → DMIT 每分钟拉取并部署 → 核实。
+
+| 环节 | 文件 | 位置 |
+|---|---|---|
+| CI 检查 | `.github/workflows/ci.yml` | GitHub Actions（push 到 main、PR） |
+| 构建发布 | `.github/workflows/release.yml` | main 上 CI 成功后触发，产物在 Release `main-latest`：`lingshu`、`manifest.json` |
+| 拉取部署 | `deploy/release/lingshu-dmit-deploy` | DMIT `/usr/local/bin/lingshu-deploy` |
+| 定时触发 | `deploy/release/lingshu-dmit-deploy.service`、`.timer` | `/etc/systemd/system/lingshu-deploy.service`、`lingshu-deploy.timer` |
+
+部署脚本每次：读清单 → 提交与 `/opt/lingshu/release.json` 相同就退出 → 待执行迁移含破坏性迁移则暂停 → 下载成品并核对清单哈希 → 单独备份 `/var/backups/lingshu/lingshu-deploy-<时间>-<提交>.dump`（保留 10 份，不占每日备份名额）并检查可读 → 保存 `prev-<提交>` → 原子替换、重启 → 30 秒内健康检查 → 写 `release.json`（`source` 为 `github-actions main-latest`）。健康检查失败自动换回旧版本，并记 `/var/lib/lingshu-deploy/failed-<提交>`，同一提交不再重试。
+
+在 DMIT 上查看与干预：
+
+```bash
+journalctl -u lingshu-deploy.service -n 50 --no-pager   # 每次发布的输出
+systemctl list-timers lingshu-deploy.timer
+cat /opt/lingshu/release.json
+ls /var/lib/lingshu-deploy/                              # hold-* 暂停中 / failed-* 失败过
+touch /var/lib/lingshu-deploy/approve-<完整提交号>        # 确认破坏性迁移后放行
+systemctl stop lingshu-deploy.timer                      # 临时停止自动发布
+```
+
+核实：GitHub Actions 两个工作流都成功；DMIT 日志出现“已发布 <提交>”；`release.json` 提交与哈希和清单一致；公网 `/healthz` 和页面资源正常；涉及协议或计费时做真实调用核对。
+
+### 手动发布（备用）
+
+GitHub 或自动发布不可用时使用。
+
 1. 在 WSL 明确已推送的 Git 提交，使用干净的 detached worktree 构建。当前 Vite 使用 Node 22；已验证的路径为 `/home/aumif/.nvm/versions/node/v22.22.3/bin`。先完成本次变更所需测试，前端执行类型检查和构建。
 2. 构建嵌入前端资源的 Linux amd64 成品：
 
