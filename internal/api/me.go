@@ -182,7 +182,7 @@ func parseLogFilter(r *http.Request) (store.LogFilter, string) {
 	q := r.URL.Query()
 	f := store.LogFilter{Type: q.Get("type"), Model: q.Get("model"), Status: q.Get("status")}
 	switch f.Type {
-	case "", "all", "request", "topup", "adjustment":
+	case "", "all", "request", "balance", "topup", "adjustment":
 	default:
 		return f, "日志类型不正确"
 	}

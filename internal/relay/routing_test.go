@@ -272,7 +272,7 @@ func TestUpstreamKeyEchoIsRedacted(t *testing.T) {
 	}
 }
 
-func TestLogKeepsNamesAfterChannelAndKeyDeleted(t *testing.T) {
+func TestLogKeepsNamesAfterChannelKeyAndGroupDeleted(t *testing.T) {
 	e := newEnv(t)
 	e.upstream = okUpstream
 	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
@@ -281,11 +281,12 @@ func TestLogKeepsNamesAfterChannelAndKeyDeleted(t *testing.T) {
 	e.logRow(rid)
 	e.exec(`DELETE FROM channels WHERE id = 1`)
 	e.exec(`DELETE FROM api_keys`)
+	e.exec(`DELETE FROM groups WHERE id = 1`)
 	logs, _, err := e.store.ListLogs(context.Background(), store.LogFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(logs) != 1 || logs[0].ChannelName != "c-chat" || logs[0].KeyName != "k" {
-		t.Errorf("渠道和 key 删除后，日志应保留名字快照，实际 %+v", logs)
+	if len(logs) != 1 || logs[0].ChannelName != "c-chat" || logs[0].KeyName != "k" || logs[0].GroupName != "default" {
+		t.Errorf("渠道、key 和分组删除后，日志应保留名字快照，实际 %+v", logs)
 	}
 }

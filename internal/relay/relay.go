@@ -101,7 +101,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 	if !ok {
 		return // 没认出用户，不写日志
 	}
-	c.log.UserID, c.log.APIKeyID, c.log.GroupID, c.log.KeyName = owner.UserID, owner.KeyID, owner.GroupID, owner.KeyName
+	c.log.UserID, c.log.APIKeyID, c.log.GroupID, c.log.KeyName, c.log.GroupName = owner.UserID, owner.KeyID, owner.GroupID, owner.KeyName, owner.GroupName
 	defer h.finish(r.Context(), c)
 
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))

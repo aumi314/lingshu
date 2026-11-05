@@ -141,10 +141,9 @@ export type LogEntry = {
   created_at: string
 }
 
-export type LogSummary = { requests: number; failed: number; input_tokens: number; output_tokens: number; cost: string }
+export type LogSummary = { requests: number; failed: number; input_tokens: number; cache_read_tokens: number; output_tokens: number; cost: string } // input_tokens 含缓存读写
 export type LogsResponse = { logs: LogEntry[]; summary: LogSummary; models: string[] }
 
-export type LogType = 'all' | 'request' | 'topup' | 'adjustment'
 type ActivityFields = { id: number; event_key: string; user_id: number; username: string; created_at: string; balance_delta: string; operator: string; note: string }
 export type RequestActivity = LogEntry & ActivityFields & { type: 'request' }
 export type BalanceActivity = ActivityFields & {

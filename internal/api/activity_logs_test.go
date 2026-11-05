@@ -14,7 +14,7 @@ func TestActivityLogs(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	queries := []string{
-		`INSERT INTO request_logs(id,request_id,user_id,protocol,model,upstream_model,status,cost,input_tokens,output_tokens,created_at) VALUES(1,'req-bob',2,'chat','test-model','private-model','success',0.25,100,20,'2026-10-25T12:00:00Z'),(2,'req-admin',1,'chat','admin-model','','rejected',0,0,0,'2026-10-25T12:00:00Z')`,
+		`INSERT INTO request_logs(id,request_id,user_id,protocol,model,upstream_model,status,cost,input_tokens,cache_read_tokens,output_tokens,created_at) VALUES(1,'req-bob',2,'chat','test-model','private-model','success',0.25,100,300,20,'2026-10-25T12:00:00Z'),(2,'req-admin',1,'chat','admin-model','','rejected',0,0,0,0,'2026-10-25T12:00:00Z')`,
 		`INSERT INTO payment_config_versions(id,provider,config,secrets) VALUES(1,'epay','{}','{"merchant_key":"secret-test-value"}')`,
 		`INSERT INTO topup_orders(id,user_id,provider,version_id,environment,credit_usd,amount,currency,unit_price,status,request_key,checkout_data,method,tax,total,completed_at) VALUES('paid-order',2,'epay',1,'prod',1,6.7,'CNY',6.7,'success','paid','{"token":"private-checkout"}','alipay',0,6.7,'2026-10-25T12:00:00Z'),('pending-order',2,'epay',1,'prod',1,6.7,'CNY',6.7,'pending','pending',NULL,'alipay',0,0,NULL),('sandbox-order',2,'epay',1,'test',1,6.7,'CNY',6.7,'success','sandbox',NULL,'alipay',0,6.7,'2026-10-25T12:00:00Z'),('failed-order',2,'epay',1,'prod',1,6.7,'CNY',6.7,'failed','failed',NULL,'alipay',0,0,NULL)`,
 		`INSERT INTO balance_adjustments(id,user_id,amount,balance_after,operator_id,note,topup_order_id,created_at) VALUES(1,2,1,6,NULL,'online','paid-order','2026-10-25T12:00:00Z'),(2,2,2,8,1,'manual add',NULL,'2026-10-25T12:00:00Z'),(3,2,-0.5,7.5,1,'manual subtract',NULL,'2026-10-25T12:00:00Z'),(4,1,3,3,1,'admin only',NULL,'2026-10-25T12:00:00Z'),(5,2,0,7.5,NULL,'legacy zero',NULL,'2026-10-25T12:00:00Z'),(6,2,0.0000000001,7.5000000001,1,'tiny amount',NULL,'2026-10-25T12:00:00Z')`,
@@ -53,7 +53,7 @@ func TestActivityLogs(t *testing.T) {
 		t.Fatalf("跨来源或跨页遗漏: %+v", keys)
 	}
 	code, body = bob.do("GET", "/api/me/logs?type=all&user_id=1&channel_id=99", nil, &result)
-	if code != 200 || result.Total != 6 || result.Summary.Requests != 1 || result.Summary.InputTokens != 100 || result.Summary.OutputTokens != 20 || result.Summary.AdjustmentNet.String() != "1.5000000001" {
+	if code != 200 || result.Total != 6 || result.Summary.Requests != 1 || result.Summary.InputTokens != 400 || result.Summary.CacheRead != 300 || result.Summary.OutputTokens != 20 || result.Summary.AdjustmentNet.String() != "1.5000000001" {
 		t.Fatalf("用户隔离错误: %d %s", code, body)
 	}
 	if strings.Contains(body, "private-model") || strings.Contains(body, "secret-test-value") || strings.Contains(body, "private-checkout") || strings.Contains(body, "admin only") {
@@ -74,7 +74,7 @@ func TestActivityLogs(t *testing.T) {
 		query           string
 		total, requests int64
 	}{
-		{"type=topup", 1, 0}, {"type=adjustment", 4, 0}, {"type=request&model=test-model&status=success", 1, 1},
+		{"type=topup", 1, 0}, {"type=adjustment", 4, 0}, {"type=balance", 5, 0}, {"type=request&model=test-model&status=success", 1, 1},
 		{"type=request&model=missing", 0, 0}, {"type=all&from=2026-10-26T00:00:00Z", 0, 0},
 		{"type=all&to=2026-10-25T12:00:00Z", 0, 0}, {"type=all&from=2026-10-25T12:00:00Z", 6, 1},
 	} {

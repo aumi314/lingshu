@@ -284,6 +284,7 @@ type LogSummary struct {
 	Requests      int64           `json:"requests"`
 	Failed        int64           `json:"failed"`
 	InputTokens   int64           `json:"input_tokens"` // 含缓存读写
+	CacheRead     int64           `json:"cache_read_tokens"`
 	OutputTokens  int64           `json:"output_tokens"`
 	Cost          decimal.Decimal `json:"cost"`
 }
@@ -329,9 +330,9 @@ func (s *Store) ListLogs(ctx context.Context, f LogFilter) ([]LogEntry, LogSumma
 	var cost string
 	if err := s.Pool.QueryRow(ctx, `
 		SELECT count(*), count(*) FILTER (WHERE l.status NOT IN ('success', 'client_cancelled')),
-		       COALESCE(sum(l.input_tokens + l.cache_read_tokens + l.cache_write_tokens), 0),
+		       COALESCE(sum(l.input_tokens + l.cache_read_tokens + l.cache_write_tokens), 0), COALESCE(sum(l.cache_read_tokens), 0),
 		       COALESCE(sum(l.output_tokens), 0), COALESCE(sum(l.cost), 0)::text
-		FROM request_logs l `+where, args...).Scan(&sum.Requests, &sum.Failed, &sum.InputTokens, &sum.OutputTokens, &cost); err != nil {
+		FROM request_logs l `+where, args...).Scan(&sum.Requests, &sum.Failed, &sum.InputTokens, &sum.CacheRead, &sum.OutputTokens, &cost); err != nil {
 		return nil, sum, err
 	}
 	sum.Cost = mustDecimal(cost)
@@ -342,7 +343,7 @@ func (s *Store) ListLogs(ctx context.Context, f LogFilter) ([]LogEntry, LogSumma
 	}
 	args = append(args, limit, f.Offset)
 	rows, err := s.Pool.Query(ctx, fmt.Sprintf(`
-		SELECT l.id, l.request_id, u.username, COALESCE(NULLIF(l.key_name, ''), k.name, ''), COALESCE(g.name, ''), l.protocol, l.model,
+		SELECT l.id, l.request_id, u.username, COALESCE(NULLIF(l.key_name, ''), k.name, ''), COALESCE(NULLIF(l.group_name, ''), g.name, ''), l.protocol, l.model,
 		       l.upstream_model, COALESCE(NULLIF(l.channel_name, ''), c.name, ''), l.stream, l.status, l.http_status, l.error,
 		       l.input_tokens, l.cache_read_tokens, l.cache_write_tokens, l.output_tokens, l.reasoning_tokens,
 		       l.usage_estimated, l.group_ratio::text, l.cost::text, l.attempts, l.first_byte_ms, l.total_ms, l.created_at,

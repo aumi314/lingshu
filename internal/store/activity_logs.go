@@ -40,17 +40,17 @@ const activityCTE = `WITH events AS (
  SELECT l.id,0 AS source,'request'::text AS type,l.user_id,l.created_at,l.status,
         -l.cost AS delta,NULL::numeric AS balance_after,NULL::bigint AS operator_id,
         ''::text AS note,NULL::text AS order_id,l.cost,
-        l.input_tokens+l.cache_read_tokens+l.cache_write_tokens AS input_tokens,l.output_tokens
+        l.input_tokens+l.cache_read_tokens+l.cache_write_tokens AS input_tokens,l.cache_read_tokens,l.output_tokens
  FROM request_logs l
  WHERE ($5::text='' OR l.model=$5) AND ($6::text='' OR l.status=$6) AND ($7::bigint=0 OR l.channel_id=$7)
  UNION ALL
  SELECT b.id,1,CASE WHEN b.topup_order_id IS NULL THEN 'adjustment' ELSE 'topup' END,
         b.user_id,b.created_at,'success',b.amount,b.balance_after,b.operator_id,b.note,b.topup_order_id,
-        0::numeric,0::bigint,0::bigint
+        0::numeric,0::bigint,0::bigint,0::bigint
  FROM balance_adjustments b
  WHERE $5::text='' AND $6::text='' AND $7::bigint=0
 ), filtered AS (
- SELECT * FROM events WHERE ($1::text='all' OR type=$1) AND ($2::bigint=0 OR user_id=$2)
+ SELECT * FROM events WHERE ($1::text='all' OR type=$1 OR ($1='balance' AND type IN ('topup','adjustment'))) AND ($2::bigint=0 OR user_id=$2)
  AND ($3::timestamptz IS NULL OR created_at >= $3) AND ($4::timestamptz IS NULL OR created_at < $4)
 )
 `
@@ -66,9 +66,9 @@ func (s *Store) ListActivityLogs(ctx context.Context, f LogFilter) ([]ActivityLo
 	var cost, topup, adjustment string
 	err := s.Pool.QueryRow(ctx, activityCTE+`SELECT count(*),count(*) FILTER(WHERE type='request'),
  count(*) FILTER(WHERE type='request' AND status NOT IN ('success','client_cancelled')),
- COALESCE(sum(input_tokens),0),COALESCE(sum(output_tokens),0),COALESCE(sum(cost),0)::text,
+ COALESCE(sum(input_tokens),0),COALESCE(sum(cache_read_tokens),0),COALESCE(sum(output_tokens),0),COALESCE(sum(cost),0)::text,
  COALESCE(sum(delta) FILTER(WHERE type='topup'),0)::text,COALESCE(sum(delta) FILTER(WHERE type='adjustment'),0)::text
- FROM filtered`, args...).Scan(&total, &summary.Requests, &summary.Failed, &summary.InputTokens, &summary.OutputTokens, &cost, &topup, &adjustment)
+ FROM filtered`, args...).Scan(&total, &summary.Requests, &summary.Failed, &summary.InputTokens, &summary.CacheRead, &summary.OutputTokens, &cost, &topup, &adjustment)
 	if err != nil {
 		return nil, summary, 0, err
 	}

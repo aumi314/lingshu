@@ -1,14 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, Card, Col, DatePicker, Descriptions, Drawer, Row, Select, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
+import { Alert, Card, Col, DatePicker, Descriptions, Drawer, Row, Select, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
-import { get, type LogEntry, type ActivityEntry, type ActivityLogsResponse, type LogType, type RequestActivity, type User } from '../api'
+import { useSearchParams } from 'react-router-dom'
+import { get, type LogEntry, type ActivityEntry, type ActivityLogsResponse, type BalanceActivity, type RequestActivity, type User } from '../api'
 import { priceText, tokens, useApp } from '../app'
 
-type Filter = { type: LogType; range: [Dayjs, Dayjs]; model?: string; status?: string; user_id?: number }
+type Tab = 'calls' | 'operations'
+type Filter = { range: [Dayjs, Dayjs]; model?: string; status?: string; user_id?: number }
+
+const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`
+// 缓存命中率 = 缓存读 ÷（输入 + 缓存读 + 缓存写），向下取整，避免没全中却显示 100%
+const cacheRate = (read: number, total: number) => total > 0 ? `${Math.floor((read * 100) / total)}%` : '—'
+
+// 输出速度只对有意义的流式请求计算：分母扣掉首字等待，输出太少时数值不稳定，不给
+function outputTPS(r: LogEntry): number | null {
+  const generating = r.total_ms - r.first_byte_ms
+  if (!r.stream || r.first_byte_ms <= 0 || generating <= 0 || r.output_tokens < 50) return null
+  return Math.round((r.output_tokens * 1000) / generating)
+}
 
 export default function Logs({ admin = false }: { admin?: boolean }) {
   const { money, t } = useApp()
-  const [filter, setFilter] = useState<Filter>({ type: 'all', range: [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')] })
+  const [params, setParams] = useSearchParams()
+  const tab: Tab = params.get('tab') === 'operations' ? 'operations' : 'calls'
+  const [filter, setFilter] = useState<Filter>({ range: [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')] })
   const [page, setPage] = useState(1)
   const [data, setData] = useState<ActivityLogsResponse | null>(null)
   const [users, setUsers] = useState<User[]>([])
@@ -17,7 +32,7 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
   const [detail, setDetail] = useState<ActivityEntry | null>(null)
   const pageSize = 50
   const requestSequence = useRef(0)
-  const typeLabel = (type: LogType) => ({ all: t('全部', 'All'), request: t('模型调用', 'Model calls'), topup: t('在线充值', 'Online top-ups'), adjustment: t('额度调整', 'Balance adjustments') })[type]
+  const typeLabel = (type: BalanceActivity['type']) => type === 'topup' ? t('在线充值', 'Online top-up') : t('额度调整', 'Balance adjustment')
   const operatorLabel = (entry: ActivityEntry) => entry.type === 'topup' ? t('系统', 'System') : entry.operator || t('未知', 'Unknown')
 
 
@@ -33,14 +48,14 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
     setLoading(true)
     setDetail(null)
     const q = new URLSearchParams({
-      type: filter.type,
+      type: tab === 'calls' ? 'request' : 'balance',
       page: String(page),
       page_size: String(pageSize),
       from: filter.range[0].toISOString(),
       to: filter.range[1].toISOString(),
     })
-    if (filter.model) q.set('model', filter.model)
-    if (filter.status) q.set('status', filter.status)
+    if (tab === 'calls' && filter.model) q.set('model', filter.model)
+    if (tab === 'calls' && filter.status) q.set('status', filter.status)
     if (filter.user_id) q.set('user_id', String(filter.user_id))
     try {
       const result = await get<ActivityLogsResponse>(`${admin ? '/api/admin/logs' : '/api/me/logs'}?${q}`)
@@ -50,7 +65,7 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
     } finally {
       if (sequence === requestSequence.current) setLoading(false)
     }
-  }, [admin, filter, page])
+  }, [admin, filter, page, tab])
 
   useEffect(() => {
     void load()
@@ -66,13 +81,133 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
     setFilter((old) => ({ ...old, ...f }))
   }
 
+  const switchTab = (key: string) => {
+    setPage(1)
+    setData(null)
+    setFilter((old) => ({ ...old, model: undefined, status: undefined }))
+    setParams(key === 'calls' ? {} : { tab: key }, { replace: true })
+  }
+
   const s = data?.summary
+  const pagination = { current: page, pageSize, total: data?.total ?? 0, onChange: setPage, showSizeChanger: false }
+  const time = { title: t('时间', 'Time'), dataIndex: 'created_at', render: (v: string) => <span className="nowrap">{dayjs(v).format('MM-DD HH:mm:ss')}</span> }
+  const userColumn = admin ? [{ title: t('用户', 'User'), dataIndex: 'username' }] : []
+
+  const calls = (
+    <>
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={12} md={6}><Card size="small"><Statistic title={t('花费', 'Cost')} value={s ? money(s.cost) : '-'} /></Card></Col>
+        <Col xs={12} md={6}>
+          <Card size="small">
+            <Statistic title={t('请求数', 'Requests')} value={s?.requests ?? '-'} suffix={s?.failed ? <Typography.Text type="danger" style={{ fontSize: 14 }}>{s.failed} {t('失败', 'failed')}</Typography.Text> : null} />
+          </Card>
+        </Col>
+        <Col xs={12} md={6}>
+          <Card size="small"><Statistic title={t('输入 / 输出 tokens', 'Input / output tokens')} value={s ? `${tokens(s.input_tokens)} / ${tokens(s.output_tokens)}` : '-'} /></Card>
+        </Col>
+        <Col xs={12} md={6}>
+          <Card size="small">
+            <Tooltip title={t('缓存命中的输入占全部输入的比例，越高越省钱', 'Share of input tokens served from cache; higher means cheaper')}>
+              <Statistic title={t('缓存命中率', 'Cache hit rate')} value={s ? cacheRate(s.cache_read_tokens, s.input_tokens) : '-'} />
+            </Tooltip>
+          </Card>
+        </Col>
+      </Row>
+      <Table<RequestActivity>
+        rowKey="event_key"
+        size="small"
+        loading={loading}
+        dataSource={data?.logs.filter((entry): entry is RequestActivity => entry.type === 'request')}
+        onRow={(r) => ({ onClick: () => setDetail(r), style: { cursor: 'pointer' } })}
+        pagination={pagination}
+        locale={{ emptyText: t('这段时间没有调用记录', 'No calls in this period') }}
+        columns={[
+          time,
+          ...userColumn,
+          { title: 'Key', dataIndex: 'key_name', render: (v: string) => v || '—' },
+          { title: t('服务分组', 'Service group'), dataIndex: 'group_name', render: (v: string) => v || '—' },
+          { title: t('模型', 'Model'), dataIndex: 'model', render: (v: string) => <span className="mono">{v}</span> },
+          ...(admin ? [{ title: t('渠道', 'Channel'), dataIndex: 'channel_name', render: (v: string, r: LogEntry) => <>{v || '—'}{r.attempts > 1 && <Tag style={{ marginLeft: 4 }}>{t(`试了 ${r.attempts} 次`, `${r.attempts} tries`)}</Tag>}</> }] : []),
+          {
+            title: t('状态', 'Status'),
+            dataIndex: 'status',
+            render: (v: LogEntry['status'], r) => (
+              <Tooltip title={r.error || undefined}>
+                <Tag color={statusTag[v][0]}>{statusTag[v][1]}</Tag>
+              </Tooltip>
+            ),
+          },
+          {
+            title: t('输入 / 输出', 'In / out'),
+            render: (_, r) => {
+              const input = r.input_tokens + r.cache_read_tokens + r.cache_write_tokens
+              return (
+                <div className="nowrap">
+                  {tokens(input)} / {tokens(r.output_tokens)}
+                  {r.usage_estimated && (
+                    <Tooltip title={t('上游没返回用量，按内容估算', 'Upstream returned no usage; estimated from content')}>
+                      <Tag style={{ marginLeft: 4 }}>{t('估算', 'est.')}</Tag>
+                    </Tooltip>
+                  )}
+                  {input > 0 && <div className="muted">{t('缓存', 'Cache')} {cacheRate(r.cache_read_tokens, input)}</div>}
+                </div>
+              )
+            },
+          },
+          {
+            title: t('首字 · 速度', 'First token · speed'),
+            render: (_, r) => {
+              const tps = outputTPS(r)
+              const first = r.stream && r.first_byte_ms > 0 && r.status !== 'upstream_error' && r.status !== 'rejected' ? seconds(r.first_byte_ms) : '—'
+              return (
+                <div className="nowrap">
+                  <div>{first}{tps !== null && ` · ${tps} tok/s`}</div>
+                  <div className="muted">{t('总耗时', 'Total')} {seconds(r.total_ms)}</div>
+                </div>
+              )
+            },
+          },
+          { title: t('花费', 'Cost'), dataIndex: 'cost', align: 'right', render: (v) => <span className="nowrap">{money(v, 6)}</span> },
+        ]}
+      />
+    </>
+  )
+
+  const operations = (
+    <>
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={12} md={6}><Card size="small"><Statistic title={t('充值到账', 'Top-up credits')} value={s ? money(s.topup_total) : '-'} /></Card></Col>
+        <Col xs={12} md={6}><Card size="small"><Statistic title={t('额度净调整', 'Net adjustments')} value={s ? money(s.adjustment_net) : '-'} /></Card></Col>
+      </Row>
+      <Table<BalanceActivity>
+        rowKey="event_key"
+        size="small"
+        loading={loading}
+        dataSource={data?.logs.filter((entry): entry is BalanceActivity => entry.type !== 'request')}
+        onRow={(entry) => ({ onClick: () => setDetail(entry), style: { cursor: 'pointer' } })}
+        pagination={pagination}
+        locale={{ emptyText: t('这段时间没有操作记录', 'No operations in this period') }}
+        columns={[
+          time,
+          ...userColumn,
+          { title: t('操作', 'Operation'), render: (_, entry) => <Tag color={entry.type === 'topup' ? 'green' : 'orange'}>{typeLabel(entry.type)}</Tag> },
+          { title: t('说明', 'Details'), render: (_, entry) => entry.type === 'topup' ? entry.order?.provider || t('在线充值', 'Online top-up') : entry.note || '—' },
+          { title: t('余额变动', 'Balance change'), align: 'right', render: (_, entry) => <span style={{ color: Number(entry.balance_delta) < 0 ? '#ff4d4f' : Number(entry.balance_delta) > 0 ? '#52c41a' : undefined }}>{Number(entry.balance_delta) > 0 ? '+' : ''}{money(entry.balance_delta)}</span> },
+          { title: t('调整后余额', 'Balance after'), align: 'right', render: (_, entry) => money(entry.balance_after) },
+          { title: t('操作人', 'Operator'), render: (_, entry) => operatorLabel(entry) },
+        ]}
+      />
+    </>
+  )
+
   return (
     <div className="page" style={{ maxWidth: 1400 }}>
       <Typography.Title level={3} className="page-title">
         {admin ? t('全站日志', 'All logs') : t('账户日志', 'Account logs')}
       </Typography.Title>
       {error && <Alert type="error" title={error} showIcon style={{ marginBottom: 16 }} />}
+
+      <Tabs activeKey={tab} onChange={switchTab} items={[{ key: 'calls', label: t('调用日志', 'Call logs') }, { key: 'operations', label: t('操作日志', 'Operation logs') }]} />
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <DatePicker.RangePicker
@@ -96,14 +231,7 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
             options={users.map((u) => ({ value: u.id, label: u.username }))}
           />
         )}
-        <Select
-          aria-label={t('日志类型', 'Log type')}
-          value={filter.type}
-          style={{ width: 180 }}
-          options={(['all', 'request', 'topup', 'adjustment'] as LogType[]).map((type) => ({ value: type, label: typeLabel(type) }))}
-          onChange={(type) => update({ type, model: undefined, status: undefined })}
-        />
-        {filter.type === 'request' && <>
+        {tab === 'calls' && <>
         <Select
           allowClear
           placeholder={t('全部模型', 'All models')}
@@ -123,96 +251,14 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
         </>}
       </div>
 
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={12} md={8}>
-          <Card size="small">
-            <Statistic title={t('消费金额', 'Consumption')} value={s ? money(s.cost) : '-'} />
-          </Card>
-        </Col>
-        <Col xs={12} md={8}>
-          <Card size="small">
-            <Statistic title={t('请求数', 'Requests')} value={s?.requests ?? '-'} suffix={s?.failed ? <Typography.Text type="danger" style={{ fontSize: 14 }}>{s.failed} {t('失败', 'failed')}</Typography.Text> : null} />
-          </Card>
-        </Col>
-        <Col xs={12} md={8}><Card size="small"><Statistic title={t('充值到账', 'Top-up credits')} value={s ? money(s.topup_total) : '-'} /></Card></Col>
-        <Col xs={12} md={8}><Card size="small"><Statistic title={t('额度净调整', 'Net adjustments')} value={s ? money(s.adjustment_net) : '-'} /></Card></Col>
-        <Col xs={12} md={8}>
-          <Card size="small">
-            <Statistic title={t('输入 tokens', 'Input tokens')} value={s ? tokens(s.input_tokens) : '-'} />
-          </Card>
-        </Col>
-        <Col xs={12} md={8}>
-          <Card size="small">
-            <Statistic title={t('输出 tokens', 'Output tokens')} value={s ? tokens(s.output_tokens) : '-'} />
-          </Card>
-        </Col>
-      </Row>
-
-      {filter.type !== 'request' ? <Table<ActivityEntry>
-        rowKey="event_key"
-        size="small"
-        loading={loading}
-        dataSource={data?.logs}
-        onRow={(entry) => ({ onClick: () => setDetail(entry), style: { cursor: 'pointer' } })}
-        pagination={{ current: page, pageSize, total: data?.total ?? 0, onChange: setPage, showSizeChanger: false }}
-        locale={{ emptyText: t('这段时间没有日志记录', 'No logs in this period') }}
-        columns={[
-          { title: t('时间', 'Time'), dataIndex: 'created_at', render: (v) => <span className="nowrap">{dayjs(v).format('MM-DD HH:mm:ss')}</span> },
-          ...(admin ? [{ title: t('用户', 'User'), dataIndex: 'username' }] : []),
-          { title: t('类型', 'Type'), render: (_, entry) => <Tag color={entry.type === 'request' ? 'blue' : entry.type === 'topup' ? 'green' : 'orange'}>{typeLabel(entry.type)}</Tag> },
-          { title: t('事件摘要', 'Summary'), render: (_, entry) => entry.type === 'request' ? <><span className="mono">{entry.model}</span><div className="muted">{entry.key_name || '—'}</div></> : entry.type === 'topup' ? entry.order?.provider || t('在线充值', 'Online top-up') : entry.note || t('额度调整', 'Balance adjustment') },
-          { title: t('状态', 'Status'), render: (_, entry) => <Tag color={statusTag[entry.status][0]}>{statusTag[entry.status][1]}</Tag> },
-          { title: t('余额变动', 'Balance change'), align: 'right', render: (_, entry) => <span style={{ color: Number(entry.balance_delta) < 0 ? '#ff4d4f' : Number(entry.balance_delta) > 0 ? '#52c41a' : undefined }}>{Number(entry.balance_delta) > 0 ? '+' : ''}{money(entry.balance_delta)}</span> },
-          { title: t('调整后余额', 'Balance after'), align: 'right', render: (_, entry) => entry.type === 'request' ? '—' : money(entry.balance_after) },
-          { title: t('操作人', 'Operator'), render: (_, entry) => entry.type === 'request' ? '—' : operatorLabel(entry) },
-        ]}
-      /> : <Table<RequestActivity>
-        rowKey="event_key"
-        size="small"
-        loading={loading}
-        dataSource={data?.logs.filter((entry): entry is RequestActivity => entry.type === 'request')}
-        onRow={(r) => ({ onClick: () => setDetail(r), style: { cursor: 'pointer' } })}
-        pagination={{ current: page, pageSize, total: data?.total ?? 0, onChange: setPage, showSizeChanger: false }}
-        locale={{ emptyText: t('这段时间没有日志记录', 'No logs in this period') }}
-        columns={[
-          { title: t('时间', 'Time'), dataIndex: 'created_at', render: (v) => <span className="nowrap">{dayjs(v).format('MM-DD HH:mm:ss')}</span> },
-          ...(admin ? [{ title: t('用户', 'User'), dataIndex: 'username' }] : []),
-          { title: 'Key', dataIndex: 'key_name' },
-          { title: t('模型', 'Model'), dataIndex: 'model', render: (v: string) => <span className="mono">{v}</span> },
-          ...(admin ? [{ title: t('渠道', 'Channel'), dataIndex: 'channel_name', render: (v: string, r: LogEntry) => <>{v}{r.attempts > 1 && <Tag style={{ marginLeft: 4 }}>{t(`试了 ${r.attempts} 次`, `${r.attempts} tries`)}</Tag>}</> }] : []),
-          {
-            title: t('状态', 'Status'),
-            dataIndex: 'status',
-            render: (v: LogEntry['status'], r) => (
-              <Tooltip title={r.error || undefined}>
-                <Tag color={statusTag[v][0]}>{statusTag[v][1]}</Tag>
-              </Tooltip>
-            ),
-          },
-          {
-            title: t('输入 / 缓存 / 输出', 'In / cache / out'),
-            render: (_, r) => (
-              <span className="nowrap">
-                {tokens(r.input_tokens)} / {tokens(r.cache_read_tokens + r.cache_write_tokens)} / {tokens(r.output_tokens)}
-                {r.usage_estimated && (
-                  <Tooltip title={t('上游没返回用量，按内容估算', 'Upstream returned no usage; estimated from content')}>
-                    <Tag style={{ marginLeft: 4 }}>{t('估算', 'est.')}</Tag>
-                  </Tooltip>
-                )}
-              </span>
-            ),
-          },
-          { title: t('首字 / 总耗时', 'First byte / total'), render: (_, r) => <span className="nowrap">{(r.first_byte_ms / 1000).toFixed(1)}s / {(r.total_ms / 1000).toFixed(1)}s</span> },
-          { title: t('花费', 'Cost'), dataIndex: 'cost', align: 'right', render: (v) => <span className="nowrap">{money(v, 6)}</span> },
-        ]}
-      />}
+      {tab === 'calls' ? calls : operations}
 
       <Drawer open={!!detail} onClose={() => setDetail(null)} title={detail?.type === 'request' ? t('请求详情', 'Request details') : t('资金变动详情', 'Balance details')} size={520}>
         {detail && detail.type !== 'request' && (
           <Descriptions column={1} size="small" bordered>
             <Descriptions.Item label={t('时间', 'Time')}>{dayjs(detail.created_at).format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
             <Descriptions.Item label={t('用户', 'User')}>{detail.username}</Descriptions.Item>
-            <Descriptions.Item label={t('类型', 'Type')}>{typeLabel(detail.type)}</Descriptions.Item>
+            <Descriptions.Item label={t('操作', 'Operation')}>{typeLabel(detail.type)}</Descriptions.Item>
             <Descriptions.Item label={t('余额变动', 'Balance change')}>{money(detail.balance_delta, 10)}</Descriptions.Item>
             <Descriptions.Item label={t('调整后余额', 'Balance after')}>{money(detail.balance_after, 10)}</Descriptions.Item>
             <Descriptions.Item label={t('操作人', 'Operator')}>{operatorLabel(detail)}</Descriptions.Item>
