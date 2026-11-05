@@ -164,3 +164,4 @@ Kimi 在 Tier0（并发 1）时并行探测会全部 429；2026-10-19 用户已�
 - 中国站地址 `https://tokenhub.tencentmaas.com`：chat `/v1/chat/completions`、messages `/v1/messages`（Bearer 和 x-api-key 都认）、responses `/v1/responses`，三种协议流式都带用量。`/v1/models` 可用，同一账号还能调 GLM、DeepSeek、Kimi、MiniMax 等模型（模型 ID 和各家官方不完全一样，如 `deepseek/deepseek-flash`）。
 - 新 key 第一次测试时 chat 和 messages 返回 402 `401006 The service ID does not exist, or the model does not match the service`，几分钟后重测全部通过，判断是开通延迟。
 - hy4-preview（腾讯混元 Hy4 preview，2026-08-28 发布，1M 上下文）价格：中国站 ¥6 / ¥18 / 缓存命中 ¥0.3；国际站 $0.834 / $2.501 / $0.042（intl.cloud.tencent.com 文档 1300/78937，2026-09-25 更新）。用户查证提供。灵枢接的是中国站，站内价按中国站人民币价 ÷ 6.7 换算（用户决定，2026-10-21）：$0.895522 / $2.686567 / $0.044776。
+- hy4（腾讯混元 Hy4 正式版，2026-11-04 发布）已上线。2026-11-05 拉 `/v1/models` 确认 `hy4` 与 `hy4-preview` 并存，两个都是 `online`。正式版沿用 preview 定价：中国站 ¥6 / ¥18 / 缓存命中 ¥0.3，国际站 $0.834 / $2.501 / $0.042。腾讯云 TokenHub 发布期按刊例价 5 折至 2026-12-31，属厂商活动，灵枢仍按刊例价定价。
