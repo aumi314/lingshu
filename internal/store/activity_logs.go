@@ -50,7 +50,7 @@ const activityCTE = `WITH events AS (
  FROM balance_adjustments b
  WHERE $5::text='' AND $6::text='' AND $7::bigint=0
 ), filtered AS (
- SELECT * FROM events WHERE ($1::text='all' OR type=$1 OR ($1='balance' AND type IN ('topup','adjustment'))) AND ($2::bigint=0 OR user_id=$2)
+ SELECT * FROM events WHERE ($1::text='all' OR type=$1) AND ($2::bigint=0 OR user_id=$2)
  AND ($3::timestamptz IS NULL OR created_at >= $3) AND ($4::timestamptz IS NULL OR created_at < $4)
 )
 `

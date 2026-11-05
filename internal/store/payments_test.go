@@ -243,3 +243,26 @@ func TestPaymentMigrationPreservesOldBalancesAndLedger(t *testing.T) {
 		}
 	}
 }
+
+// 充值到账记为系统操作，即使由用户点“核对付款”触发；重复通知不重复记录。
+func TestTopupCreditOperation(t *testing.T) {
+	s, c := paymentFixture(t)
+	ctx := WithActor(context.Background(), 1)
+	o := paymentOrder(t, s, c, "operation")
+	for i := 0; i < 2; i++ {
+		if err := s.ApplyTopupEvent(ctx, c.Provider, c.VersionID, paid(o)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	logs, sum, total, err := s.ListOperations(context.Background(), LogFilter{UserID: 1}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(logs) != 1 {
+		t.Fatalf("应只有一条入账记录，实际 %d", total)
+	}
+	l := logs[0]
+	if l.Action != "topup.credit" || l.ActorID != nil || l.Order == nil || l.Order.ID != o.ID || l.Amount == nil || !l.Amount.Equal(decimal.NewFromInt(2)) || !sum.TopupTotal.Equal(decimal.NewFromInt(2)) {
+		t.Fatalf("入账记录不对: %+v sum=%+v", l, sum)
+	}
+}

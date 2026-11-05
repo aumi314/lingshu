@@ -3,10 +3,13 @@ package store
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strconv"
+	"strings"
 
 	"github.com/aumi314/lingshu/internal/payments"
 	"github.com/jackc/pgx/v5"
@@ -96,10 +99,57 @@ func (s *Store) SavePaymentConfig(ctx context.Context, c payments.Config) (payme
 				return err
 			}
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO payment_services(provider,enabled,version_id) VALUES($1,$2,$3) ON CONFLICT(provider) DO UPDATE SET enabled=EXCLUDED.enabled,version_id=EXCLUDED.version_id`, c.Provider, c.Enabled, c.VersionID)
-		return err
+		if _, err := tx.Exec(ctx, `INSERT INTO payment_services(provider,enabled,version_id) VALUES($1,$2,$3) ON CONFLICT(provider) DO UPDATE SET enabled=EXCLUDED.enabled,version_id=EXCLUDED.version_id`, c.Provider, c.Enabled, c.VersionID); err != nil {
+			return err
+		}
+		var before snapshot
+		if old.VersionID > 0 {
+			before = paymentSnapshot(old)
+		}
+		after := paymentSnapshot(c)
+		var secrets []string
+		for k := range before {
+			if strings.HasPrefix(k, "secrets.") {
+				secrets = append(secrets, k)
+			}
+		}
+		for k := range after {
+			if strings.HasPrefix(k, "secrets.") {
+				secrets = append(secrets, k)
+			}
+		}
+		action := "payment.update"
+		if before == nil {
+			action = "payment.create"
+		}
+		changes := diff(before, after, secrets)
+		if len(changes) == 0 {
+			return nil
+		}
+		return record(ctx, tx, operation{action: action, targetType: "payment", targetID: strconv.FormatInt(c.VersionID, 10), targetName: c.Provider, changes: changes})
 	})
 	return c, err
+}
+
+// paymentSnapshot 把支付配置展开成可比对的字段；密钥只保留指纹，日志里只显示“已更换”。
+func paymentSnapshot(c payments.Config) snapshot {
+	s := snapshot{}
+	put := func(k string, v any) { s[k], _ = json.Marshal(v) }
+	put("enabled", c.Enabled)
+	put("environment", c.Environment)
+	put("currency", c.Currency)
+	put("unit_price", c.UnitPrice.String())
+	put("min_usd", c.MinUSD.String())
+	put("max_usd", c.MaxUSD.String())
+	put("methods", c.Methods)
+	for k, v := range c.Values {
+		put("values."+k, v)
+	}
+	for k, v := range c.Secrets {
+		sum := sha256.Sum256([]byte(v))
+		put("secrets."+k, hex.EncodeToString(sum[:]))
+	}
+	return s
 }
 
 const topupColumns = `id,user_id,provider,version_id,environment,method,credit_usd::text,amount::text,currency,unit_price::text,status,checkout_id,transaction_id,tax::text,total::text,admin_test,created_at,completed_at,checkout_started,checkout_data`
@@ -208,7 +258,11 @@ func (s *Store) ApplyTopupEvent(ctx context.Context, provider string, versionID 
 		if err := tx.QueryRow(ctx, `UPDATE users SET balance=balance+$2::numeric WHERE id=$1 RETURNING balance::text`, o.UserID, o.CreditUSD.String()).Scan(&after); err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO balance_adjustments(user_id,amount,balance_after,operator_id,note,topup_order_id) VALUES($1,$2,$3,NULL,$4,$5)`, o.UserID, o.CreditUSD.String(), after, "在线充值 · "+provider, o.ID)
-		return err
+		if _, err = tx.Exec(ctx, `INSERT INTO balance_adjustments(user_id,amount,balance_after,operator_id,note,topup_order_id) VALUES($1,$2,$3,NULL,$4,$5)`, o.UserID, o.CreditUSD.String(), after, "在线充值 · "+provider, o.ID); err != nil {
+			return err
+		}
+		// 入账一律记为系统：用户点“核对付款”触发时 context 里是用户本人
+		var system int64
+		return recordBalance(ctx, tx, &system, o.UserID, o.CreditUSD, after, "在线充值 · "+provider, o.ID)
 	})
 }

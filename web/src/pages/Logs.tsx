@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, Card, Col, DatePicker, Descriptions, Drawer, Row, Select, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useSearchParams } from 'react-router-dom'
-import { get, type LogEntry, type ActivityEntry, type ActivityLogsResponse, type BalanceActivity, type RequestActivity, type User } from '../api'
+import { get, type LogEntry, type ActivityLogsResponse, type OperationLogsResponse, type RequestActivity, type User } from '../api'
 import { priceText, tokens, useApp } from '../app'
+import OperationLogTable, { targetLabel, targetTypes } from './OperationLogs'
 
 type Tab = 'calls' | 'operations'
-type Filter = { range: [Dayjs, Dayjs]; model?: string; status?: string; user_id?: number }
+type Filter = { range: [Dayjs, Dayjs]; model?: string; status?: string; user_id?: number; target?: string }
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`
 // 缓存命中率 = 缓存读 ÷（输入 + 缓存读 + 缓存写），向下取整，避免没全中却显示 100%
@@ -26,15 +27,13 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
   const [filter, setFilter] = useState<Filter>({ range: [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')] })
   const [page, setPage] = useState(1)
   const [data, setData] = useState<ActivityLogsResponse | null>(null)
+  const [ops, setOps] = useState<OperationLogsResponse | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [detail, setDetail] = useState<ActivityEntry | null>(null)
+  const [detail, setDetail] = useState<RequestActivity | null>(null)
   const pageSize = 50
   const requestSequence = useRef(0)
-  const typeLabel = (type: BalanceActivity['type']) => type === 'topup' ? t('在线充值', 'Online top-up') : t('额度调整', 'Balance adjustment')
-  const operatorLabel = (entry: ActivityEntry) => entry.type === 'topup' ? t('系统', 'System') : entry.operator || t('未知', 'Unknown')
-
 
   const statusTag: Record<LogEntry['status'], [string, string]> = {
     success: ['green', t('成功', 'Success')],
@@ -48,7 +47,7 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
     setLoading(true)
     setDetail(null)
     const q = new URLSearchParams({
-      type: tab === 'calls' ? 'request' : 'balance',
+      type: tab === 'calls' ? 'request' : 'operation',
       page: String(page),
       page_size: String(pageSize),
       from: filter.range[0].toISOString(),
@@ -56,12 +55,19 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
     })
     if (tab === 'calls' && filter.model) q.set('model', filter.model)
     if (tab === 'calls' && filter.status) q.set('status', filter.status)
+    if (tab === 'operations' && filter.target) q.set('target', filter.target)
     if (filter.user_id) q.set('user_id', String(filter.user_id))
+    const path = `${admin ? '/api/admin/logs' : '/api/me/logs'}?${q}`
     try {
-      const result = await get<ActivityLogsResponse>(`${admin ? '/api/admin/logs' : '/api/me/logs'}?${q}`)
-      if (sequence === requestSequence.current) { setData(result); setError('') }
+      if (tab === 'calls') {
+        const result = await get<ActivityLogsResponse>(path)
+        if (sequence === requestSequence.current) { setData(result); setError('') }
+      } else {
+        const result = await get<OperationLogsResponse>(path)
+        if (sequence === requestSequence.current) { setOps(result); setError('') }
+      }
     } catch (e) {
-      if (sequence === requestSequence.current) { setData(null); setError((e as Error).message) }
+      if (sequence === requestSequence.current) { setData(null); setOps(null); setError((e as Error).message) }
     } finally {
       if (sequence === requestSequence.current) setLoading(false)
     }
@@ -84,12 +90,13 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
   const switchTab = (key: string) => {
     setPage(1)
     setData(null)
-    setFilter((old) => ({ ...old, model: undefined, status: undefined }))
+    setOps(null)
+    setFilter((old) => ({ ...old, model: undefined, status: undefined, target: undefined }))
     setParams(key === 'calls' ? {} : { tab: key }, { replace: true })
   }
 
   const s = data?.summary
-  const pagination = { current: page, pageSize, total: data?.total ?? 0, onChange: setPage, showSizeChanger: false }
+  const pagination = { current: page, pageSize, total: (tab === 'calls' ? data?.total : ops?.total) ?? 0, onChange: setPage, showSizeChanger: false }
   const time = { title: t('时间', 'Time'), dataIndex: 'created_at', render: (v: string) => <span className="nowrap">{dayjs(v).format('MM-DD HH:mm:ss')}</span> }
   const userColumn = admin ? [{ title: t('用户', 'User'), dataIndex: 'username' }] : []
 
@@ -173,30 +180,14 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
     </>
   )
 
+  const os = ops?.summary
   const operations = (
     <>
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={12} md={6}><Card size="small"><Statistic title={t('充值到账', 'Top-up credits')} value={s ? money(s.topup_total) : '-'} /></Card></Col>
-        <Col xs={12} md={6}><Card size="small"><Statistic title={t('额度净调整', 'Net adjustments')} value={s ? money(s.adjustment_net) : '-'} /></Card></Col>
+        <Col xs={12} md={6}><Card size="small"><Statistic title={t('充值到账', 'Top-up credits')} value={os ? money(os.topup_total) : '-'} /></Card></Col>
+        <Col xs={12} md={6}><Card size="small"><Statistic title={t('额度净调整', 'Net adjustments')} value={os ? money(os.adjustment_net) : '-'} /></Card></Col>
       </Row>
-      <Table<BalanceActivity>
-        rowKey="event_key"
-        size="small"
-        loading={loading}
-        dataSource={data?.logs.filter((entry): entry is BalanceActivity => entry.type !== 'request')}
-        onRow={(entry) => ({ onClick: () => setDetail(entry), style: { cursor: 'pointer' } })}
-        pagination={pagination}
-        locale={{ emptyText: t('这段时间没有操作记录', 'No operations in this period') }}
-        columns={[
-          time,
-          ...userColumn,
-          { title: t('操作', 'Operation'), render: (_, entry) => <Tag color={entry.type === 'topup' ? 'green' : 'orange'}>{typeLabel(entry.type)}</Tag> },
-          { title: t('说明', 'Details'), render: (_, entry) => entry.type === 'topup' ? entry.order?.provider || t('在线充值', 'Online top-up') : entry.note || '—' },
-          { title: t('余额变动', 'Balance change'), align: 'right', render: (_, entry) => <span style={{ color: Number(entry.balance_delta) < 0 ? '#ff4d4f' : Number(entry.balance_delta) > 0 ? '#52c41a' : undefined }}>{Number(entry.balance_delta) > 0 ? '+' : ''}{money(entry.balance_delta)}</span> },
-          { title: t('调整后余额', 'Balance after'), align: 'right', render: (_, entry) => money(entry.balance_after) },
-          { title: t('操作人', 'Operator'), render: (_, entry) => operatorLabel(entry) },
-        ]}
-      />
+      <OperationLogTable logs={ops?.logs} loading={loading} pagination={pagination} />
     </>
   )
 
@@ -249,31 +240,22 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
           options={Object.entries(statusTag).map(([k, [, label]]) => ({ value: k, label }))}
         />
         </>}
+        {tab === 'operations' && (
+          <Select
+            allowClear
+            placeholder={t('全部对象', 'All targets')}
+            style={{ width: 160 }}
+            value={filter.target}
+            onChange={(v) => update({ target: v })}
+            options={targetTypes.filter((type) => admin || ['user', 'api_key', 'balance'].includes(type)).map((type) => ({ value: type, label: targetLabel(t, type) }))}
+          />
+        )}
       </div>
 
       {tab === 'calls' ? calls : operations}
 
-      <Drawer open={!!detail} onClose={() => setDetail(null)} title={detail?.type === 'request' ? t('请求详情', 'Request details') : t('资金变动详情', 'Balance details')} size={520}>
-        {detail && detail.type !== 'request' && (
-          <Descriptions column={1} size="small" bordered>
-            <Descriptions.Item label={t('时间', 'Time')}>{dayjs(detail.created_at).format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
-            <Descriptions.Item label={t('用户', 'User')}>{detail.username}</Descriptions.Item>
-            <Descriptions.Item label={t('操作', 'Operation')}>{typeLabel(detail.type)}</Descriptions.Item>
-            <Descriptions.Item label={t('余额变动', 'Balance change')}>{money(detail.balance_delta, 10)}</Descriptions.Item>
-            <Descriptions.Item label={t('调整后余额', 'Balance after')}>{money(detail.balance_after, 10)}</Descriptions.Item>
-            <Descriptions.Item label={t('操作人', 'Operator')}>{operatorLabel(detail)}</Descriptions.Item>
-            <Descriptions.Item label={t('备注', 'Note')}>{detail.note || '—'}</Descriptions.Item>
-            {detail.order && <>
-              <Descriptions.Item label={t('订单号', 'Order ID')}><Typography.Text copyable>{detail.order.id}</Typography.Text></Descriptions.Item>
-              <Descriptions.Item label={t('支付服务 / 方式', 'Provider / method')}>{detail.order.provider} / {detail.order.method || '—'}</Descriptions.Item>
-              <Descriptions.Item label={t('付款报价', 'Payment quote')}>{detail.order.amount} {detail.order.currency}</Descriptions.Item>
-              <Descriptions.Item label={t('税费', 'Tax')}>{detail.order.tax} {detail.order.currency}</Descriptions.Item>
-              <Descriptions.Item label={t('实际支付合计', 'Total paid')}>{detail.order.total} {detail.order.currency}</Descriptions.Item>
-              <Descriptions.Item label={t('完成时间', 'Completed')}>{detail.order.completed_at ? dayjs(detail.order.completed_at).format('YYYY-MM-DD HH:mm:ss') : '—'}</Descriptions.Item>
-            </>}
-          </Descriptions>
-        )}
-        {detail?.type === 'request' && (
+      <Drawer open={!!detail} onClose={() => setDetail(null)} title={t('请求详情', 'Request details')} size={520}>
+        {detail && (
           <Descriptions column={1} size="small" bordered>
             <Descriptions.Item label={t('请求 ID', 'Request ID')}>
               <Typography.Text copyable className="mono">{detail.request_id}</Typography.Text>

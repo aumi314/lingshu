@@ -203,7 +203,7 @@ func keyCreate(args []string) error {
 			return fmt.Errorf("分组 %s 不存在", *group)
 		}
 		key, hash, prefix := auth.NewAPIKey()
-		if _, err := s.CreateAPIKey(ctx, userID, *name, hash, prefix, groupID); err != nil {
+		if _, err := s.CreateAPIKey(ctx, userID, *name, hash, prefix, groupID, nil); err != nil {
 			return err
 		}
 		fmt.Fprintln(os.Stderr, "key 已创建，只显示这一次，请马上保存：")

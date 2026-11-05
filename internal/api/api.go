@@ -118,7 +118,8 @@ func (s *Server) user(next handler) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "请先登录")
 			return
 		}
-		next(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, u)))
+		ctx := store.WithActor(context.WithValue(r.Context(), ctxKey{}, u), u.ID) // 写操作日志时取操作人
+		next(w, r.WithContext(ctx))
 	}
 }
 

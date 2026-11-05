@@ -691,35 +691,25 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		in.APIBaseURL = &value
 	}
+	var kv [][2]string // 一次保存的多项设置在同一事务里写，操作日志记一条
 	if in.DeploymentMode != nil {
-		if err := s.Store.SetSetting(r.Context(), "deployment_mode", *in.DeploymentMode); err != nil {
-			writeStoreError(w, err)
-			return
-		}
+		kv = append(kv, [2]string{"deployment_mode", *in.DeploymentMode})
 	}
 	if in.CNYPerUSD != nil {
-		if err := s.Store.SetSetting(r.Context(), "cny_per_usd", in.CNYPerUSD.String()); err != nil {
-			writeStoreError(w, err)
-			return
-		}
+		kv = append(kv, [2]string{"cny_per_usd", in.CNYPerUSD.String()})
 	}
 	if in.PaymentEnabled != nil {
-		if err := s.Store.SetSetting(r.Context(), "payment_enabled", strconv.FormatBool(*in.PaymentEnabled)); err != nil {
-			writeStoreError(w, err)
-			return
-		}
+		kv = append(kv, [2]string{"payment_enabled", strconv.FormatBool(*in.PaymentEnabled)})
 	}
 	if in.RegistrationMode != nil {
-		if err := s.Store.SetSetting(r.Context(), "registration_mode", *in.RegistrationMode); err != nil {
-			writeStoreError(w, err)
-			return
-		}
+		kv = append(kv, [2]string{"registration_mode", *in.RegistrationMode})
 	}
 	if in.APIBaseURL != nil {
-		if err := s.Store.SetSetting(r.Context(), "api_base_url", *in.APIBaseURL); err != nil {
-			writeStoreError(w, err)
-			return
-		}
+		kv = append(kv, [2]string{"api_base_url", *in.APIBaseURL})
+	}
+	if err := s.Store.SetSettings(r.Context(), kv); err != nil {
+		writeStoreError(w, err)
+		return
 	}
 	ok(w)
 }

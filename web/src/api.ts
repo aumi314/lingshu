@@ -155,6 +155,24 @@ export type BalanceActivity = ActivityFields & {
 export type ActivityEntry = RequestActivity | BalanceActivity
 export type ActivityLogsResponse = { logs: ActivityEntry[]; total: number; summary: LogSummary & { topup_total: string; adjustment_net: string }; models: string[] }
 
+export type OperationChange = { field: string; from?: unknown; to?: unknown; secret?: boolean }
+export type OperationEntry = {
+  id: number
+  created_at: string
+  actor_id: number | null // null 表示系统
+  actor: string
+  user_id: number | null
+  action: string
+  target_type: string
+  target_id: string
+  target_name: string
+  changes: OperationChange[]
+  note: string
+  amount?: string
+  order?: { id: string; provider: string; method: string; currency: string; amount: string; tax: string; total: string; completed_at: string | null }
+}
+export type OperationLogsResponse = { logs: OperationEntry[]; total: number; summary: { topup_total: string; adjustment_net: string } }
+
 export type ChannelModel = { model_id: number; model_name: string; upstream_name: string }
 
 export type Channel = {

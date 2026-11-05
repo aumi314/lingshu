@@ -155,28 +155,8 @@ type UserBalanceChange struct {
 
 func (s *Store) UpdateUser(ctx context.Context, id int64, p UserPatch) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, `
-			UPDATE users SET username = COALESCE($2, username), role = COALESCE($3, role),
-			       enabled = COALESCE($4, enabled), password_hash = COALESCE($5, password_hash),
-			       note = COALESCE($6, note)
-			WHERE id = $1`, id, p.Username, p.Role, p.Enabled, p.PasswordHash, p.Note)
-		if err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "users_username_key" {
-				return ErrUsernameTaken
-			}
-			return translate(err)
-		}
-		if tag.RowsAffected() == 0 {
-			return ErrNotFound
-		}
-		if p.UserGroupIDs != nil {
-			if _, err := tx.Exec(ctx, `DELETE FROM user_group_members WHERE user_id = $1`, id); err != nil {
-				return err
-			}
-			if _, err := tx.Exec(ctx, `INSERT INTO user_group_members (user_id, user_group_id) SELECT $1, unnest($2::bigint[])`, id, *p.UserGroupIDs); err != nil {
-				return translate(err)
-			}
+		if err := track(ctx, tx, userEntity, &id, -1, func() error { return updateUserProfile(ctx, tx, id, p) }); err != nil {
+			return err
 		}
 		if p.BalanceChange != nil {
 			change := p.BalanceChange
@@ -197,6 +177,9 @@ func (s *Store) UpdateUser(ctx context.Context, id int64, p UserPatch) error {
 				if _, err := tx.Exec(ctx, `INSERT INTO balance_adjustments(user_id,amount,balance_after,operator_id,note) VALUES($1,$2::numeric,$3::numeric,$4,$5)`, id, delta.String(), after, change.OperatorID, change.Note); err != nil {
 					return err
 				}
+				if err := recordBalance(ctx, tx, nil, id, delta, after, change.Note, ""); err != nil {
+					return err
+				}
 			}
 		}
 		if (p.Enabled != nil && !*p.Enabled) || p.PasswordHash != nil {
@@ -206,6 +189,34 @@ func (s *Store) UpdateUser(ctx context.Context, id int64, p UserPatch) error {
 		}
 		return nil
 	})
+}
+
+// updateUserProfile 改资料和用户分组，余额与会话由 UpdateUser 处理。
+func updateUserProfile(ctx context.Context, tx pgx.Tx, id int64, p UserPatch) error {
+	tag, err := tx.Exec(ctx, `
+		UPDATE users SET username = COALESCE($2, username), role = COALESCE($3, role),
+		       enabled = COALESCE($4, enabled), password_hash = COALESCE($5, password_hash),
+		       note = COALESCE($6, note)
+		WHERE id = $1`, id, p.Username, p.Role, p.Enabled, p.PasswordHash, p.Note)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "users_username_key" {
+			return ErrUsernameTaken
+		}
+		return translate(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	if p.UserGroupIDs != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM user_group_members WHERE user_id = $1`, id); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO user_group_members (user_id, user_group_id) SELECT $1, unnest($2::bigint[])`, id, *p.UserGroupIDs); err != nil {
+			return translate(err)
+		}
+	}
+	return nil
 }
 
 func (s *Store) SetPreferences(ctx context.Context, userID int64, prefs json.RawMessage) error {
@@ -220,9 +231,11 @@ func (s *Store) AdjustBalance(ctx context.Context, userID int64, amount decimal.
 			userID, amount.String()).Scan(&after); err != nil {
 			return translate(err)
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO balance_adjustments (user_id, amount, balance_after, operator_id, note)
-			VALUES ($1, $2::numeric, $3::numeric, $4, $5)`, userID, amount.String(), after, operatorID, note)
-		return err
+		if _, err := tx.Exec(ctx, `INSERT INTO balance_adjustments (user_id, amount, balance_after, operator_id, note)
+			VALUES ($1, $2::numeric, $3::numeric, $4, $5)`, userID, amount.String(), after, operatorID, note); err != nil {
+			return err
+		}
+		return recordBalance(ctx, tx, &operatorID, userID, amount, after, note, "")
 	})
 	if err != nil {
 		return decimal.Zero, err
@@ -259,11 +272,13 @@ func (s *Store) BalanceAdjustments(ctx context.Context, userID int64) ([]Balance
 // SetUserGroups 设置用户所属的用户分组（整体替换）。
 func (s *Store) SetUserGroups(ctx context.Context, userID int64, userGroupIDs []int64) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DELETE FROM user_group_members WHERE user_id = $1`, userID); err != nil {
-			return err
-		}
-		_, err := tx.Exec(ctx, `INSERT INTO user_group_members (user_id, user_group_id) SELECT $1, unnest($2::bigint[])`, userID, userGroupIDs)
-		return translate(err)
+		return track(ctx, tx, userEntity, &userID, -1, func() error {
+			if _, err := tx.Exec(ctx, `DELETE FROM user_group_members WHERE user_id = $1`, userID); err != nil {
+				return err
+			}
+			_, err := tx.Exec(ctx, `INSERT INTO user_group_members (user_id, user_group_id) SELECT $1, unnest($2::bigint[])`, userID, userGroupIDs)
+			return translate(err)
+		})
 	})
 }
 
@@ -286,15 +301,23 @@ func (s *Store) ListUserGroups(ctx context.Context) ([]UserGroup, error) {
 }
 
 func (s *Store) SaveUserGroup(ctx context.Context, g *UserGroup) error {
-	if g.ID == 0 {
-		err := s.Pool.QueryRow(ctx, `INSERT INTO user_groups (name) VALUES ($1) RETURNING id, is_default`, g.Name).Scan(&g.ID, &g.IsDefault)
-		return translate(err)
-	}
-	return execOne(ctx, s.Pool, `UPDATE user_groups SET name = $2 WHERE id = $1`, g.ID, g.Name)
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		return track(ctx, tx, userGroupEntity, &g.ID, 0, func() error {
+			if g.ID == 0 {
+				err := tx.QueryRow(ctx, `INSERT INTO user_groups (name) VALUES ($1) RETURNING id, is_default`, g.Name).Scan(&g.ID, &g.IsDefault)
+				return translate(err)
+			}
+			return execOne(ctx, tx, `UPDATE user_groups SET name = $2 WHERE id = $1`, g.ID, g.Name)
+		})
+	})
 }
 
 func (s *Store) DeleteUserGroup(ctx context.Context, id int64) error {
-	return execOne(ctx, s.Pool, `DELETE FROM user_groups WHERE id = $1 AND NOT is_default`, id)
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		return track(ctx, tx, userGroupEntity, &id, 0, func() error {
+			return execOne(ctx, tx, `DELETE FROM user_groups WHERE id = $1 AND NOT is_default`, id)
+		})
+	})
 }
 
 // ---- 会话 ----
@@ -369,29 +392,37 @@ func (s *Store) AccessibleGroups(ctx context.Context, userID int64) ([]Group, er
 
 func (s *Store) SaveGroup(ctx context.Context, g *Group) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
-		if g.ID == 0 {
-			err := tx.QueryRow(ctx, `INSERT INTO groups (name, ratio, enabled, is_public, description) VALUES ($1, $2::numeric, $3, $4, $5) RETURNING id`,
-				g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description).Scan(&g.ID)
-			if err != nil {
-				return translate(err)
-			}
-		} else if err := execOne(ctx, tx, `UPDATE groups SET name = $2, ratio = $3::numeric, enabled = $4, is_public = $5, description = $6 WHERE id = $1`,
-			g.ID, g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM group_user_groups WHERE group_id = $1`, g.ID); err != nil {
-			return err
-		}
-		if g.IsPublic || len(g.UserGroupIDs) == 0 {
-			return nil
-		}
-		_, err := tx.Exec(ctx, `INSERT INTO group_user_groups (group_id, user_group_id) SELECT $1, unnest($2::bigint[])`, g.ID, g.UserGroupIDs)
-		return translate(err)
+		return track(ctx, tx, groupEntity, &g.ID, 0, func() error { return saveGroup(ctx, tx, g) })
 	})
 }
 
+func saveGroup(ctx context.Context, tx pgx.Tx, g *Group) error {
+	if g.ID == 0 {
+		err := tx.QueryRow(ctx, `INSERT INTO groups (name, ratio, enabled, is_public, description) VALUES ($1, $2::numeric, $3, $4, $5) RETURNING id`,
+			g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description).Scan(&g.ID)
+		if err != nil {
+			return translate(err)
+		}
+	} else if err := execOne(ctx, tx, `UPDATE groups SET name = $2, ratio = $3::numeric, enabled = $4, is_public = $5, description = $6 WHERE id = $1`,
+		g.ID, g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM group_user_groups WHERE group_id = $1`, g.ID); err != nil {
+		return err
+	}
+	if g.IsPublic || len(g.UserGroupIDs) == 0 {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO group_user_groups (group_id, user_group_id) SELECT $1, unnest($2::bigint[])`, g.ID, g.UserGroupIDs)
+	return translate(err)
+}
+
 func (s *Store) DeleteGroup(ctx context.Context, id int64) error {
-	return execOne(ctx, s.Pool, `DELETE FROM groups WHERE id = $1`, id)
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		return track(ctx, tx, groupEntity, &id, 0, func() error {
+			return execOne(ctx, tx, `DELETE FROM groups WHERE id = $1`, id)
+		})
+	})
 }
 
 // ---- 模型 ----
@@ -426,17 +457,25 @@ func (s *Store) SaveModel(ctx context.Context, m *Model) error {
 		m.PriceRules = []billing.PriceRule{}
 	}
 	args := []any{m.Name, m.InputPrice.String(), m.OutputPrice.String(), m.CacheReadPrice.String(), m.CacheWritePrice.String(), m.PriceRules}
-	if m.ID == 0 {
-		err := s.Pool.QueryRow(ctx, `INSERT INTO models (name, input_price, output_price, cache_read_price, cache_write_price, price_rules)
-			VALUES ($1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6) RETURNING id`, args...).Scan(&m.ID)
-		return translate(err)
-	}
-	return execOne(ctx, s.Pool, `UPDATE models SET name = $2, input_price = $3::numeric, output_price = $4::numeric,
-		cache_read_price = $5::numeric, cache_write_price = $6::numeric, price_rules = $7 WHERE id = $1`, append([]any{m.ID}, args...)...)
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		return track(ctx, tx, modelEntity, &m.ID, 0, func() error {
+			if m.ID == 0 {
+				err := tx.QueryRow(ctx, `INSERT INTO models (name, input_price, output_price, cache_read_price, cache_write_price, price_rules)
+					VALUES ($1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6) RETURNING id`, args...).Scan(&m.ID)
+				return translate(err)
+			}
+			return execOne(ctx, tx, `UPDATE models SET name = $2, input_price = $3::numeric, output_price = $4::numeric,
+				cache_read_price = $5::numeric, cache_write_price = $6::numeric, price_rules = $7 WHERE id = $1`, append([]any{m.ID}, args...)...)
+		})
+	})
 }
 
 func (s *Store) DeleteModel(ctx context.Context, id int64) error {
-	return execOne(ctx, s.Pool, `DELETE FROM models WHERE id = $1`, id)
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		return track(ctx, tx, modelEntity, &id, 0, func() error {
+			return execOne(ctx, tx, `DELETE FROM models WHERE id = $1`, id)
+		})
+	})
 }
 
 // PricedModel 是用户端"模型与价格"页的一行：某个分组下能用的模型，价格已乘倍率。
@@ -499,10 +538,20 @@ func (s *Store) Setting(ctx context.Context, key string) (string, error) {
 	return v, translate(err)
 }
 
-func (s *Store) SetSetting(ctx context.Context, key, value string) error {
-	_, err := s.Pool.Exec(ctx, `INSERT INTO settings (key, value) VALUES ($1, $2)
-		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value)
-	return err
+// SetSettings 在一个事务里保存多项设置，记一条操作日志列出变化的项。
+func (s *Store) SetSettings(ctx context.Context, kv [][2]string) error {
+	var none int64
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		return track(ctx, tx, settingsEntity, &none, 0, func() error {
+			for _, p := range kv {
+				if _, err := tx.Exec(ctx, `INSERT INTO settings (key, value) VALUES ($1, $2)
+					ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, p[0], p[1]); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	})
 }
 
 // CNYPerUSD 是系统设置的汇率，没设置或格式不对时用默认值。

@@ -74,7 +74,7 @@ func TestActivityLogs(t *testing.T) {
 		query           string
 		total, requests int64
 	}{
-		{"type=topup", 1, 0}, {"type=adjustment", 4, 0}, {"type=balance", 5, 0}, {"type=request&model=test-model&status=success", 1, 1},
+		{"type=topup", 1, 0}, {"type=adjustment", 4, 0}, {"type=request&model=test-model&status=success", 1, 1},
 		{"type=request&model=missing", 0, 0}, {"type=all&from=2026-10-26T00:00:00Z", 0, 0},
 		{"type=all&to=2026-10-25T12:00:00Z", 0, 0}, {"type=all&from=2026-10-25T12:00:00Z", 6, 1},
 	} {

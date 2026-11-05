@@ -95,16 +95,10 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 	}
 	u := currentUser(r)
 	key, hash, prefix := auth.NewAPIKey()
-	id, err := s.Store.CreateAPIKey(r.Context(), u.ID, in.Name, hash, prefix, in.GroupID)
+	id, err := s.Store.CreateAPIKey(r.Context(), u.ID, in.Name, hash, prefix, in.GroupID, quota)
 	if err != nil {
 		writeStoreError(w, err)
 		return
-	}
-	if quota != nil {
-		if err := s.Store.SetAPIKeyQuota(r.Context(), u.ID, id, quota); err != nil {
-			writeStoreError(w, err)
-			return
-		}
 	}
 	// 完整 key 只在这里返回一次
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "key": key})
@@ -147,20 +141,17 @@ func (s *Server) updateKey(w http.ResponseWriter, r *http.Request) {
 		}
 		p.GroupID = &gid
 	}
-	if err := s.Store.UpdateAPIKey(r.Context(), u.ID, id, p); err != nil {
-		writeStoreError(w, err)
-		return
-	}
 	if raw, has := in["quota_limit"]; has {
 		quota, msg := parseQuota(raw)
 		if msg != "" {
 			writeError(w, http.StatusBadRequest, msg)
 			return
 		}
-		if err := s.Store.SetAPIKeyQuota(r.Context(), u.ID, id, quota); err != nil {
-			writeStoreError(w, err)
-			return
-		}
+		p.SetQuota, p.Quota = true, quota
+	}
+	if err := s.Store.UpdateAPIKey(r.Context(), u.ID, id, p); err != nil {
+		writeStoreError(w, err)
+		return
 	}
 	ok(w)
 }
@@ -177,14 +168,21 @@ func (s *Server) deleteKey(w http.ResponseWriter, r *http.Request) {
 	ok(w)
 }
 
-// parseLogFilter 解析日志筛选参数：model、status、channel_id、user_id、from、to（RFC3339）、page、page_size。
+// parseLogFilter 解析日志筛选参数：model、status、channel_id、user_id、target（操作日志对象类型）、from、to（RFC3339）、page、page_size。
 func parseLogFilter(r *http.Request) (store.LogFilter, string) {
 	q := r.URL.Query()
 	f := store.LogFilter{Type: q.Get("type"), Model: q.Get("model"), Status: q.Get("status")}
 	switch f.Type {
-	case "", "all", "request", "balance", "topup", "adjustment":
+	case "", "all", "request", "operation", "topup", "adjustment":
 	default:
 		return f, "日志类型不正确"
+	}
+	if f.Type == "operation" {
+		switch f.Target = q.Get("target"); f.Target {
+		case "", "user", "api_key", "balance", "group", "user_group", "model", "channel", "settings", "payment", "registration_code":
+		default:
+			return f, "对象类型不正确"
+		}
 	}
 	if f.Type != "" && f.Type != "request" {
 		f.Model, f.Status = "", ""
@@ -229,6 +227,15 @@ func (s *Server) myLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) writeLogs(w http.ResponseWriter, r *http.Request, f store.LogFilter, admin bool) {
+	if f.Type == "operation" {
+		logs, sum, total, err := s.Store.ListOperations(r.Context(), f, !admin)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"logs": logs, "summary": sum, "total": total})
+		return
+	}
 	if f.Type != "" {
 		logs, sum, total, err := s.Store.ListActivityLogs(r.Context(), f)
 		if err != nil {

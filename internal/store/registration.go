@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base32"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -73,7 +74,13 @@ func (s *Store) CreateRegistrationCodes(ctx context.Context, adminID int64, coun
 			}
 			codes[i].Prefix, codes[i].Code = prefix, code
 		}
-		return nil
+		prefixes := make([]string, len(codes))
+		for i, c := range codes {
+			prefixes[i] = c.Prefix
+		}
+		to, _ := json.Marshal(prefixes)
+		return record(ctx, tx, operation{action: "registration_code.create", targetType: "registration_code",
+			changes: []Change{{Field: "prefixes", To: to}}})
 	})
 	if err != nil {
 		return nil, translate(err)
@@ -103,21 +110,25 @@ func (s *Store) ListRegistrationCodes(ctx context.Context) ([]RegistrationCode, 
 }
 
 func (s *Store) RevokeRegistrationCode(ctx context.Context, id int64) error {
-	tag, err := s.Pool.Exec(ctx, `UPDATE registration_codes SET revoked_at = now()
-		WHERE id = $1 AND used_at IS NULL AND revoked_at IS NULL`, id)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		var used bool
-		if err := s.Pool.QueryRow(ctx, `SELECT used_at IS NOT NULL FROM registration_codes WHERE id = $1`, id).Scan(&used); err != nil {
-			return translate(err)
-		}
-		if used {
-			return ErrRegistrationCodeUsed
-		}
-	}
-	return nil
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		return track(ctx, tx, codeEntity, &id, 0, func() error {
+			tag, err := tx.Exec(ctx, `UPDATE registration_codes SET revoked_at = now()
+				WHERE id = $1 AND used_at IS NULL AND revoked_at IS NULL`, id)
+			if err != nil {
+				return err
+			}
+			if tag.RowsAffected() == 0 {
+				var used bool
+				if err := tx.QueryRow(ctx, `SELECT used_at IS NOT NULL FROM registration_codes WHERE id = $1`, id).Scan(&used); err != nil {
+					return translate(err)
+				}
+				if used {
+					return ErrRegistrationCodeUsed
+				}
+			}
+			return nil
+		})
+	})
 }
 
 // RegisterUserWithCode atomically redeems a code, creates a default-group user, and starts the session.
@@ -158,6 +169,14 @@ func (s *Store) RegisterUserWithCode(ctx context.Context, username, passwordHash
 			return fmt.Errorf("默认用户分组不存在")
 		}
 		if _, err := tx.Exec(ctx, `UPDATE registration_codes SET used_by = $2, used_at = now() WHERE id = $1`, codeID, userID); err != nil {
+			return err
+		}
+		// 自助注册：操作人就是新用户自己
+		after, err := takeSnapshot(ctx, tx, userEntity, userID)
+		if err != nil {
+			return err
+		}
+		if err := recordSnapshots(WithActor(ctx, userID), tx, userEntity, userID, userID, nil, after); err != nil {
 			return err
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)`, sessionHash, userID, expires)

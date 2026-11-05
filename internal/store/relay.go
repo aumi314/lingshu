@@ -239,14 +239,18 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 	})
 }
 
-// CreateAPIKey 保存新 key 的哈希。
-func (s *Store) CreateAPIKey(ctx context.Context, userID int64, name, keyHash, keyPrefix string, groupID int64) (int64, error) {
+// CreateAPIKey 保存新 key 的哈希；quota 为 nil 表示不限额。
+func (s *Store) CreateAPIKey(ctx context.Context, userID int64, name, keyHash, keyPrefix string, groupID int64, quota *decimal.Decimal) (int64, error) {
 	var id int64
-	err := s.Pool.QueryRow(ctx, `
-		INSERT INTO api_keys (user_id, name, key_hash, key_prefix, group_id)
-		VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		userID, name, keyHash, keyPrefix, groupID,
-	).Scan(&id)
+	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		return track(ctx, tx, keyEntity, &id, userID, func() error {
+			return tx.QueryRow(ctx, `
+				INSERT INTO api_keys (user_id, name, key_hash, key_prefix, group_id, quota_limit)
+				VALUES ($1, $2, $3, $4, $5, $6::numeric) RETURNING id`,
+				userID, name, keyHash, keyPrefix, groupID, decimalArg(quota),
+			).Scan(&id)
+		})
+	})
 	return id, err
 }
 

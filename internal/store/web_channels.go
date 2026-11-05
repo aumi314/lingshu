@@ -118,48 +118,52 @@ func (s *Store) ChannelSecret(ctx context.Context, id int64) (*Channel, error) {
 // SaveChannel 新建或更新渠道，连同所属分组和模型映射一起整体保存。更新时 APIKey 为空表示不改 key。
 func (s *Store) SaveChannel(ctx context.Context, c *Channel) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
-		if c.ID == 0 {
-			if c.APIKey == "" {
-				return fmt.Errorf("新建渠道必须填写 API key")
-			}
-			if err := tx.QueryRow(ctx, `
-				INSERT INTO channels (name, template, api_key, priority, enabled, base_url_chat, base_url_messages, base_url_responses, base_url_systemone, proxy_url, sort_order)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, (SELECT COALESCE(max(sort_order), 0) + 1 FROM channels)) RETURNING id`,
-				c.Name, c.Template, c.APIKey, c.Priority, c.Enabled, c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses, c.BaseURLSystemOne, c.ProxyURL,
-			).Scan(&c.ID); err != nil {
-				return translate(err)
-			}
-		} else {
-			if err := execOne(ctx, tx, `
-				UPDATE channels SET name = $2, template = $3, api_key = COALESCE(NULLIF($4, ''), api_key), priority = $5,
-				       enabled = $6, base_url_chat = $7, base_url_messages = $8, base_url_responses = $9, proxy_url = $10, base_url_systemone = $11
-				WHERE id = $1`,
-				c.ID, c.Name, c.Template, c.APIKey, c.Priority, c.Enabled, c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses, c.ProxyURL, c.BaseURLSystemOne,
-			); err != nil {
-				return err
-			}
+		return track(ctx, tx, channelEntity, &c.ID, 0, func() error { return saveChannel(ctx, tx, c) })
+	})
+}
+
+func saveChannel(ctx context.Context, tx pgx.Tx, c *Channel) error {
+	if c.ID == 0 {
+		if c.APIKey == "" {
+			return fmt.Errorf("新建渠道必须填写 API key")
 		}
-		if _, err := tx.Exec(ctx, `DELETE FROM channel_groups WHERE channel_id = $1`, c.ID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO channel_groups SELECT $1, unnest($2::bigint[])`, c.ID, c.GroupIDs); err != nil {
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO channels (name, template, api_key, priority, enabled, base_url_chat, base_url_messages, base_url_responses, base_url_systemone, proxy_url, sort_order)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, (SELECT COALESCE(max(sort_order), 0) + 1 FROM channels)) RETURNING id`,
+			c.Name, c.Template, c.APIKey, c.Priority, c.Enabled, c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses, c.BaseURLSystemOne, c.ProxyURL,
+		).Scan(&c.ID); err != nil {
 			return translate(err)
 		}
-		if _, err := tx.Exec(ctx, `DELETE FROM channel_models WHERE channel_id = $1`, c.ID); err != nil {
+	} else {
+		if err := execOne(ctx, tx, `
+			UPDATE channels SET name = $2, template = $3, api_key = COALESCE(NULLIF($4, ''), api_key), priority = $5,
+			       enabled = $6, base_url_chat = $7, base_url_messages = $8, base_url_responses = $9, proxy_url = $10, base_url_systemone = $11
+			WHERE id = $1`,
+			c.ID, c.Name, c.Template, c.APIKey, c.Priority, c.Enabled, c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses, c.ProxyURL, c.BaseURLSystemOne,
+		); err != nil {
 			return err
 		}
-		for _, m := range c.Models {
-			upstream := m.UpstreamName
-			if upstream == m.ModelName {
-				upstream = ""
-			}
-			if _, err := tx.Exec(ctx, `INSERT INTO channel_models (channel_id, model_id, upstream_name) VALUES ($1, $2, $3)`,
-				c.ID, m.ModelID, upstream); err != nil {
-				return translate(err)
-			}
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM channel_groups WHERE channel_id = $1`, c.ID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO channel_groups SELECT $1, unnest($2::bigint[])`, c.ID, c.GroupIDs); err != nil {
+		return translate(err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM channel_models WHERE channel_id = $1`, c.ID); err != nil {
+		return err
+	}
+	for _, m := range c.Models {
+		upstream := m.UpstreamName
+		if upstream == m.ModelName {
+			upstream = ""
 		}
-		return nil
-	})
+		if _, err := tx.Exec(ctx, `INSERT INTO channel_models (channel_id, model_id, upstream_name) VALUES ($1, $2, $3)`,
+			c.ID, m.ModelID, upstream); err != nil {
+			return translate(err)
+		}
+	}
+	return nil
 }
 
 // ReorderChannels 按 ids 的顺序重排渠道列表（只影响显示）。不在 ids 里的渠道排到后面，保持原有顺序。
@@ -174,7 +178,11 @@ func (s *Store) ReorderChannels(ctx context.Context, ids []int64) error {
 
 // DeleteChannel 删除渠道；余额快照随渠道一起删，请求日志不受影响。
 func (s *Store) DeleteChannel(ctx context.Context, id int64) error {
-	return execOne(ctx, s.Pool, `DELETE FROM channels WHERE id = $1`, id)
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		return track(ctx, tx, channelEntity, &id, 0, func() error {
+			return execOne(ctx, tx, `DELETE FROM channels WHERE id = $1`, id)
+		})
+	})
 }
 
 // ---- 用户的 API key ----
@@ -211,26 +219,32 @@ func (s *Store) ListAPIKeys(ctx context.Context, userID int64) ([]APIKey, error)
 	})
 }
 
-// SetAPIKeyQuota 设置 key 的限额，nil 表示不限。
-func (s *Store) SetAPIKeyQuota(ctx context.Context, userID, keyID int64, limit *decimal.Decimal) error {
-	return execOne(ctx, s.Pool, `UPDATE api_keys SET quota_limit = $3::numeric WHERE id = $2 AND user_id = $1`,
-		userID, keyID, decimalArg(limit))
-}
-
 type APIKeyPatch struct {
-	Name    *string
-	Enabled *bool
-	GroupID *int64
+	Name     *string
+	Enabled  *bool
+	GroupID  *int64
+	SetQuota bool // 为 true 时把限额改成 Quota（nil 表示不限）
+	Quota    *decimal.Decimal
 }
 
+// UpdateAPIKey 在一个事务里改名称、启停、分组和限额，要么全改要么全不改。
 func (s *Store) UpdateAPIKey(ctx context.Context, userID, keyID int64, p APIKeyPatch) error {
-	return execOne(ctx, s.Pool, `
-		UPDATE api_keys SET name = COALESCE($3, name), enabled = COALESCE($4, enabled), group_id = COALESCE($5, group_id)
-		WHERE id = $2 AND user_id = $1`, userID, keyID, p.Name, p.Enabled, p.GroupID)
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		return track(ctx, tx, keyEntity, &keyID, userID, func() error {
+			return execOne(ctx, tx, `
+				UPDATE api_keys SET name = COALESCE($3, name), enabled = COALESCE($4, enabled), group_id = COALESCE($5, group_id),
+				       quota_limit = CASE WHEN $6 THEN $7::numeric ELSE quota_limit END
+				WHERE id = $2 AND user_id = $1`, userID, keyID, p.Name, p.Enabled, p.GroupID, p.SetQuota, decimalArg(p.Quota))
+		})
+	})
 }
 
 func (s *Store) DeleteAPIKey(ctx context.Context, userID, keyID int64) error {
-	return execOne(ctx, s.Pool, `DELETE FROM api_keys WHERE id = $2 AND user_id = $1`, userID, keyID)
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		return track(ctx, tx, keyEntity, &keyID, userID, func() error {
+			return execOne(ctx, tx, `DELETE FROM api_keys WHERE id = $2 AND user_id = $1`, userID, keyID)
+		})
+	})
 }
 
 // ---- 请求日志 ----
@@ -242,6 +256,7 @@ type LogFilter struct {
 	Model     string
 	ChannelID int64
 	Status    string
+	Target    string // 操作日志的对象类型
 	From, To  *time.Time
 	Limit     int
 	Offset    int
