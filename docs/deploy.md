@@ -4,6 +4,14 @@
 
 ## 当前运行基线
 
+2026-11-05 发布并复核：DMIT 已发布提交 `186bcc883cee3e4d073c9900deacf41ad65e8ae6`，运行中程序 SHA-256 为 `2c43284acb99cc22d694bef72fc8e451ce80a14cb81f80f7c57d33c6a939f81e`，属主保持 `lingshu:lingshu` 0755。发布前备份 `/var/backups/lingshu/lingshu-20261105T092701Z.dump`，SHA-256 为 `813a62c93e41922a54deddafbefc79176e8e431435732153d81ab48bdb7d6410`，`pg_restore --list` 可读（19 张表数据）。旧程序、配置与发布标记保留为 `prev-186bcc8`。
+
+本次日志分为调用日志 / 操作日志两个标签：迁移 `0017_log_group_name` 给 `request_logs` 加服务分组名快照并按现有分组回填，线上 schema 由 `0016_user_note` 升到 `0017_log_group_name`。回填时 3185 条请求日志中 1190 条补上分组名；1995 条的 `group_id` 早已因分组删除置空（倍率快照 0.2、0.1、1 各有一批，2026-10-28 至 11-05），新迁移无法补回，可按 request_id 从删除前的每日备份恢复。旧进程等待进行中请求结束后退出，新进程启动、内网健康检查通过，服务日志无 ERROR。公网首页引用的 `index-B0Hsk727.js` 与干净构建产物 SHA-256 `4b0617cd224271183e28d25205035751f71f9894cc534714e8292f4c4d36a4fa` 一致。
+
+0017 是纯增列迁移，旧程序不读该列：回滚只需换回 `prev-186bcc8` 程序，不需要数据库恢复。
+
+运维备注：DMIT 的 SSH 对短时间内重复建连会直接断开（`Connection closed`），发布时用 `ControlMaster` 开一条主连接复用。本次从 WSL 直连 `gateway.piqode.com:443` 出现 TLS 握手失败（`SSL_ERROR_SYSCALL`），从 DMIT 经 Cloudflare 访问正常，公网核对改在 DMIT 上执行。
+
 2026-11-01 发布并复核：DMIT 已发布提交 `a716f27161e93c0fca6c99fb2cce890ad43c0131`，运行中程序 SHA-256 为 `51becc46e164ec1614d46c6e72acb05b69d0593f1ffe3b627e1c780441b83f2e`，服务及内外网健康检查通过。发布前备份 `/var/backups/lingshu/lingshu-20261101T151309Z.dump`，SHA-256 为 `da3a5cfeda473da641ce9abe6a3bbf7bae21ed8f8b73cbb687d86b2b63ed17c7`，已通过 `pg_restore --list`。旧程序、配置与发布标记保留为 `prev-a716f27`。
 
 本次新增管理员用户备注：迁移 `0016_user_note` 给 `users` 加 `note TEXT NOT NULL DEFAULT ''`，线上 schema 由 `0015_channel_balance` 升到 `0016_user_note`；该字段只在管理端用户列表返回，`/api/me` 不含。用户编辑弹窗同时把额度区的「备注」改名「额度备注」，并去掉「最近调整」列表（流水仍写库，可在账户日志与全站日志查看）。发布后用临时管理员会话只读核对：`/api/admin/users` 返回 `note` 字段、`/api/me` 不含该字段，会话已删除。公网首页与入口资源 `index-HpP6EULs.js` 的 SHA-256 为 `367755f967692605d101c7470865b5045b9210dec3a3001dcaace4e0ee230f74`，与干净构建产物逐字节一致。复核公网时注意：用 Python 默认 `Python-urllib` UA 访问首页会得到 403（Cloudflare），需换浏览器 UA。
