@@ -273,3 +273,5 @@ Google Gemini 官方渠道（2026-10-24 ✅ 已发布 DMIT）：新增 Google AI
 统一日志现役提交、备份及只读登录验收见 `docs/deploy.md`；未制造生产充值或余额调整，验证会话已清理。
 
 混元 Hy4 正式版（2026-11-05 ✅ 线上生效）：新增站内模型 `hy4`，价格按中国站刊例价 ¥6 / ¥18 / 缓存命中 ¥0.3 除以现行汇率 6.7，得 $0.895522 / $2.686567 / $0.044776，缓存写入 0，与 `hy4-preview` 同价。映射到 Hunyuan 渠道（渠道 11，Official API 分组），同名映射上游模型 `hy4`。经网关实测 chat 与 messages 两种协议都成功，上游模型为 hy4，26 输入 / 16 输出 token 扣费 $0.0000662686，与价格换算一致；验证用临时 key 已删除。`hy4-preview` 保留，上游仍标 online。无代码改动、无迁移、无发布。
+
+服务分组 Relay-GPT 下线（2026-11-05 ✅ 线上生效）：该分组已无渠道，第三方中转渠道与自用 key 均已迁到 `Third-party Relay`，随即删除分组。删除前把 lsh 的 key「dddd」从 `Relay-GPT` 迁到 `Third-party Relay`——`api_keys.group_id` 外键没有级联，key 仍指向已删分组会导致删除被拒。删后现存 5 个分组：default、Official API、Cloud Providers、Account Pool、Third-party Relay；该 key 倍率由 0.2 变为 1。历史请求日志的 `group_id` 按外键置空，金额、倍率、模型保留。无代码改动、无迁移、无发布。
