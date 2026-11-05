@@ -9,10 +9,16 @@ on:
 permissions:
   contents: read
 
+# 同一个 PR 推了新提交，就取消还在跑的上一轮
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   go:
     name: Go 测试
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17-alpine
@@ -42,6 +48,7 @@ jobs:
   web:
     name: 前端检查与浏览器回归
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: web
@@ -55,10 +62,16 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: 类型检查与构建
         run: npm run build
+      - name: 缓存 Playwright 浏览器
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.60.0-chromium-headless-shell
       - name: 安装浏览器回归用的 Playwright（只在 CI 里装，不进依赖）
+        # 不加 --with-deps：系统依赖走 apt，GitHub 上 apt 源时快时慢（曾卡 10 分钟以上），镜像自带的依赖已够用
         run: |
           npm install --no-save --no-audit --no-fund playwright@1.60.0
-          npx playwright install --with-deps chromium-headless-shell
+          npx playwright install chromium-headless-shell
       - name: 浏览器回归
         run: |
           node tests/overview.browser.cjs
