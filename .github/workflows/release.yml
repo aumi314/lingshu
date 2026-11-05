@@ -74,10 +74,12 @@ jobs:
       - name: 发布（先传成品，最后传清单，DMIT 以清单为准）
         if: env.SKIP != '1'
         run: |
+          # GitHub 接口偶尔返回 5xx（2026-11-05 遇到过），每步最多试 5 次
+          retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "第 $i 次失败，10 秒后重试：$*"; sleep 10; done; return 1; }
           git tag -f main-latest "$SHA"
-          git push -f origin refs/tags/main-latest
+          retry git push -f origin refs/tags/main-latest
           if ! gh release view main-latest >/dev/null 2>&1; then
-            gh release create main-latest --prerelease --title "main-latest" --notes "main 上 CI 通过的最新构建，DMIT 自动拉取部署。提交和哈希见 manifest.json。"
+            retry gh release create main-latest --prerelease --title "main-latest" --notes "main 上 CI 通过的最新构建，DMIT 自动拉取部署。提交和哈希见 manifest.json。"
           fi
-          gh release upload main-latest lingshu --clobber
-          gh release upload main-latest manifest.json --clobber
+          retry gh release upload main-latest lingshu --clobber
+          retry gh release upload main-latest manifest.json --clobber
