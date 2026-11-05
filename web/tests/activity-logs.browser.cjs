@@ -19,9 +19,9 @@ const fs = require('node:fs')
       const page = await browser.newPage({ viewport: admin ? { width: 1440, height: 1050 } : { width: 390, height: 844 } })
       const user = { id: 2, username: 'member-fixture', role: admin ? 'admin' : 'user', balance: '8', preferences: { language: en ? 'en' : 'zh', theme: 'dark' }, enabled: true, user_group_ids: [], created_at: new Date().toISOString() }
       const common = { id: 1, user_id: 2, username: user.username, created_at: new Date().toISOString(), status: 'success', operator: '', note: '' }
-      const request = { ...common, type: 'request', event_key: 'request:1', request_id: 'req-fixture', key_name: 'fixture-key', model: 'fixture-model', upstream_model: admin ? 'upstream-fixture' : '', channel_name: admin ? 'fixture-channel' : '', group_name: 'fixture-group', group_ratio: '1', protocol: 'chat', stream: false, error: '', http_status: 200, input_tokens: 100, cache_read_tokens: 0, cache_write_tokens: 0, output_tokens: 20, reasoning_tokens: 0, cost: '0.25', balance_delta: '-0.25', attempts: 1, first_byte_ms: 100, total_ms: 200, input_price: '1', output_price: '2', price_rule: '' }
+      const request = { ...common, type: 'request', event_key: 'request:1', request_id: 'req-fixture', key_name: 'fixture-key', model: 'fixture-model', upstream_model: admin ? 'upstream-fixture' : '', channel_name: admin ? 'fixture-channel' : '', group_name: 'fixture-group', group_ratio: '1', protocol: 'chat', stream: false, error: '', http_status: 200, input_tokens: 100, cache_read_tokens: 0, cache_write_tokens: 0, output_tokens: 20, reasoning_tokens: 0, cost: '0.25', balance_delta: '-0.25', attempts: 1, first_byte_ms: 100, total_ms: 200, input_price: '1', output_price: '2', price_rule: '', client_ip: '203.0.113.9' }
       // 流式：输入 100 + 缓存读 300 → 命中 75%；可见输出 200 − 推理 100 ÷（3.0s − 1.0s）→ 50 tok/s
-      const streamed = { ...request, id: 3, event_key: 'request:3', request_id: 'req-stream', model: 'stream-model', stream: true, cache_read_tokens: 300, output_tokens: 200, reasoning_tokens: 100, first_byte_ms: 1000, total_ms: 3000 }
+      const streamed = { ...request, id: 3, event_key: 'request:3', request_id: 'req-stream', model: 'stream-model', stream: true, cache_read_tokens: 300, output_tokens: 200, reasoning_tokens: 100, first_byte_ms: 1000, total_ms: 3000, reasoning_effort: 'high' }
       // 上游攒好整段一次发出：首字后 0.05s 就结束，测不出速度
       const burst = { ...request, id: 4, event_key: 'request:4', request_id: 'req-burst', model: 'burst-model', stream: true, output_tokens: 300, first_byte_ms: 2000, total_ms: 2050 }
       const op = { created_at: common.created_at, user_id: 2, target_id: '2', target_name: 'member-fixture', note: '' }
@@ -57,6 +57,10 @@ const fs = require('node:fs')
       assert.equal(queries.at(-1).get('type'), 'request')
       await page.getByText('fixture-group', { exact: true }).first().waitFor()
       await page.getByText('1.0s · 50 tok/s', { exact: true }).waitFor()
+      await page.getByText(text('Chat · 流式 · high', 'Chat · stream · high'), { exact: true }).waitFor()
+      await page.getByText(text('Chat · 非流式', 'Chat · non-stream'), { exact: true }).first().waitFor()
+      // 表格比屏幕宽时只在表格内左右滑，页面本身不能被撑宽
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1))
       await page.getByText('2.0s', { exact: true }).waitFor()
       assert.equal(await page.getByText(/tok\/s/).count(), 1)
       await page.getByText(text('缓存 75%', 'Cache 75%'), { exact: true }).waitFor()
@@ -64,6 +68,7 @@ const fs = require('node:fs')
       await page.getByText('60%', { exact: true }).waitFor() // 汇总卡片：缓存读 300 ÷ 输入 500
       await page.getByText('fixture-model', { exact: true }).click()
       await page.getByText('req-fixture', { exact: true }).waitFor()
+      await page.locator('.ant-drawer').getByText('203.0.113.9', { exact: true }).waitFor()
       if (!admin) assert.equal(await page.getByText('fixture-channel', { exact: true }).count(), 0)
       await page.locator('.ant-drawer-close').click()
 
@@ -96,7 +101,7 @@ const fs = require('node:fs')
       // 慢响应不能覆盖后切换的标签
       hold = true
       await tab('调用日志', 'Call logs')
-      await page.waitForTimeout(100)
+      for (let i = 0; i < 100 && delayed.length === 0; i++) await page.waitForTimeout(20) // 等请求被拦下，机器忙时 100ms 不够
       assert.ok(delayed.length > 0)
       await tab('操作日志', 'Operation logs')
       await page.getByText(text('额度调整', 'Balance adjustment'), { exact: true }).waitFor()

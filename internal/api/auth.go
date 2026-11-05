@@ -48,7 +48,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &in) {
 		return
 	}
-	username, ip := strings.TrimSpace(in.Username), clientIP(r)
+	username, ip := strings.TrimSpace(in.Username), auth.ClientIP(r)
 	if wait := s.guard.lockedFor(username, ip); wait > 0 {
 		minutes := int(wait.Minutes()) + 1
 		slog.Warn("登录被锁定", "username", logName(username), "ip", ip)

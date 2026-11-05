@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/aumi314/lingshu/internal/relay/usage"
 )
@@ -15,6 +16,7 @@ type request struct {
 	model              string
 	stream             bool
 	previousResponseID string // responses 协议：接着哪次响应继续
+	effort             string // 客户端要求的推理强度，只用于记日志
 }
 
 func parseRequest(body []byte) (*request, error) {
@@ -31,7 +33,36 @@ func parseRequest(body []byte) (*request, error) {
 	if raw, ok := req.fields["previous_response_id"]; ok {
 		json.Unmarshal(raw, &req.previousResponseID)
 	}
+	req.effort = reasoningEffort(req.fields)
 	return req, nil
+}
+
+// reasoningEffort 取客户端要求的推理强度：chat 的 reasoning_effort、responses 的 reasoning.effort、
+// messages 的 output_config.effort；messages 只传 thinking 时，记预算（budget:N）或 thinking 类型。
+func reasoningEffort(fields map[string]json.RawMessage) string {
+	var effort string
+	if json.Unmarshal(fields["reasoning_effort"], &effort) == nil && effort != "" {
+		return effort
+	}
+	var nested struct {
+		Effort string `json:"effort"`
+	}
+	for _, key := range []string{"reasoning", "output_config"} {
+		if json.Unmarshal(fields[key], &nested) == nil && nested.Effort != "" {
+			return nested.Effort
+		}
+	}
+	var thinking struct {
+		Type   string `json:"type"`
+		Budget int    `json:"budget_tokens"`
+	}
+	if json.Unmarshal(fields["thinking"], &thinking) == nil {
+		if thinking.Type == "enabled" && thinking.Budget > 0 {
+			return "budget:" + strconv.Itoa(thinking.Budget)
+		}
+		return thinking.Type
+	}
+	return ""
 }
 
 // bodyFor 生成发给某个渠道的请求体：model 换成上游名；chat 流式请求补上 include_usage。

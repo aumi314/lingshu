@@ -7,8 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"math/bits"
-	"net"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -191,18 +189,4 @@ func leadingZeroBits(sum [32]byte) int {
 		n += 8
 	}
 	return n
-}
-
-// clientIP 取访问者 IP。只有请求来自本机（Nginx 转发）时才信 X-Real-IP，否则可以被伪造。
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
-		if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); real != "" {
-			return real
-		}
-	}
-	return host
 }

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/aumi314/lingshu/internal/auth"
 )
 
 func fakeClock(g *loginGuard) *time.Time {
@@ -111,11 +113,15 @@ func TestClientIP(t *testing.T) {
 	r := httptest.NewRequest("POST", "/", nil)
 	r.RemoteAddr = "127.0.0.1:5000"
 	r.Header.Set("X-Real-IP", "8.8.8.8")
-	if ip := clientIP(r); ip != "8.8.8.8" {
-		t.Errorf("Nginx 转发来的请求应取 X-Real-IP，得到 %s", ip)
+	if ip := auth.ClientIP(r); ip != "8.8.8.8" {
+		t.Errorf("本机转发来的请求应取 X-Real-IP，得到 %s", ip)
+	}
+	r.RemoteAddr = "172.18.0.4:5000" // DMIT 上 Caddy 在 Docker 网桥里
+	if ip := auth.ClientIP(r); ip != "8.8.8.8" {
+		t.Errorf("网桥上的 Caddy 转发来的请求应取 X-Real-IP，得到 %s", ip)
 	}
 	r.RemoteAddr = "5.5.5.5:5000"
-	if ip := clientIP(r); ip != "5.5.5.5" {
+	if ip := auth.ClientIP(r); ip != "5.5.5.5" {
 		t.Errorf("直连时不信 X-Real-IP，得到 %s", ip)
 	}
 }

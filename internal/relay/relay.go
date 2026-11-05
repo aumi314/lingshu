@@ -102,6 +102,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		return // 没认出用户，不写日志
 	}
 	c.log.UserID, c.log.APIKeyID, c.log.GroupID, c.log.KeyName, c.log.GroupName = owner.UserID, owner.KeyID, owner.GroupID, owner.KeyName, owner.GroupName
+	c.log.ClientIP = auth.ClientIP(r)
 	defer h.finish(r.Context(), c)
 
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
@@ -114,7 +115,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		c.reject(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	c.log.Model, c.log.Stream = req.model, req.stream
+	c.log.Model, c.log.Stream, c.log.ReasoningEffort = req.model, req.stream, req.effort
 	c.body = body
 	if c.proto == usage.SystemOne && req.stream {
 		c.reject(w, http.StatusBadRequest, "System One 不支持流式调用，请移除 stream 或设为 false")

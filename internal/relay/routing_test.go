@@ -275,7 +275,7 @@ func TestUpstreamKeyEchoIsRedacted(t *testing.T) {
 func TestLogKeepsNamesAfterChannelKeyAndGroupDeleted(t *testing.T) {
 	e := newEnv(t)
 	e.upstream = okUpstream
-	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat","reasoning_effort":"high"}`, map[string]string{"X-Real-IP": "203.0.113.9"}) // 测试服务器经本机回环转发
 	resp.Body.Close()
 	rid := resp.Header.Get("X-Lingshu-Request-Id")
 	e.logRow(rid)
@@ -286,7 +286,7 @@ func TestLogKeepsNamesAfterChannelKeyAndGroupDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(logs) != 1 || logs[0].ChannelName != "c-chat" || logs[0].KeyName != "k" || logs[0].GroupName != "default" {
-		t.Errorf("渠道、key 和分组删除后，日志应保留名字快照，实际 %+v", logs)
+	if len(logs) != 1 || logs[0].ChannelName != "c-chat" || logs[0].KeyName != "k" || logs[0].GroupName != "default" || logs[0].ClientIP != "203.0.113.9" || logs[0].ReasoningEffort != "high" {
+		t.Errorf("渠道、key 和分组删除后，日志应保留名字快照和访问者 IP；，日志应保留名字快照，实际 %+v", logs)
 	}
 }

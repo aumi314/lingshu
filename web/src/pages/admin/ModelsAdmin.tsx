@@ -120,6 +120,7 @@ export default function ModelsAdmin() {
         dataSource={models}
         pagination={false}
         columns={[
+          { title: 'ID', dataIndex: 'id', width: 48, render: (v) => <span className="muted">{v}</span> },
           { title: t('模型名', 'Name'), dataIndex: 'name', render: (v) => <span className="model-name"><ModelIcon name={v} /><span className="mono">{v}</span></span> },
           { title: t('输入', 'Input'), dataIndex: 'input_price', render: price },
           { title: t('输出', 'Output'), dataIndex: 'output_price', render: price },

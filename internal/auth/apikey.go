@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"net"
 	"net/http"
 	"strings"
 )
@@ -36,4 +37,19 @@ func KeysFromRequest(r *http.Request) []string {
 		}
 	}
 	return keys
+}
+
+// ClientIP 取访问者 IP。只有请求来自本机或私有网段（同机 Docker 网桥上的 Caddy）时才信 X-Real-IP：
+// 应用只监听网桥地址，公网连不到；Caddy 的 header_up 会覆盖客户端自带的 X-Real-IP。其他来源一律用连接地址，防伪造。
+func ClientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(host); ip != nil && (ip.IsLoopback() || ip.IsPrivate()) {
+		if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); real != "" {
+			return real
+		}
+	}
+	return host
 }

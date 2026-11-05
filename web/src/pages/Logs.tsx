@@ -10,6 +10,7 @@ type Tab = 'calls' | 'operations'
 type Filter = { range: [Dayjs, Dayjs]; model?: string; status?: string; user_id?: number; target?: string }
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`
+const protocolLabel: Record<string, string> = { chat: 'Chat', messages: 'Messages', responses: 'Responses', systemone: 'System One' }
 // 缓存命中率 = 缓存读 ÷（输入 + 缓存读 + 缓存写），向下取整，避免没全中却显示 100%
 const cacheRate = (read: number, total: number) => total > 0 ? `${Math.floor((read * 100) / total)}%` : '—'
 
@@ -100,7 +101,6 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
   const s = data?.summary
   const pagination = { current: page, pageSize, total: (tab === 'calls' ? data?.total : ops?.total) ?? 0, onChange: setPage, showSizeChanger: false }
   const time = { title: t('时间', 'Time'), dataIndex: 'created_at', render: (v: string) => <span className="nowrap">{dayjs(v).format('MM-DD HH:mm:ss')}</span> }
-  const userColumn = admin ? [{ title: t('用户', 'User'), dataIndex: 'username' }] : []
 
   const calls = (
     <>
@@ -129,13 +129,22 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
         dataSource={data?.logs.filter((entry): entry is RequestActivity => entry.type === 'request')}
         onRow={(r) => ({ onClick: () => setDetail(r), style: { cursor: 'pointer' } })}
         pagination={pagination}
+        scroll={{ x: 'max-content' }}
         locale={{ emptyText: t('这段时间没有调用记录', 'No calls in this period') }}
         columns={[
           time,
-          ...userColumn,
+          ...(admin ? [{ title: t('用户', 'User'), dataIndex: 'username', render: (v: string, r: LogEntry) => <div className="nowrap">{v}{r.client_ip && <div className="muted mono">{r.client_ip}</div>}</div> }] : []),
           { title: 'Key', dataIndex: 'key_name', render: (v: string) => v || '—' },
           { title: t('服务分组', 'Service group'), dataIndex: 'group_name', render: (v: string) => v || '—' },
-          { title: t('模型', 'Model'), dataIndex: 'model', render: (v: string) => <span className="mono">{v}</span> },
+          {
+            title: t('请求', 'Request'),
+            render: (_, r) => (
+              <div className="nowrap">
+                <span className="mono">{r.model}</span>
+                <div className="muted">{[protocolLabel[r.protocol] ?? r.protocol, r.stream ? t('流式', 'stream') : t('非流式', 'non-stream'), r.reasoning_effort].filter(Boolean).join(' · ')}</div>
+              </div>
+            ),
+          },
           ...(admin ? [{ title: t('渠道', 'Channel'), dataIndex: 'channel_name', render: (v: string, r: LogEntry) => <>{v || '—'}{r.attempts > 1 && <Tag style={{ marginLeft: 4 }}>{t(`试了 ${r.attempts} 次`, `${r.attempts} tries`)}</Tag>}</> }] : []),
           {
             title: t('状态', 'Status'),
@@ -264,9 +273,11 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
             </Descriptions.Item>
             <Descriptions.Item label={t('时间', 'Time')}>{dayjs(detail.created_at).format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
             {admin && <Descriptions.Item label={t('用户', 'User')}>{detail.username}</Descriptions.Item>}
+            <Descriptions.Item label={t('访问者 IP', 'Client IP')}><span className="mono">{detail.client_ip || '—'}</span></Descriptions.Item>
             <Descriptions.Item label="Key">{detail.key_name}</Descriptions.Item>
             <Descriptions.Item label={t('服务分组 / 倍率', 'Service group / ratio')}>{detail.group_name} ×{Number(detail.group_ratio)}</Descriptions.Item>
             <Descriptions.Item label={t('协议', 'Protocol')}>{detail.protocol}{detail.stream ? t('（流式）', ' (stream)') : ''}</Descriptions.Item>
+            <Descriptions.Item label={t('推理强度', 'Reasoning effort')}>{detail.reasoning_effort || '—'}</Descriptions.Item>
             <Descriptions.Item label={t('模型', 'Model')}>{detail.model}</Descriptions.Item>
             {admin && <Descriptions.Item label={t('渠道 / 上游模型', 'Channel / upstream model')}>{detail.channel_name || '-'} / {detail.upstream_model || '-'}</Descriptions.Item>}
             {admin && <Descriptions.Item label={t('尝试次数', 'Attempts')}>{detail.attempts}</Descriptions.Item>}

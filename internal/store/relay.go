@@ -173,6 +173,8 @@ type RequestLog struct {
 	KeyName            string // 名字快照：渠道或 key 被删除后，历史日志仍能看出是谁
 	GroupID            int64
 	GroupName          string
+	ClientIP           string
+	ReasoningEffort    string
 	Protocol           string
 	Model              string
 	UpstreamModel      string
@@ -216,15 +218,15 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 				stream, status, http_status, error,
 				input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, reasoning_tokens, usage_estimated,
 				input_price, output_price, cache_read_price, cache_write_price, group_ratio, cost,
-				attempts, first_byte_ms, total_ms, upstream_response_id, channel_name, key_name, price_rule, group_name
+				attempts, first_byte_ms, total_ms, upstream_response_id, channel_name, key_name, price_rule, group_name, client_ip, reasoning_effort
 			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28,$29,$30,$31,$32)`,
+			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34)`,
 			l.RequestID, l.UserID, l.APIKeyID, l.GroupID, l.Protocol, l.Model, l.UpstreamModel, channelID,
 			l.Stream, l.Status, l.HTTPStatus, l.Error,
 			l.InputTokens, l.CacheReadTokens, l.CacheWriteTokens, l.OutputTokens, l.ReasoningTokens, l.UsageEstimated,
 			l.Prices.Input.String(), l.Prices.Output.String(), l.Prices.CacheRead.String(), l.Prices.CacheWrite.String(),
 			ratio.String(), l.Cost.String(),
-			l.Attempts, l.FirstByteMS, l.TotalMS, l.UpstreamResponseID, l.ChannelName, l.KeyName, l.PriceRule, l.GroupName,
+			l.Attempts, l.FirstByteMS, l.TotalMS, l.UpstreamResponseID, l.ChannelName, l.KeyName, l.PriceRule, l.GroupName, l.ClientIP, l.ReasoningEffort,
 		); err != nil {
 			return fmt.Errorf("写请求日志: %w", err)
 		}

@@ -14,22 +14,22 @@ import (
 
 // 不写操作日志的写路由，每条都要写明原因。新增写路由时，要么在 TestOperationLogCoverage 里登记并验证，要么加到这里。
 var operationExempt = map[string]string{
-	"POST /api/auth/login":     "登录不记，失败已写服务日志",
-	"POST /api/auth/challenge": "人机验证",
-	"POST /api/auth/logout":    "登出",
-	"PUT /api/me/preferences":  "个人偏好",
-	"POST /api/me/topups":      "未付款订单",
-	"POST /api/me/topups/{order}/checkout":                       "未付款订单",
-	"POST /api/admin/payments/{provider}/test-order":             "未付款订单",
-	"POST /api/me/topups/{order}/refresh":                        "入账在 ApplyTopupEvent 里记，见 store.TestTopupCreditOperation",
+	"POST /api/auth/login":                                         "登录不记，失败已写服务日志",
+	"POST /api/auth/challenge":                                     "人机验证",
+	"POST /api/auth/logout":                                        "登出",
+	"PUT /api/me/preferences":                                      "个人偏好",
+	"POST /api/me/topups":                                          "未付款订单",
+	"POST /api/me/topups/{order}/checkout":                         "未付款订单",
+	"POST /api/admin/payments/{provider}/test-order":               "未付款订单",
+	"POST /api/me/topups/{order}/refresh":                          "入账在 ApplyTopupEvent 里记，见 store.TestTopupCreditOperation",
 	"POST /api/payments/{provider}/{version}/{environment}/notify": "入账在 ApplyTopupEvent 里记，见 store.TestTopupCreditOperation",
-	"PUT /api/admin/channels/order":                              "拖拽排序只影响列表显示",
-	"POST /api/admin/channels/fetch-models":                      "只读",
-	"POST /api/admin/channels/probe":                             "冒烟测试",
-	"POST /api/admin/channels/{id}/balance":                      "余额查询",
-	"POST /api/admin/payments/{provider}/probe":                  "支付探测",
-	"POST /api/admin/payments/waffo_pancake/catalog":             "只读外部目录",
-	"POST /api/admin/payments/waffo_pancake/create-product":      "只在外部建商品，本地不存",
+	"PUT /api/admin/channels/order":                                "拖拽排序只影响列表显示",
+	"POST /api/admin/channels/fetch-models":                        "只读",
+	"POST /api/admin/channels/probe":                               "冒烟测试",
+	"POST /api/admin/channels/{id}/balance":                        "余额查询",
+	"POST /api/admin/payments/{provider}/probe":                    "支付探测",
+	"POST /api/admin/payments/waffo_pancake/catalog":               "只读外部目录",
+	"POST /api/admin/payments/waffo_pancake/create-product":        "只在外部建商品，本地不存",
 }
 
 type opRow struct {

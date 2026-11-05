@@ -102,6 +102,7 @@ export default function OperationLogTable({ logs, loading, pagination }: { logs?
         dataSource={logs}
         onRow={(o) => ({ onClick: () => setDetail(o), style: { cursor: 'pointer' } })}
         pagination={pagination}
+        scroll={{ x: 'max-content' }}
         locale={{ emptyText: t('这段时间没有操作记录', 'No operations in this period') }}
         columns={[
           { title: t('时间', 'Time'), dataIndex: 'created_at', render: (v: string) => <span className="nowrap">{dayjs(v).format('MM-DD HH:mm:ss')}</span> },

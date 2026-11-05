@@ -139,6 +139,8 @@ export type LogEntry = {
   first_byte_ms: number
   total_ms: number
   created_at: string
+  client_ip: string // 访问者 IP，旧日志为空
+  reasoning_effort: string // 客户端要求的推理强度，原样记录，旧日志为空
 }
 
 export type LogSummary = { requests: number; failed: number; input_tokens: number; cache_read_tokens: number; output_tokens: number; cost: string } // input_tokens 含缓存读写
