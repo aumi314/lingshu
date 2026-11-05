@@ -1,8 +1,9 @@
-# 每次推送和 PR 都跑全部检查；main 上通过后由 release.yml 构建发布（见 docs/decisions.md「CI 与自动发布」）。
+# PR 和推送到 main 都跑全部检查；main 上通过后由 release.yml 构建发布（见 docs/decisions.md「CI 与自动发布」）。
 name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -27,8 +28,8 @@ jobs:
           --health-timeout 5s
           --health-retries 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: go vet
@@ -45,8 +46,8 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
