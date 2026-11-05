@@ -109,6 +109,10 @@ touch /var/lib/lingshu-deploy/approve-<完整提交号>        # 确认破坏性
 systemctl stop lingshu-deploy.timer                      # 临时停止自动发布
 ```
 
+等待一次发布结束时注意：发布服务是 oneshot，运行中状态为 `activating`，不是 `active`；用 `systemctl show -p ActiveState --value lingshu-deploy.service` 判断。重启时旧进程会等进行中的流式请求结束（最长 35 秒），这期间公网可能短暂返回 502。
+
+首次自动发布（2026-11-05）：`f2d9211` 由 GitHub 构建，DMIT 08:27:00（PST）发现、08:27:21 完成，含单独备份与健康检查；`release.json` 来源为 `github-actions main-latest`，程序哈希与清单一致。
+
 核实：GitHub Actions 两个工作流都成功；DMIT 日志出现“已发布 <提交>”；`release.json` 提交与哈希和清单一致；公网 `/healthz` 和页面资源正常；涉及协议或计费时做真实调用核对。
 
 ### 手动发布（备用）
