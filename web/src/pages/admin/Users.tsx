@@ -11,7 +11,8 @@ export default function Users() {
   const { message, modal } = App.useApp()
   const [users, setUsers] = useState<User[]>([])
   const [params, setParams] = useSearchParams()
-  const status = params.get('status') === 'enabled' || params.get('status') === 'disabled' ? params.get('status')! : 'all'
+  // 默认只看启用的账号；全部、仅看停用记在网址上
+  const status = params.get('status') === 'all' || params.get('status') === 'disabled' ? params.get('status')! : 'enabled'
   const [userGroups, setUserGroups] = useState<UserGroup[]>([])
   const [groups, setGroups] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
@@ -144,7 +145,7 @@ export default function Users() {
         <Space wrap>
           <Segmented
             value={status}
-            onChange={(v) => setParams(v === 'all' ? {} : { status: v as string }, { replace: true })}
+            onChange={(v) => setParams(v === 'enabled' ? {} : { status: v as string }, { replace: true })}
             options={[
               { value: 'all', label: `${t('全部', 'All')} ${users.length}` },
               { value: 'enabled', label: `${t('仅看启用', 'Enabled')} ${users.filter((u) => u.enabled).length}` },

@@ -4,6 +4,8 @@ import { PlusOutlined } from '@ant-design/icons'
 import { del, get, post, put, type Group, type UserGroup } from '../../api'
 import { useApp } from '../../app'
 import UserGroupManager from '../../components/UserGroupManager'
+import { DragHandle, SortableBody, SortableRow } from '../../components/SortableRows'
+import { arrayMove } from '@dnd-kit/sortable'
 
 // 放在「定价」页的标签里（pages/admin/Pricing.tsx），不单独成页
 export default function Groups() {
@@ -46,6 +48,18 @@ export default function Groups() {
     }
   }
 
+  // 拖拽排序：先在页面上换位置，再保存；失败就重新加载
+  const move = async (from: number, to: number) => {
+    const next = arrayMove(groups, from, to)
+    setGroups(next)
+    try {
+      await put('/api/admin/groups/order', { ids: next.map((g) => g.id) })
+    } catch (e) {
+      message.error((e as Error).message)
+      load()
+    }
+  }
+
   const remove = async (g: Group) => {
     try {
       await del(`/api/admin/groups/${g.id}`)
@@ -78,12 +92,15 @@ export default function Groups() {
           </Button>
         </Space>
       </div>
+      <SortableBody ids={groups.map((g) => g.id)} onMove={move}>
       <Table
         rowKey="id"
         loading={loading}
         dataSource={groups}
         pagination={false}
+        components={{ body: { row: SortableRow } }}
         columns={[
+          { key: 'sort', width: 40, render: () => <DragHandle title={t('拖动排序（成员看到的分组顺序也随之改变）', 'Drag to reorder (members see the same order)')} /> },
           { title: 'ID', dataIndex: 'id', width: 48, render: (v) => <span className="muted">{v}</span> },
           { title: t('名称', 'Name'), dataIndex: 'name' },
           { title: t('倍率', 'Ratio'), dataIndex: 'ratio', render: (v) => `×${Number(v)}` },
@@ -116,6 +133,7 @@ export default function Groups() {
           },
         ]}
       />
+      </SortableBody>
       <Modal open={editing !== null} title={editing === 'new' ? t('创建服务分组', 'Create service group') : t('编辑服务分组', 'Edit service group')} onOk={save} onCancel={() => setEditing(null)} okText={t('保存', 'Save')} destroyOnHidden>
         <Form form={form} layout="vertical" requiredMark={false}>
           <Form.Item name="name" label={t('名称', 'Name')} rules={[{ required: true }]}>

@@ -478,6 +478,21 @@ func (s *Server) saveChannel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]int64{"id": c.ID})
 }
 
+// reorderGroups 保存服务分组的手动顺序（只影响各处的显示顺序）。
+func (s *Server) reorderGroups(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		IDs []int64 `json:"ids"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if err := s.Store.ReorderGroups(r.Context(), in.IDs); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	ok(w)
+}
+
 // reorderChannels 保存渠道列表的手动顺序（只影响显示，不影响路由）。
 func (s *Server) reorderChannels(w http.ResponseWriter, r *http.Request) {
 	var in struct {

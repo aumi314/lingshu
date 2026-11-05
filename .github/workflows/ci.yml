@@ -77,3 +77,4 @@ jobs:
           node tests/overview.browser.cjs
           node tests/activity-logs.browser.cjs
           node tests/users.browser.cjs
+          node tests/models.browser.cjs

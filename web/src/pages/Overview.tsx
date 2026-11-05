@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, Button, Card, Col, Collapse, Row, Space, Statistic, Table, Tabs, Tag, Typography } from 'antd'
+import { Alert, Button, Card, Col, Row, Space, Statistic, Tabs, Tag, Typography } from 'antd'
 import { CheckCircleFilled, ExportOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { Link } from 'react-router-dom'
@@ -35,12 +35,6 @@ export default function Overview() {
   const balance = Number(user?.balance ?? 0)
   const base = apiBaseURL || `${window.location.origin}/v1`
   const urls: GuideURLs = { base, root: base.replace(/\/v1\/?$/, '') }
-  const endpoints = [
-    { protocol: 'OpenAI Chat Completions', url: `${base}/chat/completions`, sdk: urls.base },
-    { protocol: 'OpenAI Responses', url: `${base}/responses`, sdk: urls.base },
-    { protocol: 'Anthropic Messages', url: `${base}/messages`, sdk: urls.root },
-    { protocol: 'System One (TypeSafe / Nace)', url: `${base}/systemone`, sdk: urls.root },
-  ]
   const topupAction = topupOpen
     ? <Link to="/console/wallet"><Button size="small" type="primary">{t('充值', 'Top up')}</Button></Link>
     : <Typography.Text type="secondary">{t('联系管理员充值', 'Ask an admin to top up')}</Typography.Text>
@@ -69,7 +63,7 @@ export default function Overview() {
     {
       done: !!keys?.some((k) => k.last_used_at),
       title: t('接入你的工具', 'Connect your tool'),
-      detail: t('推荐用 Magpie 一键导入，或按下方对应工具的配置填写', 'We recommend a one-click import into Magpie, or follow the setup for your tool below'),
+      detail: t('在下方「接入」里，把提示词发给你的 Agent 自动配置，或用 Magpie 一键导入', 'Under Connect below, send the prompt to your agent to set itself up, or import into Magpie in one click'),
       action: null,
     },
   ]
@@ -153,7 +147,7 @@ export default function Overview() {
         <Tabs
           items={guideClients.map((c) => ({
             key: c.key,
-            label: <Space size={4}>{c.label}{c.recommended && <Tag color="blue" style={{ marginInlineEnd: 0 }}>{t('推荐', 'Recommended')}</Tag>}</Space>,
+            label: <Space size={4}>{c.key === 'agent' ? t('Agent 配置', 'Agent setup') : c.label}{c.recommended && <Tag color="blue" style={{ marginInlineEnd: 0 }}>{t('推荐', 'Recommended')}</Tag>}</Space>,
             children: (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 <Typography.Text>{t(...c.intro)}</Typography.Text>
@@ -171,28 +165,6 @@ export default function Overview() {
               </Space>
             ),
           }))}
-        />
-        <Collapse
-          ghost
-          size="small"
-          items={[{
-            key: 'all',
-            label: t('全部协议地址', 'All protocol endpoints'),
-            children: (
-              <Table
-                rowKey="protocol"
-                pagination={false}
-                size="small"
-                scroll={{ x: 'max-content' }}
-                dataSource={endpoints}
-                columns={[
-                  { title: t('协议', 'Protocol'), dataIndex: 'protocol' },
-                  { title: t('接口地址', 'Endpoint'), dataIndex: 'url', render: (v) => <Typography.Text copyable className="mono">{v}</Typography.Text> },
-                  { title: t('SDK 地址', 'SDK base URL'), dataIndex: 'sdk', render: (v) => <Typography.Text copyable className="mono">{v}</Typography.Text> },
-                ]}
-              />
-            ),
-          }]}
         />
       </Card>
     </div>

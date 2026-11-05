@@ -68,6 +68,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/admin/groups", s.admin(s.listGroups))
 	mux.HandleFunc("POST /api/admin/groups", s.admin(s.saveGroup))
+	mux.HandleFunc("PUT /api/admin/groups/order", s.admin(s.reorderGroups))
 	mux.HandleFunc("PUT /api/admin/groups/{id}", s.admin(s.saveGroup))
 	mux.HandleFunc("DELETE /api/admin/groups/{id}", s.admin(s.deleteGroup))
 

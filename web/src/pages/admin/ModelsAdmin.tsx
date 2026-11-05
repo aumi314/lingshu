@@ -3,7 +3,7 @@ import { App, Button, Card, Divider, Form, Input, InputNumber, Modal, Popconfirm
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { del, get, post, put, type Model, type PriceRule } from '../../api'
 import { priceText, useApp } from '../../app'
-import ModelIcon from '../../components/ModelIcon'
+import ModelIcon, { byVendor } from '../../components/ModelIcon'
 
 const priceFields = ['input_price', 'output_price', 'cache_read_price', 'cache_write_price'] as const
 const clock = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -117,7 +117,7 @@ export default function ModelsAdmin() {
       <Table
         rowKey="id"
         loading={loading}
-        dataSource={models}
+        dataSource={[...models].sort(byVendor)}
         pagination={false}
         columns={[
           { title: 'ID', dataIndex: 'id', width: 48, render: (v) => <span className="muted">{v}</span> },

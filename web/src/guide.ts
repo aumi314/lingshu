@@ -28,6 +28,35 @@ export function magpieImportURL(urls: GuideURLs, key?: string): string {
 
 export const guideClients: GuideClient[] = [
   {
+    key: 'agent',
+    label: 'Agent 配置',
+    intro: [
+      '把下面这段提示词发给你正在用的 Agent（Claude Code、Codex 等），它会自己找到配置文件、先备份、填好地址，并向你要 key 完成验证。',
+      'Send this prompt to the agent you use (Claude Code, Codex, …). It finds its config file, backs it up, fills in the URLs, asks you for your key and verifies the setup.',
+    ],
+    code: ({ base, root }) => `Configure this coding agent to use my Lingshu API gateway instead of the vendor API.
+
+Gateway:
+- OpenAI-compatible base URL (Chat Completions and Responses): ${base}
+- Anthropic-compatible base URL (Messages): ${root}
+  (no /v1 here; the client appends /v1/messages itself)
+- API key: ask me for it. It starts with "sk-ls-". Never print it back, never commit it, and store it only in my user-level config or environment.
+
+Steps:
+1. Work out which agent you are running in (Claude Code, Codex or another tool) and find its user-level config file.
+2. Back up that file before changing it.
+3. Configure the gateway:
+   - Claude Code: in ~/.claude/settings.json under "env", set ANTHROPIC_BASE_URL to ${root} and ANTHROPIC_AUTH_TOKEN to the key. Use ANTHROPIC_AUTH_TOKEN, not ANTHROPIC_API_KEY. Do not append /v1.
+   - Codex: in ~/.codex/config.toml add [model_providers.lingshu] with base_url = "${base}" and env_key = "LINGSHU_API_KEY", set model_provider = "lingshu", and tell me how to export LINGSHU_API_KEY. Codex only uses the Responses API, so choose a model that supports /v1/responses.
+   - Other tools: use the OpenAI-compatible URL with the key as a Bearer token, or the Anthropic-compatible URL if the tool speaks the Messages API.
+4. List the models I can use: GET ${base}/models with header "Authorization: Bearer <key>", and let me pick one.
+5. Verify with one small request. Show me the HTTP status and which model answered. If it fails, show the error body with the key redacted and suggest a fix.`,
+    notes: [
+      ['提示词里不含 key，Agent 会问你要，粘贴给它即可。', 'The prompt contains no key; the agent asks you for it.'],
+      ['适合不想手动改配置文件的人；想自己改的话看后面几个选项卡。', 'For those who would rather not edit config files by hand; the other tabs show manual setup.'],
+    ],
+  },
+  {
     key: 'magpie',
     label: 'Magpie',
     recommended: true,

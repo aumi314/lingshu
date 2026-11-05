@@ -2,15 +2,16 @@
 const { chromium } = require('playwright')
 const assert = require('node:assert/strict')
 const { spawn } = require('node:child_process')
+// 端口用 2 万段：本机 Windows 动态端口范围是 1024–15000，镜像网络下 51xx 会被随机占用
 const path = require('node:path')
 const fs = require('node:fs')
 
 ;(async () => {
-  const server = spawn(process.execPath, [path.join(__dirname, '../node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '5184', '--strictPort'], { cwd: path.join(__dirname, '..'), stdio: 'ignore' })
+  const server = spawn(process.execPath, [path.join(__dirname, '../node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '25184', '--strictPort'], { cwd: path.join(__dirname, '..'), stdio: 'ignore' })
   const browser = await chromium.launch({ headless: true })
   try {
     for (let i = 0; i < 100; i++) {
-      try { if ((await fetch('http://127.0.0.1:5184')).ok) break } catch {}
+      try { if ((await fetch('http://127.0.0.1:25184')).ok) break } catch {}
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
     const state = { balance: '0.29', keys: [{ id: 1, name: 'laptop', prefix: 'sk-ls-AB12', group_id: 1, group_name: 'default', quota_limit: null, quota_used: '0', enabled: true, last_used_at: null, created_at: '2026-11-01' }], topup: true }
@@ -27,7 +28,7 @@ const fs = require('node:fs')
       return json({})
     })
     const goto = async () => {
-      await page.goto('http://127.0.0.1:5184/console')
+      await page.goto('http://127.0.0.1:25184/console')
       await page.getByText('接入', { exact: true }).waitFor()
     }
 
@@ -38,7 +39,13 @@ const fs = require('node:fs')
     await page.getByText('已完成 3/4', { exact: true }).waitFor()
     await page.getByText('已有 1 个 key', { exact: true }).waitFor()
 
+    // 默认是 Agent 配置：提示词带两个地址、不含 key
+    await page.getByRole('tabpanel').getByText(/Configure this coding agent to use my Lingshu API gateway/).waitFor()
+    await page.getByRole('tabpanel').getByText(/ANTHROPIC_BASE_URL to https:\/\/gateway\.example\.com and ANTHROPIC_AUTH_TOKEN/).waitFor()
+    assert.equal(await page.getByText(/sk-ls-你的key/).count(), 0)
+
     // Magpie 一键导入：三个协议地址，Anthropic 用根地址，不带 key
+    await page.getByRole('tab', { name: /Magpie/ }).click()
     const href = await page.getByRole('link', { name: /添加到 Magpie/ }).getAttribute('href')
     assert.ok(href.startsWith('https://usemagpie.ai/import#'), href)
     const params = new URLSearchParams(href.split('#')[1])
@@ -49,14 +56,13 @@ const fs = require('node:fs')
 
     // Claude Code：根地址、AUTH_TOKEN；Codex：带 /v1
     await page.getByRole('tab', { name: 'Claude Code' }).click()
-    await page.getByText(/"ANTHROPIC_BASE_URL": "https:\/\/gateway\.example\.com"/).waitFor()
+    await page.getByRole('tabpanel').getByText(/"ANTHROPIC_BASE_URL": "https:\/\/gateway\.example\.com"/).waitFor()
     await page.getByText('地址填根地址，不要加 /v1，Claude Code 会自己拼。', { exact: true }).waitFor()
     await page.getByRole('tab', { name: 'Codex' }).click()
-    await page.getByText(/base_url = "https:\/\/gateway\.example\.com\/v1"/).waitFor()
+    await page.getByRole('tabpanel').getByText(/base_url = "https:\/\/gateway\.example\.com\/v1"/).waitFor()
 
-    // 原协议表收在折叠里
-    await page.getByText('全部协议地址', { exact: true }).click()
-    await page.getByText('https://gateway.example.com/v1/messages', { exact: true }).waitFor()
+    // 协议地址表已移除
+    assert.equal(await page.getByText('全部协议地址', { exact: true }).count(), 0)
     if (process.env.OVERVIEW_SCREENSHOT_DIR) {
       fs.mkdirSync(process.env.OVERVIEW_SCREENSHOT_DIR, { recursive: true })
       await page.getByRole('tab', { name: /Magpie/ }).click()
@@ -85,7 +91,7 @@ const fs = require('node:fs')
     await page.setViewportSize({ width: 390, height: 844 })
     await goto()
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1))
-    console.log('PASS: low balance hint with top-up, auto-checked steps, Magpie import link, Claude Code root URL, Codex /v1, endpoint table collapsed, zero balance without top-up, all-done collapse, mobile width')
+    console.log('PASS: low balance hint with top-up, auto-checked steps, agent setup prompt without key, Magpie import link, Claude Code root URL, Codex /v1, endpoint table removed, zero balance without top-up, all-done collapse, mobile width')
   } finally {
     await browser.close()
     server.kill()
