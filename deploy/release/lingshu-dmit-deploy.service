@@ -1,0 +1,13 @@
+[Unit]
+Description=Lingshu DMIT automatic release from GitHub main-latest
+Requires=lingshu-db.service
+After=network-online.target lingshu-db.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/lingshu-deploy
+# 每分钟跑一次：脚本输出记为 notice，屏蔽 systemd 每次启停的 info 日志，免得刷屏
+SyslogLevel=notice
+LogLevelMax=notice
+TimeoutStartSec=15min

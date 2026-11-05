@@ -1,0 +1,83 @@
+# main 上 CI 通过后构建成品，发布到滚动预发布 main-latest；DMIT 每分钟拉取清单自行部署（deploy/deploy/lingshu-dmit-deploy）。
+name: Release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 构建并发布 main-latest
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: 只发布 main 的最新提交
+        run: |
+          latest=$(git rev-parse origin/main)
+          if [ "$latest" != "$SHA" ]; then
+            echo "main 已前进到 $latest，跳过 $SHA，由更新的那次 CI 发布"
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+      - name: 构建
+        if: env.SKIP != '1'
+        run: |
+          npm --prefix web ci --no-audit --no-fund
+          npm --prefix web run build
+          touch web/dist/.gitkeep
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=true -trimpath -ldflags='-s -w' -o lingshu ./cmd/lingshu
+      - name: 生成清单（全部迁移、破坏性迁移、成品哈希）
+        if: env.SKIP != '1'
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re, subprocess, datetime
+          migrations = sorted(p.name for p in pathlib.Path('internal/store/migrations').glob('*.sql'))
+          # 去掉 SQL 注释后含 DROP 的迁移视为破坏性：回滚要恢复备份，必须有人确认
+          def destructive(name):
+              sql = pathlib.Path('internal/store/migrations', name).read_text()
+              sql = re.sub(r'--[^\n]*', '', sql)
+              return re.search(r'\bDROP\b', sql, re.I) is not None
+          manifest = {
+              'commit': os.environ['SHA'],
+              'sha256': hashlib.sha256(pathlib.Path('lingshu').read_bytes()).hexdigest(),
+              'built_at_utc': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+              'build': subprocess.run(['go', 'version'], capture_output=True, text=True).stdout.strip() + ', node ' + subprocess.run(['node', '--version'], capture_output=True, text=True).stdout.strip() + ', linux/amd64 CGO_ENABLED=0',
+              'migrations': [m.removesuffix('.sql') for m in migrations],
+              'destructive_migrations': [m.removesuffix('.sql') for m in migrations if destructive(m)],
+          }
+          pathlib.Path('manifest.json').write_text(json.dumps(manifest, indent=2))
+          print(json.dumps(manifest, indent=2))
+          PY
+      - name: 发布（先传成品，最后传清单，DMIT 以清单为准）
+        if: env.SKIP != '1'
+        run: |
+          git tag -f main-latest "$SHA"
+          git push -f origin refs/tags/main-latest
+          if ! gh release view main-latest >/dev/null 2>&1; then
+            gh release create main-latest --prerelease --title "main-latest" --notes "main 上 CI 通过的最新构建，DMIT 自动拉取部署。提交和哈希见 manifest.json。"
+          fi
+          gh release upload main-latest lingshu --clobber
+          gh release upload main-latest manifest.json --clobber

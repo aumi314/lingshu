@@ -1,0 +1,10 @@
+[Unit]
+Description=Check GitHub main-latest for a new Lingshu release every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
