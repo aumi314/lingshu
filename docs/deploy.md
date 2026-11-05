@@ -4,6 +4,10 @@
 
 ## 当前运行基线
 
+2026-11-05 发布并复核（商业中转定位、用户筛选）：DMIT 已发布提交 `17e48474ff30321d33fe3d8661d424f53c85d149`（含 `5b70ebf` 用户启用状态筛选），运行中程序 SHA-256 为 `697774a77a95b8a17208223c80bc3d105e15686b2699f5ec1ac32b2f0c84d9ba`，属主 `lingshu:lingshu` 0755。发布前备份 `/var/backups/lingshu/lingshu-20261105T152552Z.dump`，SHA-256 为 `50be89fb5dcaabf842802ccc4cca7c86ea1ee047b57e3ae3928a90929a845355`，`pg_restore --list` 可读（20 张表数据）。旧程序、配置与发布标记保留为 `prev-17e4847`。
+
+迁移 `0020_commercial_relay_mode` 后 schema 为 `0020_commercial_relay_mode`；线上 `deployment_mode` 原为未设置（按默认显示公司团队网关），现为 `commercial_relay`。回滚换回 `prev-17e4847` 程序即可，旧程序不认识该值时页面仍显示公司团队网关，不影响功能。内网与公网健康检查通过，公网入口资源 `index-CFF1fsTx.js` 与干净构建产物 SHA-256 `e45edd97b13e3e6af9008379b4b33b6cd758d7e0de872b8a7557d28351937ae2` 一致，服务日志无 ERROR。`5b70ebf` 单独上传的成品未安装，已删除，合并到本次一起发布，只重启一次。
+
 2026-11-05 发布并复核（用户页与用户分组入口）：DMIT 已发布提交 `4b2736262197116eb4afb521b690888741b6d89e`，运行中程序 SHA-256 为 `a2afd6aaf36ffa6330facac0b55c88763cbe7d2fa751d6075b0209cd62ded542`，属主 `lingshu:lingshu` 0755。发布前备份 `/var/backups/lingshu/lingshu-20261105T145456Z.dump`，SHA-256 为 `e337e4a69775880f3cc991a5d8bfb05db26228a861aa1f9091cdd39525d7428d`，`pg_restore --list` 可读（20 张表数据）。旧程序、配置与发布标记保留为 `prev-4b27362`。无数据库迁移，schema 仍为 `0019_log_request_details`；回滚换回 `prev-4b27362` 程序即可。内网与公网健康检查通过，公网入口资源 `index-DkalBhoK.js` 与干净构建产物 SHA-256 `8b1556d50caca9e07ce5e9ffb46c46506dcab53f4dd30c9ffb1ed8d20d3baabf` 一致，服务日志无 ERROR。压缩成品约 5.3MB，上传约 7.5 分钟。
 
 2026-11-05 发布并复核（请求 IP、请求列、速度口径）：DMIT 已发布提交 `88d8823f8fedf9a353e60acd693904664acb285e`（含 `6106589` 速度口径修正），运行中程序 SHA-256 为 `32388c364777dbd88580bf6ec62e8d01ed4e58a95d3b520b9474de6e1b974322`，属主 `lingshu:lingshu` 0755。发布前备份 `/var/backups/lingshu/lingshu-20261105T141959Z.dump`，SHA-256 为 `b01ab8a8427efb98a25a69a95b6361224c543ed5bca1a5f88f9a84d473f6b145`，`pg_restore --list` 可读（20 张表数据）。旧程序、配置与发布标记保留为 `prev-88d8823`。
