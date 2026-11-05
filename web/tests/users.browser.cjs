@@ -19,6 +19,7 @@ const path = require('node:path')
     users[1].note = 'partner-note'
     users[1].last_used_at = '2026-11-03T08:00:00Z'
     users[2].user_group_ids = [1, 2]
+    users[2].enabled = false
     const userGroups = [{ id: 1, name: 'default', is_default: true }, { id: 2, name: 'friend', is_default: false }]
     const groups = [
       { id: 1, name: 'open-group', ratio: '1', enabled: true, is_public: true, user_group_ids: [], description: '' },
@@ -70,6 +71,20 @@ const path = require('node:path')
     await row(3).getByText('+ 公开分组 1 个', { exact: true }).waitFor()
     await row(1).getByText('从未', { exact: true }).waitFor()
     assert.equal(await row(2).getByText('从未', { exact: true }).count(), 0)
+
+    // 按启用状态筛选：选项带人数，选择记在网址上
+    await page.getByText('仅看停用 1', { exact: true }).click()
+    await waitFor(async () => (await row(1).count()) === 0)
+    await row(3).waitFor()
+    assert.equal(new URL(page.url()).searchParams.get('status'), 'disabled')
+    await page.reload()
+    await row(3).waitFor()
+    assert.equal(await row(1).count(), 0)
+    await page.getByText('仅看启用 2', { exact: true }).click()
+    await waitFor(async () => (await row(3).count()) === 0)
+    await page.getByText('全部 3', { exact: true }).click()
+    await row(3).waitFor()
+    assert.equal(new URL(page.url()).searchParams.get('status'), null)
 
     // 编辑：角色在弹窗里改；选了用户分组，下方即时显示能用哪些服务分组
     await open(2)
@@ -149,7 +164,7 @@ const path = require('node:path')
     await row(2).getByRole('button', { name: 'Edit', exact: true }).click()
     await dialog.getByText('Account status', { exact: true }).waitFor()
     await dialog.getByRole('button', { name: 'Submit', exact: true }).waitFor()
-    console.log('PASS: service group access column, last call, note, role moved into dialog with self protection, access preview, cancel discards drafts, confirmation cancellation, failure preserves drafts, blank amount skips balance, mobile scroll and footer, English')
+    console.log('PASS: status filter with counts and URL, service group access column, last call, note, role moved into dialog with self protection, access preview, cancel discards drafts, confirmation cancellation, failure preserves drafts, blank amount skips balance, mobile scroll and footer, English')
   } finally {
     await browser.close()
     server?.kill()

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { App, Button, Form, Input, InputNumber, Modal, Segmented, Select, Space, Switch, Table, Tag, Tooltip, Typography } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
+import { useSearchParams } from 'react-router-dom'
 import { get, patch, post, type Group, type User, type UserGroup } from '../../api'
 import { useApp } from '../../app'
 
@@ -9,6 +10,8 @@ export default function Users() {
   const { user: me, money, t, currency, reload } = useApp()
   const { message, modal } = App.useApp()
   const [users, setUsers] = useState<User[]>([])
+  const [params, setParams] = useSearchParams()
+  const status = params.get('status') === 'enabled' || params.get('status') === 'disabled' ? params.get('status')! : 'all'
   const [userGroups, setUserGroups] = useState<UserGroup[]>([])
   const [groups, setGroups] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
@@ -138,14 +141,26 @@ export default function Users() {
         <Typography.Title level={3} style={{ margin: 0 }}>
           {t('用户', 'Users')}
         </Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreating(true) }}>
-          {t('创建用户', 'Create user')}
-        </Button>
+        <Space wrap>
+          <Segmented
+            value={status}
+            onChange={(v) => setParams(v === 'all' ? {} : { status: v as string }, { replace: true })}
+            options={[
+              { value: 'all', label: `${t('全部', 'All')} ${users.length}` },
+              { value: 'enabled', label: `${t('仅看启用', 'Enabled')} ${users.filter((u) => u.enabled).length}` },
+              { value: 'disabled', label: `${t('仅看停用', 'Disabled')} ${users.filter((u) => !u.enabled).length}` },
+            ]}
+          />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreating(true) }}>
+            {t('创建用户', 'Create user')}
+          </Button>
+        </Space>
       </Space>
       <Table
         rowKey="id"
         loading={loading}
-        dataSource={users}
+        dataSource={status === 'all' ? users : users.filter((u) => u.enabled === (status === 'enabled'))}
+        locale={{ emptyText: status === 'disabled' ? t('没有停用的用户', 'No disabled users') : status === 'enabled' ? t('没有启用的用户', 'No enabled users') : undefined }}
         pagination={false}
         scroll={{ x: 'max-content' }}
         columns={[
