@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography } from 'antd'
-import { PlusOutlined } from '@ant-design/icons'
+import { ExportOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { del, get, patch, post, type APIKey, type Group, type PricedModel } from '../api'
 import { useApp } from '../app'
+import { magpieImportURL } from '../guide'
 
 type KeyForm = { name: string; group_id: number; quota_limit?: number | null }
 
@@ -89,6 +90,9 @@ export default function Keys() {
     }
   }
 
+  const base = apiBaseURL || `${window.location.origin}/v1`
+  const urls = { base, root: base.replace(/\/v1\/?$/, '') }
+
   return (
     <div className="page">
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -109,7 +113,7 @@ export default function Keys() {
         <Space size={12} wrap>
           <Typography.Text type="secondary">{t('接入地址', 'Base URL')}</Typography.Text>
           <Typography.Text code copyable className="mono">
-            {apiBaseURL || `${window.location.origin}/v1`}
+            {base}
           </Typography.Text>
         </Space>
       </Card>
@@ -206,6 +210,11 @@ export default function Keys() {
         <Typography.Paragraph copyable={{ text: created }} className="mono" style={{ fontSize: 15, wordBreak: 'break-all' }}>
           {created}
         </Typography.Paragraph>
+        {/* 只有本人此刻能看到完整 key，在这里一键导入 Magpie 最顺手；链接参数在 # 后，不经过任何服务器 */}
+        <Space wrap>
+          <Button href={magpieImportURL(urls, created)} target="_blank" rel="noreferrer" icon={<ExportOutlined />}>{t('连同 key 添加到 Magpie', 'Add to Magpie with this key')}</Button>
+          <Typography.Text type="secondary">{t('需要先安装 Magpie', 'Requires Magpie')}</Typography.Text>
+        </Space>
       </Modal>
     </div>
   )
