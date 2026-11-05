@@ -4,6 +4,12 @@
 
 ## 当前运行基线
 
+2026-11-05 发布并复核（请求 IP、请求列、速度口径）：DMIT 已发布提交 `88d8823f8fedf9a353e60acd693904664acb285e`（含 `6106589` 速度口径修正），运行中程序 SHA-256 为 `32388c364777dbd88580bf6ec62e8d01ed4e58a95d3b520b9474de6e1b974322`，属主 `lingshu:lingshu` 0755。发布前备份 `/var/backups/lingshu/lingshu-20261105T141959Z.dump`，SHA-256 为 `b01ab8a8427efb98a25a69a95b6361224c543ed5bca1a5f88f9a84d473f6b145`，`pg_restore --list` 可读（20 张表数据）。旧程序、配置与发布标记保留为 `prev-88d8823`。
+
+迁移 `0019_log_request_details` 给 `request_logs` 加 `client_ip`、`reasoning_effort`，线上 schema 升到 `0019_log_request_details`。发布后第一条新请求记下公网 IP 与推理强度 `high`，确认 Caddy 经 Docker 网桥转发的 `X-Real-IP` 已被采信（此前全部记为 `172.18.0.4`，登录防护也按此计数）。公网入口资源 `index-CoclI6Bs.js` 与干净构建产物 SHA-256 `6b2bdabb4967d2da1322caff342c27b42b8c6bc584d2c19591087196e15d2d90` 一致，服务日志无 ERROR。0019 是纯增列迁移，回滚换回 `prev-88d8823` 程序即可。
+
+传输备注：本次 WSL → DMIT 上行很慢，scp 13MB 成品中途断开过一次；改为本地 `gzip -9`（约 5.3MB）后上传，耗时约 16 分钟，服务器端解压后核对哈希一致。
+
 2026-11-05 发布并复核（操作日志）：DMIT 已发布提交 `4ac5a7a56f887be66100e8b6c86262d2512166bc`，运行中程序 SHA-256 为 `e1541a729f2ac256267e7a44bbe838474008c4066f73e815c32e347d5c43ed86`，属主 `lingshu:lingshu` 0755。发布前备份 `/var/backups/lingshu/lingshu-20261105T104022Z.dump`，SHA-256 为 `b24c51029a7f7410cde04ed9e15d4e2f426cbf93ef5a9d00b7e9afaa583d006b`，`pg_restore --list` 可读（19 张表数据）。旧程序、配置与发布标记保留为 `prev-4ac5a7a`。
 
 迁移 `0018_operation_logs` 新建操作日志表并回填历史余额流水，线上 schema 由 `0017_log_group_name` 升到 `0018_operation_logs`；10 条 `balance_adjustments` 全部回填，逐条核对无遗漏。服务启动、内网与公网健康检查通过，服务日志无 ERROR。公网入口资源 `index-YxoBAqJh.js` 与干净构建产物 SHA-256 `856a68a982db7fea5e48bf66d48c9cfd57148109849c34ce09c91df467d3a3db` 一致。上一版发布后的 72 条新请求均写入了分组名快照。
