@@ -4,6 +4,8 @@
 
 ## 当前运行基线
 
+2026-11-05 发布并复核（概览页改版）：DMIT 已发布提交 `b5090dcb1881e60bdaa1f28b8e368ea7192a0505`，运行中程序 SHA-256 为 `995c0f0635ac55fb8830db57aa06dd3b8cf036f2e012109afc7da837200e8f29`，属主 `lingshu:lingshu` 0755。发布前备份 `/var/backups/lingshu/lingshu-20261105T160124Z.dump`，SHA-256 为 `ab5105544efe475be997872e7e65a9e12e143fc319029ba90cb2e23b62080194`，`pg_restore --list` 可读（20 张表数据）。旧程序、配置与发布标记保留为 `prev-b5090dc`。只改前端，无迁移，schema 仍为 `0020_commercial_relay_mode`；回滚换回 `prev-b5090dc` 程序即可。内网与公网健康检查通过，公网入口资源 `index-DRFHDpk-.js` 与干净构建产物 SHA-256 `54ea3d0fd1851a35d5c296af7f8fc9f935b3e7b5abbec83227362855b7c184c0` 一致，服务日志无 ERROR。压缩成品上传约 9 分钟；部署方式拟改为 GitHub Actions 构建、DMIT 下载成品（仓库为公开仓库，下载无需 token），待确认。
+
 2026-11-05 发布并复核（商业中转定位、用户筛选）：DMIT 已发布提交 `17e48474ff30321d33fe3d8661d424f53c85d149`（含 `5b70ebf` 用户启用状态筛选），运行中程序 SHA-256 为 `697774a77a95b8a17208223c80bc3d105e15686b2699f5ec1ac32b2f0c84d9ba`，属主 `lingshu:lingshu` 0755。发布前备份 `/var/backups/lingshu/lingshu-20261105T152552Z.dump`，SHA-256 为 `50be89fb5dcaabf842802ccc4cca7c86ea1ee047b57e3ae3928a90929a845355`，`pg_restore --list` 可读（20 张表数据）。旧程序、配置与发布标记保留为 `prev-17e4847`。
 
 迁移 `0020_commercial_relay_mode` 后 schema 为 `0020_commercial_relay_mode`；线上 `deployment_mode` 原为未设置（按默认显示公司团队网关），现为 `commercial_relay`。回滚换回 `prev-17e4847` 程序即可，旧程序不认识该值时页面仍显示公司团队网关，不影响功能。内网与公网健康检查通过，公网入口资源 `index-CFF1fsTx.js` 与干净构建产物 SHA-256 `e45edd97b13e3e6af9008379b4b33b6cd758d7e0de872b8a7557d28351937ae2` 一致，服务日志无 ERROR。`5b70ebf` 单独上传的成品未安装，已删除，合并到本次一起发布，只重启一次。
