@@ -404,7 +404,14 @@ def run(args):
     for name in args.only.split(","):
         start = time.time()
         print(f"[{args.model} 第 {args.round} 轮] {name} …", file=sys.stderr, flush=True)
-        out[name] = PROBES[name](args)
+        result = PROBES[name](args)
+        # 只补跑部分单词指纹题时，合并进这一轮已有的答案（新跑的题替换旧答案），不覆盖整份
+        if name == "fingerprint" and "fingerprint" in out and (args.fingerprint_from or args.fingerprint_limit):
+            merged = fingerprint_answers(out["fingerprint"])
+            merged.update(result["answers"])
+            result["answers"] = merged
+            result["errors"] += out["fingerprint"].get("errors", 0)
+        out[name] = result
         out[name]["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         out[name]["elapsed_seconds"] = round(time.time() - start, 1)
         json.dump(out, open(path, "w"), ensure_ascii=False, indent=1)

@@ -96,12 +96,12 @@
     "e"
    ],
    "Pick a random Greek letter.": [
-    "",
-    "",
-    "",
-    "",
-    "",
-    ""
+    "ξ",
+    "ψ",
+    "ψ",
+    "ψ",
+    "ξ",
+    "ξ"
    ],
    "Pick a random Roman numeral.": [
     "xlvii",
@@ -992,12 +992,12 @@
     "amazonec2"
    ],
    "Name a random emoji.": [
-    "",
-    "",
-    "",
-    "",
-    "",
-    ""
+    "🦦",
+    "🦦",
+    "🦦",
+    "🦦",
+    "🦦",
+    "🦦"
    ],
    "Name a random adjective.": [
     "luminous",
@@ -1376,7 +1376,7 @@
     "煎饼果子"
    ]
   },
-  "finished_at": "2026-11-06T07:47:14-0800",
-  "elapsed_seconds": 611.7
+  "finished_at": "2026-11-06T15:36:13-0800",
+  "elapsed_seconds": 3.6
  }
 }

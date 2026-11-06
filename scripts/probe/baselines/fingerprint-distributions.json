@@ -1,9 +1,10 @@
 {
  "suite_version": 2,
- "generated_at": "2026-11-06T08:12:20-0800",
+ "generated_at": "2026-11-06T15:43:13-0800",
  "sources": [
   "codex_gpt-6-astra-r1.json",
   "codex_gpt-6-astra-r2.json",
+  "codex_gpt-6-astra-r3.json",
   "codex_gpt-6-luna-r1.json",
   "codex_gpt-6-luna-r2.json",
   "codex_gpt-6-luna-r3.json",
@@ -967,10 +968,16 @@
   },
   {
    "prompt": "Pick a random integer between 1 and 20.",
-   "separation": 0.556,
-   "self_noise": 0.333,
-   "score": 0.222,
+   "separation": 0.611,
+   "self_noise": 0.25,
+   "score": 0.306,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "17": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1001,6 +1008,12 @@
    "self_noise": 0.0,
    "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "37": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1023,10 +1036,20 @@
   },
   {
    "prompt": "Pick a random integer between 1 and 10000.",
-   "separation": 0.944,
-   "self_noise": 0.556,
-   "score": 0.444,
+   "separation": 0.806,
+   "self_noise": 0.583,
+   "score": 0.306,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "7382": 2,
+      "7392": 1,
+      "7384": 1,
+      "7283": 1,
+      "7349": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1059,10 +1082,18 @@
   },
   {
    "prompt": "Pick a random even number between 1 and 100.",
-   "separation": 0.333,
-   "self_noise": 0.222,
-   "score": 0.222,
+   "separation": 0.278,
+   "self_noise": 0.25,
+   "score": 0.194,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "64": 4,
+      "74": 1,
+      "68": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1089,10 +1120,18 @@
   },
   {
    "prompt": "Pick a random three-digit number.",
-   "separation": 0.667,
-   "self_noise": 0.333,
-   "score": 0.222,
+   "separation": 0.694,
+   "self_noise": 0.417,
+   "score": 0.25,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "731": 3,
+      "683": 2,
+      "739": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1119,10 +1158,18 @@
   },
   {
    "prompt": "Pick a random year between 1900 and 2100.",
-   "separation": 0.889,
+   "separation": 0.75,
    "self_noise": 0.333,
-   "score": 0.556,
+   "score": 0.444,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "2043": 3,
+      "2037": 2,
+      "2047": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1150,10 +1197,16 @@
   },
   {
    "prompt": "Pick a random decimal number between 0 and 1 with two decimal places.",
-   "separation": 0.778,
-   "self_noise": 0.333,
-   "score": 0.444,
+   "separation": 0.639,
+   "self_noise": 0.25,
+   "score": 0.417,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "073": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1180,10 +1233,18 @@
   },
   {
    "prompt": "Pick a random four-digit PIN.",
-   "separation": 0.889,
-   "self_noise": 0.667,
-   "score": 0.333,
+   "separation": 0.861,
+   "self_noise": 0.583,
+   "score": 0.361,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "7392": 4,
+      "7083": 1,
+      "7038": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1216,10 +1277,17 @@
   },
   {
    "prompt": "Pick a random time of day in HH:MM format.",
-   "separation": 0.667,
-   "self_noise": 0.111,
+   "separation": 0.694,
+   "self_noise": 0.167,
    "score": 0.556,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "1743": 5,
+      "1643": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1243,10 +1311,19 @@
   },
   {
    "prompt": "Pick a random hex color code.",
-   "separation": 1.0,
-   "self_noise": 0.556,
-   "score": 0.444,
+   "separation": 0.917,
+   "self_noise": 0.583,
+   "score": 0.361,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "7c3ea9": 3,
+      "7b3ec9": 1,
+      "7c3fa9": 1,
+      "7c3ae9": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1278,10 +1355,16 @@
   },
   {
    "prompt": "Pick a random vowel.",
-   "separation": 0.556,
-   "self_noise": 0.444,
-   "score": 0.111,
+   "separation": 0.611,
+   "self_noise": 0.333,
+   "score": 0.333,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "u": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1308,36 +1391,51 @@
   },
   {
    "prompt": "Pick a random Greek letter.",
-   "separation": 0.0,
-   "self_noise": 0.0,
-   "score": 0.0,
+   "separation": 0.333,
+   "self_noise": 0.167,
+   "score": 0.111,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "ξ": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
-      "": 6
+      "ξ": 4,
+      "ψ": 1,
+      "λ": 1
      }
     },
     "codex/gpt-6.1-sol": {
      "samples": 6,
      "counts": {
-      "": 6
+      "ξ": 3,
+      "ψ": 3
      }
     },
     "codex/gpt-6.1-terra": {
      "samples": 6,
      "counts": {
-      "": 6
+      "ξ": 6
      }
     }
    }
   },
   {
    "prompt": "Pick a random Roman numeral.",
-   "separation": 0.111,
-   "self_noise": 0.111,
-   "score": 0.111,
+   "separation": 0.083,
+   "self_noise": 0.083,
+   "score": 0.083,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "xlvii": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1361,10 +1459,17 @@
   },
   {
    "prompt": "Pick a random boy's name.",
-   "separation": 0.778,
+   "separation": 0.639,
    "self_noise": 0.333,
-   "score": 0.444,
+   "score": 0.278,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "ethan": 5,
+      "oliver": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1390,10 +1495,16 @@
   },
   {
    "prompt": "Pick a random girl's name.",
-   "separation": 0.667,
+   "separation": 0.556,
    "self_noise": 0.0,
-   "score": 0.667,
+   "score": 0.556,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "clara": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1417,10 +1528,16 @@
   },
   {
    "prompt": "Pick a random surname.",
-   "separation": 0.667,
-   "self_noise": 0.222,
-   "score": 0.556,
+   "separation": 0.528,
+   "self_noise": 0.167,
+   "score": 0.444,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "whitaker": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1447,10 +1564,16 @@
   },
   {
    "prompt": "Pick a random name for a dog.",
-   "separation": 0.667,
-   "self_noise": 0.333,
-   "score": 0.444,
+   "separation": 0.639,
+   "self_noise": 0.25,
+   "score": 0.417,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "biscuit": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1476,10 +1599,17 @@
   },
   {
    "prompt": "Pick a random name for a cat.",
-   "separation": 0.333,
-   "self_noise": 0.111,
-   "score": 0.333,
+   "separation": 0.306,
+   "self_noise": 0.167,
+   "score": 0.167,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "mochi": 5,
+      "clover": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1503,10 +1633,20 @@
   },
   {
    "prompt": "Invent a name for a fantasy wizard.",
-   "separation": 1.0,
-   "self_noise": 0.889,
-   "score": 0.111,
+   "separation": 0.944,
+   "self_noise": 0.917,
+   "score": 0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "vaelthornashwhisper": 2,
+      "vaelthornduskwillow": 1,
+      "vaelthornmoonweaver": 1,
+      "vaelthornmistweaver": 1,
+      "vaelricthornweaver": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1542,10 +1682,20 @@
   },
   {
    "prompt": "Invent a name for a tech startup.",
-   "separation": 1.0,
-   "self_noise": 0.778,
-   "score": 0.222,
+   "separation": 0.917,
+   "self_noise": 0.75,
+   "score": 0.194,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "lumivolt": 2,
+      "veltrix": 1,
+      "lumivex": 1,
+      "lumivect": 1,
+      "lumivanta": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1580,9 +1730,18 @@
   {
    "prompt": "Invent a name for a spaceship.",
    "separation": 0.722,
-   "self_noise": 0.444,
-   "score": 0.222,
+   "self_noise": 0.5,
+   "score": 0.333,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "thehalcyondrift": 3,
+      "thestarlingmeridian": 1,
+      "theemberwake": 1,
+      "thequietmeridian": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1611,10 +1770,17 @@
   },
   {
    "prompt": "Invent a name for a coffee shop.",
-   "separation": 0.889,
-   "self_noise": 0.667,
-   "score": 0.333,
+   "separation": 0.833,
+   "self_noise": 0.583,
+   "score": 0.25,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "emberbean": 5,
+      "emberbloom": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1647,10 +1813,16 @@
   },
   {
    "prompt": "Name a random European capital.",
-   "separation": 0.111,
-   "self_noise": 0.111,
-   "score": -0.111,
+   "separation": 0.083,
+   "self_noise": 0.083,
+   "score": -0.083,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "ljubljana": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1674,10 +1846,17 @@
   },
   {
    "prompt": "Name a random Asian country.",
-   "separation": 0.611,
-   "self_noise": 0.222,
-   "score": 0.444,
+   "separation": 0.472,
+   "self_noise": 0.25,
+   "score": 0.306,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "laos": 5,
+      "vietnam": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1702,10 +1881,17 @@
   },
   {
    "prompt": "Name a random African country.",
-   "separation": 0.889,
-   "self_noise": 0.444,
-   "score": 0.444,
+   "separation": 0.778,
+   "self_noise": 0.417,
+   "score": 0.361,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "zambia": 3,
+      "senegal": 3
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1731,10 +1917,16 @@
   },
   {
    "prompt": "Name a random South American country.",
-   "separation": 0.111,
-   "self_noise": 0.111,
-   "score": -0.111,
+   "separation": 0.083,
+   "self_noise": 0.083,
+   "score": -0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "uruguay": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1758,10 +1950,16 @@
   },
   {
    "prompt": "Name a random island.",
-   "separation": 0.889,
-   "self_noise": 0.333,
-   "score": 0.556,
+   "separation": 0.722,
+   "self_noise": 0.25,
+   "score": 0.472,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "socotra": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1790,10 +1988,16 @@
   },
   {
    "prompt": "Name a random mountain.",
-   "separation": 0.667,
-   "self_noise": 0.111,
-   "score": 0.556,
+   "separation": 0.583,
+   "self_noise": 0.083,
+   "score": 0.472,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "mountkilimanjaro": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1817,10 +2021,17 @@
   },
   {
    "prompt": "Name a random river.",
-   "separation": 0.944,
-   "self_noise": 0.556,
-   "score": 0.333,
+   "separation": 0.778,
+   "self_noise": 0.583,
+   "score": 0.25,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "orinoco": 4,
+      "zambezi": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1851,10 +2062,17 @@
   },
   {
    "prompt": "Name a random lake.",
-   "separation": 0.389,
-   "self_noise": 0.333,
-   "score": -0.111,
+   "separation": 0.5,
+   "self_noise": 0.417,
+   "score": -0.139,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "laketanganyika": 4,
+      "lakebaikal": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1881,10 +2099,17 @@
   },
   {
    "prompt": "Name a random desert.",
-   "separation": 0.111,
-   "self_noise": 0.111,
-   "score": 0.0,
+   "separation": 0.139,
+   "self_noise": 0.167,
+   "score": -0.111,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "atacamadesert": 5,
+      "kalaharidesert": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1908,10 +2133,16 @@
   },
   {
    "prompt": "Name a random ocean or sea.",
-   "separation": 0.722,
-   "self_noise": 0.111,
-   "score": 0.556,
+   "separation": 0.556,
+   "self_noise": 0.083,
+   "score": 0.472,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "coralsea": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1936,10 +2167,16 @@
   },
   {
    "prompt": "Name a random US city.",
-   "separation": 0.611,
-   "self_noise": 0.556,
-   "score": 0.0,
+   "separation": 0.528,
+   "self_noise": 0.417,
+   "score": 0.083,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "madisonwisconsin": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1966,10 +2203,16 @@
   },
   {
    "prompt": "Name a random Japanese city.",
-   "separation": 0.222,
-   "self_noise": 0.111,
-   "score": 0.111,
+   "separation": 0.167,
+   "self_noise": 0.083,
+   "score": 0.083,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "kanazawa": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -1994,10 +2237,16 @@
   },
   {
    "prompt": "Name a random Canadian province.",
-   "separation": 0.667,
-   "self_noise": 0.111,
-   "score": 0.556,
+   "separation": 0.528,
+   "self_noise": 0.083,
+   "score": 0.417,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "manitoba": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2022,9 +2271,18 @@
   {
    "prompt": "Name a random national park.",
    "separation": 0.722,
-   "self_noise": 0.444,
-   "score": 0.222,
+   "self_noise": 0.417,
+   "score": 0.25,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "torresdelpainenationalpark": 2,
+      "jaspernationalpark": 2,
+      "glaciernationalpark": 1,
+      "acadianationalpark": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2054,10 +2312,16 @@
   },
   {
    "prompt": "Name a random tree.",
-   "separation": 0.778,
-   "self_noise": 0.333,
-   "score": 0.556,
+   "separation": 0.611,
+   "self_noise": 0.25,
+   "score": 0.472,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "silverbirch": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2085,10 +2349,17 @@
   },
   {
    "prompt": "Name a random mushroom.",
-   "separation": 0.889,
-   "self_noise": 0.333,
-   "score": 0.444,
+   "separation": 0.75,
+   "self_noise": 0.25,
+   "score": 0.417,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "lionsmane": 4,
+      "lionsmanemushroom": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2115,10 +2386,16 @@
   },
   {
    "prompt": "Name a random insect.",
-   "separation": 0.667,
-   "self_noise": 0.222,
+   "separation": 0.639,
+   "self_noise": 0.167,
    "score": 0.556,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "lacewing": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2144,10 +2421,20 @@
   },
   {
    "prompt": "Name a random fish.",
-   "separation": 0.889,
-   "self_noise": 0.556,
-   "score": 0.333,
+   "separation": 0.861,
+   "self_noise": 0.667,
+   "score": 0.222,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "mandarinfish": 2,
+      "clownfish": 1,
+      "atlanticpufferfish": 1,
+      "flamboyantcuttlefish": 1,
+      "arcticchar": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2178,10 +2465,19 @@
   },
   {
    "prompt": "Name a random reptile.",
-   "separation": 0.5,
-   "self_noise": 0.444,
-   "score": 0.111,
+   "separation": 0.667,
+   "self_noise": 0.5,
+   "score": 0.167,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "leopardgecko": 2,
+      "bluetonguedskink": 2,
+      "gilamonster": 1,
+      "thornydevil": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2209,10 +2505,16 @@
   },
   {
    "prompt": "Name a random mammal.",
-   "separation": 0.5,
-   "self_noise": 0.333,
-   "score": 0.222,
+   "separation": 0.556,
+   "self_noise": 0.25,
+   "score": 0.306,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "capybara": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2240,10 +2542,16 @@
   },
   {
    "prompt": "Name a random dinosaur.",
-   "separation": 0.833,
-   "self_noise": 0.111,
-   "score": 0.778,
+   "separation": 0.75,
+   "self_noise": 0.083,
+   "score": 0.694,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "parasaurolophus": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2268,10 +2576,17 @@
   },
   {
    "prompt": "Name a random sea creature.",
-   "separation": 0.889,
-   "self_noise": 0.444,
-   "score": 0.556,
+   "separation": 0.722,
+   "self_noise": 0.333,
+   "score": 0.389,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "leafyseadragon": 4,
+      "cuttlefish": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2296,10 +2611,16 @@
   },
   {
    "prompt": "Name a random type of cloud.",
-   "separation": 1.0,
-   "self_noise": 0.333,
-   "score": 0.667,
+   "separation": 0.833,
+   "self_noise": 0.25,
+   "score": 0.583,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "altocumulus": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2327,10 +2648,17 @@
   },
   {
    "prompt": "Name a random constellation.",
-   "separation": 0.722,
-   "self_noise": 0.111,
-   "score": 0.667,
+   "separation": 0.667,
+   "self_noise": 0.167,
+   "score": 0.556,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "cassiopeia": 5,
+      "cygnus": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2355,10 +2683,19 @@
   },
   {
    "prompt": "Name a random star.",
-   "separation": 0.667,
-   "self_noise": 0.333,
-   "score": 0.333,
+   "separation": 0.722,
+   "self_noise": 0.417,
+   "score": 0.306,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "altair": 3,
+      "betelgeuse": 1,
+      "rigel": 1,
+      "deneb": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2383,10 +2720,16 @@
   },
   {
    "prompt": "Name a random moon in the solar system.",
-   "separation": 0.111,
-   "self_noise": 0.111,
-   "score": 0.0,
+   "separation": 0.083,
+   "self_noise": 0.083,
+   "score": 0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "enceladus": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2410,10 +2753,16 @@
   },
   {
    "prompt": "Name a random mineral.",
-   "separation": 0.222,
+   "separation": 0.167,
    "self_noise": 0.0,
-   "score": 0.222,
+   "score": 0.167,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "labradorite": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2437,10 +2786,16 @@
   },
   {
    "prompt": "Name a random metal.",
-   "separation": 0.611,
-   "self_noise": 0.444,
-   "score": 0.0,
+   "separation": 0.472,
+   "self_noise": 0.333,
+   "score": 0.056,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "titanium": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2470,9 +2825,16 @@
   {
    "prompt": "Name a random dog breed.",
    "separation": 0.5,
-   "self_noise": 0.667,
-   "score": -0.111,
+   "self_noise": 0.5,
+   "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "whippet": 4,
+      "lagottoromagnolo": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2503,10 +2865,16 @@
   },
   {
    "prompt": "Name a random cat breed.",
-   "separation": 0.611,
-   "self_noise": 0.333,
-   "score": 0.111,
+   "separation": 0.5,
+   "self_noise": 0.25,
+   "score": 0.139,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "norwegianforestcat": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2532,10 +2900,18 @@
   },
   {
    "prompt": "Name a random houseplant.",
-   "separation": 0.5,
-   "self_noise": 0.222,
-   "score": 0.222,
+   "separation": 0.444,
+   "self_noise": 0.25,
+   "score": 0.194,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "monsteradeliciosa": 4,
+      "peperomiaobtusifolia": 1,
+      "pothos": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2562,10 +2938,16 @@
   },
   {
    "prompt": "Name a random weather phenomenon.",
-   "separation": 0.778,
-   "self_noise": 0.111,
-   "score": 0.667,
+   "separation": 0.722,
+   "self_noise": 0.083,
+   "score": 0.639,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "thundersnow": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2590,10 +2972,17 @@
   },
   {
    "prompt": "Name a random cheese.",
-   "separation": 0.611,
+   "separation": 0.667,
    "self_noise": 0.333,
-   "score": 0.444,
+   "score": 0.389,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "manchego": 5,
+      "comté": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2620,10 +3009,16 @@
   },
   {
    "prompt": "Name a random spice.",
-   "separation": 0.222,
+   "separation": 0.167,
    "self_noise": 0.0,
-   "score": 0.222,
+   "score": 0.167,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "cardamom": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2647,10 +3042,16 @@
   },
   {
    "prompt": "Name a random herb.",
-   "separation": 0.556,
-   "self_noise": 0.556,
-   "score": 0.333,
+   "separation": 0.694,
+   "self_noise": 0.417,
+   "score": 0.361,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "tarragon": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2680,9 +3081,16 @@
   {
    "prompt": "Name a random dessert.",
    "separation": 0.222,
-   "self_noise": 0.222,
-   "score": -0.222,
+   "self_noise": 0.25,
+   "score": -0.139,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "tiramisu": 5,
+      "crèmebrûlée": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2707,10 +3115,18 @@
   },
   {
    "prompt": "Name a random pasta shape.",
-   "separation": 0.833,
-   "self_noise": 0.444,
-   "score": 0.333,
+   "separation": 0.778,
+   "self_noise": 0.417,
+   "score": 0.25,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "cavatappi": 4,
+      "orecchiette": 1,
+      "radiatori": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2737,10 +3153,17 @@
   },
   {
    "prompt": "Name a random bread.",
-   "separation": 0.389,
-   "self_noise": 0.556,
-   "score": -0.222,
+   "separation": 0.333,
+   "self_noise": 0.5,
+   "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "focaccia": 5,
+      "ciabatta": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2768,10 +3191,16 @@
   },
   {
    "prompt": "Name a random soup.",
-   "separation": 0.333,
-   "self_noise": 0.333,
-   "score": -0.333,
+   "separation": 0.25,
+   "self_noise": 0.25,
+   "score": -0.083,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "minestrone": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2797,10 +3226,16 @@
   },
   {
    "prompt": "Name a random cocktail.",
-   "separation": 0.333,
-   "self_noise": 0.111,
-   "score": 0.222,
+   "separation": 0.278,
+   "self_noise": 0.083,
+   "score": 0.194,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "paperplane": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2826,10 +3261,16 @@
   },
   {
    "prompt": "Name a random type of tea.",
-   "separation": 0.667,
-   "self_noise": 0.333,
-   "score": 0.333,
+   "separation": 0.583,
+   "self_noise": 0.25,
+   "score": 0.361,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "oolong": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2854,10 +3295,16 @@
   },
   {
    "prompt": "Name a random coffee drink.",
-   "separation": 0.444,
-   "self_noise": 0.111,
-   "score": 0.333,
+   "separation": 0.333,
+   "self_noise": 0.083,
+   "score": 0.25,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "cortado": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2882,10 +3329,17 @@
   },
   {
    "prompt": "Name a random pizza topping.",
-   "separation": 0.667,
-   "self_noise": 0.444,
-   "score": 0.444,
+   "separation": 0.528,
+   "self_noise": 0.417,
+   "score": 0.25,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "artichokehearts": 3,
+      "mushrooms": 3
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2911,10 +3365,16 @@
   },
   {
    "prompt": "Name a random candy.",
-   "separation": 0.556,
-   "self_noise": 0.111,
-   "score": 0.444,
+   "separation": 0.528,
+   "self_noise": 0.083,
+   "score": 0.472,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "skittles": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2940,10 +3400,17 @@
   },
   {
    "prompt": "Name a random nut.",
-   "separation": 0.333,
-   "self_noise": 0.111,
-   "score": 0.111,
+   "separation": 0.5,
+   "self_noise": 0.25,
+   "score": 0.361,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "hazelnut": 4,
+      "pistachio": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2968,10 +3435,17 @@
   },
   {
    "prompt": "Name a random berry.",
-   "separation": 0.722,
-   "self_noise": 0.111,
-   "score": 0.667,
+   "separation": 0.611,
+   "self_noise": 0.25,
+   "score": 0.417,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "blackberry": 4,
+      "boysenberry": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -2997,10 +3471,17 @@
   },
   {
    "prompt": "Name a random citrus fruit.",
-   "separation": 0.833,
-   "self_noise": 0.444,
-   "score": 0.222,
+   "separation": 0.694,
+   "self_noise": 0.333,
+   "score": 0.278,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "pomelo": 4,
+      "tangerine": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3028,10 +3509,17 @@
   },
   {
    "prompt": "Name a random breakfast food.",
-   "separation": 0.389,
+   "separation": 0.444,
    "self_noise": 0.333,
    "score": 0.111,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "frenchtoast": 3,
+      "pancakes": 3
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3057,10 +3545,16 @@
   },
   {
    "prompt": "Name a random sauce.",
-   "separation": 0.222,
-   "self_noise": 0.111,
-   "score": 0.111,
+   "separation": 0.167,
+   "self_noise": 0.083,
+   "score": 0.083,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "chimichurri": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3085,10 +3579,16 @@
   },
   {
    "prompt": "Name a random kitchen utensil.",
-   "separation": 0.111,
-   "self_noise": 0.444,
-   "score": -0.111,
+   "separation": 0.167,
+   "self_noise": 0.333,
+   "score": -0.056,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "whisk": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3114,10 +3614,16 @@
   },
   {
    "prompt": "Name a random piece of furniture.",
-   "separation": 0.889,
-   "self_noise": 0.444,
-   "score": 0.333,
+   "separation": 0.778,
+   "self_noise": 0.333,
+   "score": 0.389,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "ottoman": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3144,10 +3650,17 @@
   },
   {
    "prompt": "Name a random hand tool.",
-   "separation": 0.833,
-   "self_noise": 0.889,
-   "score": -0.0,
+   "separation": 0.694,
+   "self_noise": 0.75,
+   "score": 0.139,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "adjustablewrench": 5,
+      "clawhammer": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3177,9 +3690,16 @@
   {
    "prompt": "Name a random vehicle.",
    "separation": 0.944,
-   "self_noise": 0.667,
-   "score": 0.333,
+   "self_noise": 0.583,
+   "score": 0.417,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "toyotalandcruiser": 5,
+      "mazdamx5miata": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3210,10 +3730,17 @@
   },
   {
    "prompt": "Name a random car brand.",
-   "separation": 0.278,
-   "self_noise": 0.444,
-   "score": -0.111,
+   "separation": 0.306,
+   "self_noise": 0.333,
+   "score": -0.056,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "mazda": 4,
+      "subaru": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3242,10 +3769,16 @@
   },
   {
    "prompt": "Name a random board game.",
-   "separation": 0.556,
-   "self_noise": 0.222,
-   "score": 0.333,
+   "separation": 0.611,
+   "self_noise": 0.167,
+   "score": 0.389,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "carcassonne": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3270,10 +3803,16 @@
   },
   {
    "prompt": "Name a random card game.",
-   "separation": 0.333,
-   "self_noise": 0.222,
-   "score": 0.222,
+   "separation": 0.278,
+   "self_noise": 0.167,
+   "score": 0.111,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "cribbage": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3298,10 +3837,17 @@
   },
   {
    "prompt": "Name a random toy.",
-   "separation": 0.611,
-   "self_noise": 0.222,
-   "score": 0.333,
+   "separation": 0.556,
+   "self_noise": 0.25,
+   "score": 0.25,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "yoyo": 5,
+      "slinky": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3328,10 +3874,17 @@
   },
   {
    "prompt": "Name a random fabric.",
-   "separation": 0.778,
-   "self_noise": 0.556,
-   "score": 0.333,
+   "separation": 0.611,
+   "self_noise": 0.5,
+   "score": 0.222,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "corduroy": 5,
+      "velvet": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3361,9 +3914,16 @@
   {
    "prompt": "Name a random geometric shape.",
    "separation": 0.444,
-   "self_noise": 0.444,
-   "score": 0.333,
+   "self_noise": 0.417,
+   "score": 0.139,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "trapezoid": 5,
+      "rhombus": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3392,10 +3952,17 @@
   },
   {
    "prompt": "Name a random font.",
-   "separation": 0.889,
+   "separation": 0.75,
    "self_noise": 0.333,
-   "score": 0.556,
+   "score": 0.444,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "baskerville": 3,
+      "futura": 3
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3422,10 +3989,16 @@
   },
   {
    "prompt": "Name a random piece of clothing.",
-   "separation": 0.111,
-   "self_noise": 0.111,
-   "score": -0.111,
+   "separation": 0.083,
+   "self_noise": 0.083,
+   "score": -0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "cardigan": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3449,10 +4022,16 @@
   },
   {
    "prompt": "Name a random shoe type.",
-   "separation": 0.667,
-   "self_noise": 0.111,
-   "score": 0.556,
+   "separation": 0.75,
+   "self_noise": 0.083,
+   "score": 0.694,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "loafers": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3480,6 +4059,12 @@
    "self_noise": 0.0,
    "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "stapler": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3502,10 +4087,17 @@
   },
   {
    "prompt": "Name a random musical genre.",
-   "separation": 0.611,
-   "self_noise": 0.222,
-   "score": 0.444,
+   "separation": 0.528,
+   "self_noise": 0.25,
+   "score": 0.306,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "shoegaze": 5,
+      "bossanova": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3532,10 +4124,18 @@
   },
   {
    "prompt": "Name a random painter.",
-   "separation": 0.667,
-   "self_noise": 0.111,
-   "score": 0.556,
+   "separation": 0.722,
+   "self_noise": 0.167,
+   "score": 0.611,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "berthemorisot": 3,
+      "remediosvaro": 2,
+      "leonoracarrington": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3561,10 +4161,21 @@
   },
   {
    "prompt": "Name a random composer.",
-   "separation": 0.5,
-   "self_noise": 0.444,
-   "score": 0.0,
+   "separation": 0.639,
+   "self_noise": 0.583,
+   "score": -0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "florenceprice": 1,
+      "liliboulanger": 1,
+      "claraschumann": 1,
+      "antoníndvořák": 1,
+      "bélabartók": 1,
+      "gabrielfauré": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3592,10 +4203,17 @@
   },
   {
    "prompt": "Name a random novelist.",
-   "separation": 0.611,
-   "self_noise": 0.222,
+   "separation": 0.556,
+   "self_noise": 0.167,
    "score": 0.444,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "kazuoishiguro": 4,
+      "ursulakleguin": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3622,10 +4240,16 @@
   },
   {
    "prompt": "Name a random poet.",
-   "separation": 0.778,
-   "self_noise": 0.556,
-   "score": 0.333,
+   "separation": 0.889,
+   "self_noise": 0.417,
+   "score": 0.528,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "wisławaszymborska": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3653,10 +4277,17 @@
   },
   {
    "prompt": "Name a random philosopher.",
-   "separation": 0.278,
+   "separation": 0.306,
    "self_noise": 0.333,
-   "score": -0.0,
+   "score": 0.056,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "simoneweil": 5,
+      "simonedebeauvoir": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3684,10 +4315,16 @@
   },
   {
    "prompt": "Name a random scientist.",
-   "separation": 0.389,
-   "self_noise": 0.333,
-   "score": 0.111,
+   "separation": 0.333,
+   "self_noise": 0.25,
+   "score": 0.194,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "chienshiungwu": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3717,6 +4354,12 @@
    "self_noise": 0.0,
    "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "emmynoether": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3739,10 +4382,18 @@
   },
   {
    "prompt": "Name a random inventor.",
-   "separation": 0.722,
-   "self_noise": 0.222,
-   "score": 0.444,
+   "separation": 0.694,
+   "self_noise": 0.25,
+   "score": 0.472,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "maryanderson": 3,
+      "hedylamarr": 2,
+      "garrettmorgan": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3767,10 +4418,17 @@
   },
   {
    "prompt": "Name a random dance style.",
-   "separation": 0.667,
-   "self_noise": 0.556,
-   "score": 0.0,
+   "separation": 0.694,
+   "self_noise": 0.5,
+   "score": 0.111,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "lindyhop": 5,
+      "salsa": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3800,10 +4458,16 @@
   },
   {
    "prompt": "Name a random movie genre.",
-   "separation": 0.778,
-   "self_noise": 0.444,
-   "score": 0.333,
+   "separation": 0.722,
+   "self_noise": 0.333,
+   "score": 0.389,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "sciencefiction": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3831,10 +4495,16 @@
   },
   {
    "prompt": "Name a random mythological creature.",
-   "separation": 0.778,
-   "self_noise": 0.333,
-   "score": 0.444,
+   "separation": 0.722,
+   "self_noise": 0.25,
+   "score": 0.472,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "basilisk": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3862,10 +4532,16 @@
   },
   {
    "prompt": "Name a random Greek god.",
-   "separation": 0.111,
-   "self_noise": 0.111,
-   "score": -0.111,
+   "separation": 0.083,
+   "self_noise": 0.083,
+   "score": -0.083,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "hermes": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3889,10 +4565,17 @@
   },
   {
    "prompt": "Name a random Norse god.",
-   "separation": 0.722,
-   "self_noise": 0.111,
-   "score": 0.556,
+   "separation": 0.611,
+   "self_noise": 0.167,
+   "score": 0.444,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "heimdall": 5,
+      "tyr": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3918,10 +4601,16 @@
   },
   {
    "prompt": "Name a random zodiac sign.",
-   "separation": 0.611,
-   "self_noise": 0.222,
-   "score": 0.333,
+   "separation": 0.5,
+   "self_noise": 0.167,
+   "score": 0.278,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "sagittarius": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3947,10 +4636,16 @@
   },
   {
    "prompt": "Name a random chess piece.",
-   "separation": 0.444,
-   "self_noise": 0.333,
-   "score": 0.0,
+   "separation": 0.528,
+   "self_noise": 0.25,
+   "score": 0.194,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "bishop": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -3975,10 +4670,16 @@
   },
   {
    "prompt": "Name a random playing card.",
-   "separation": 0.944,
-   "self_noise": 0.222,
-   "score": 0.778,
+   "separation": 0.833,
+   "self_noise": 0.167,
+   "score": 0.722,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "sevenofclubs": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4009,6 +4710,12 @@
    "self_noise": 0.0,
    "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "thestar": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4031,10 +4738,17 @@
   },
   {
    "prompt": "Name a random Shakespeare play.",
-   "separation": 0.444,
+   "separation": 0.5,
    "self_noise": 0.333,
-   "score": 0.111,
+   "score": 0.222,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "thewinterstale": 5,
+      "thetempest": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4061,10 +4775,16 @@
   },
   {
    "prompt": "Name a random art movement.",
-   "separation": 0.889,
-   "self_noise": 0.333,
-   "score": 0.444,
+   "separation": 0.833,
+   "self_noise": 0.25,
+   "score": 0.472,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "orphism": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4089,10 +4809,16 @@
   },
   {
    "prompt": "Name a random architectural style.",
-   "separation": 0.333,
-   "self_noise": 0.222,
-   "score": 0.222,
+   "separation": 0.25,
+   "self_noise": 0.167,
+   "score": 0.111,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "brutalism": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4118,10 +4844,16 @@
   },
   {
    "prompt": "Name a random database.",
-   "separation": 0.111,
-   "self_noise": 0.111,
-   "score": -0.111,
+   "separation": 0.083,
+   "self_noise": 0.083,
+   "score": -0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "postgresql": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4145,10 +4877,16 @@
   },
   {
    "prompt": "Name a random Linux distribution.",
-   "separation": 0.111,
-   "self_noise": 0.111,
-   "score": 0.111,
+   "separation": 0.083,
+   "self_noise": 0.083,
+   "score": 0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "fedora": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4172,10 +4910,18 @@
   },
   {
    "prompt": "Name a random text editor.",
-   "separation": 0.611,
-   "self_noise": 0.556,
-   "score": 0.222,
+   "separation": 0.556,
+   "self_noise": 0.5,
+   "score": 0.111,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "sublimetext": 3,
+      "kate": 2,
+      "notepad": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4203,10 +4949,16 @@
   },
   {
    "prompt": "Name a random CSS property.",
-   "separation": 0.333,
-   "self_noise": 0.333,
-   "score": -0.333,
+   "separation": 0.25,
+   "self_noise": 0.25,
+   "score": -0.083,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "borderradius": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4232,10 +4984,16 @@
   },
   {
    "prompt": "Name a random HTTP status code.",
-   "separation": 0.111,
-   "self_noise": 0.111,
-   "score": -0.111,
+   "separation": 0.083,
+   "self_noise": 0.083,
+   "score": -0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "418imateapot": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4259,10 +5017,16 @@
   },
   {
    "prompt": "Name a random TCP port number.",
-   "separation": 0.722,
-   "self_noise": 0.667,
-   "score": -0.0,
+   "separation": 0.611,
+   "self_noise": 0.5,
+   "score": 0.111,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "49173": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4292,10 +5056,16 @@
   },
   {
    "prompt": "Name a random sorting algorithm.",
-   "separation": 0.667,
-   "self_noise": 0.444,
-   "score": 0.444,
+   "separation": 0.639,
+   "self_noise": 0.333,
+   "score": 0.5,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "heapsort": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4327,6 +5097,12 @@
    "self_noise": 0.0,
    "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "observerpattern": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4349,10 +5125,17 @@
   },
   {
    "prompt": "Name a random git command.",
-   "separation": 0.944,
-   "self_noise": 0.556,
+   "separation": 0.917,
+   "self_noise": 0.5,
    "score": 0.444,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "gitstashlist": 5,
+      "gitstatus": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4382,10 +5165,16 @@
   },
   {
    "prompt": "Name a random Unix command.",
-   "separation": 0.889,
-   "self_noise": 0.222,
-   "score": 0.667,
+   "separation": 0.722,
+   "self_noise": 0.167,
+   "score": 0.556,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "awk": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4412,10 +5201,18 @@
   },
   {
    "prompt": "Name a random file extension.",
-   "separation": 0.667,
-   "self_noise": 0.667,
-   "score": 0.0,
+   "separation": 0.583,
+   "self_noise": 0.583,
+   "score": 0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "webp": 3,
+      "flac": 2,
+      "webm": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4444,10 +5241,17 @@
   },
   {
    "prompt": "Name a random keyboard key.",
-   "separation": 0.5,
-   "self_noise": 0.556,
-   "score": 0.333,
+   "separation": 0.528,
+   "self_noise": 0.583,
+   "score": -0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "shift": 4,
+      "f7": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4475,10 +5279,17 @@
   },
   {
    "prompt": "Name a random data structure.",
-   "separation": 0.667,
-   "self_noise": 0.444,
-   "score": 0.333,
+   "separation": 0.611,
+   "self_noise": 0.5,
+   "score": 0.111,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "skiplist": 4,
+      "treap": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4509,10 +5320,16 @@
   },
   {
    "prompt": "Name a random JavaScript framework.",
-   "separation": 0.444,
-   "self_noise": 0.222,
-   "score": 0.444,
+   "separation": 0.333,
+   "self_noise": 0.167,
+   "score": 0.333,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "svelte": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4536,10 +5353,18 @@
   },
   {
    "prompt": "Name a random Python library.",
-   "separation": 0.833,
+   "separation": 0.75,
    "self_noise": 0.333,
-   "score": 0.556,
+   "score": 0.5,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "numpy": 4,
+      "pydantic": 1,
+      "httpx": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4568,10 +5393,17 @@
   },
   {
    "prompt": "Name a random cryptographic hash function.",
-   "separation": 0.444,
-   "self_noise": 0.111,
-   "score": 0.333,
+   "separation": 0.389,
+   "self_noise": 0.167,
+   "score": 0.278,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "sha256": 5,
+      "sha3256": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4596,10 +5428,16 @@
   },
   {
    "prompt": "Name a random cloud computing service.",
-   "separation": 0.167,
-   "self_noise": 0.222,
-   "score": 0.111,
+   "separation": 0.139,
+   "self_noise": 0.167,
+   "score": 0.056,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "amazonec2": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4624,36 +5462,50 @@
   },
   {
    "prompt": "Name a random emoji.",
-   "separation": 0.0,
-   "self_noise": 0.0,
-   "score": 0.0,
+   "separation": 0.417,
+   "self_noise": 0.167,
+   "score": 0.278,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "🦦": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
-      "": 6
+      "🪼": 4,
+      "🪁": 1,
+      "🦦": 1
      }
     },
     "codex/gpt-6.1-sol": {
      "samples": 6,
      "counts": {
-      "": 6
+      "🦦": 6
      }
     },
     "codex/gpt-6.1-terra": {
      "samples": 6,
      "counts": {
-      "": 6
+      "🦦": 6
      }
     }
    }
   },
   {
    "prompt": "Name a random adjective.",
-   "separation": 0.444,
-   "self_noise": 0.111,
-   "score": 0.333,
+   "separation": 0.333,
+   "self_noise": 0.083,
+   "score": 0.25,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "luminous": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4679,10 +5531,16 @@
   },
   {
    "prompt": "Name a random verb.",
-   "separation": 0.111,
-   "self_noise": 0.111,
-   "score": 0.111,
+   "separation": 0.083,
+   "self_noise": 0.083,
+   "score": 0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "wander": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4710,6 +5568,12 @@
    "self_noise": 0.0,
    "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "lantern": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4732,10 +5596,16 @@
   },
   {
    "prompt": "Name a random emotion.",
-   "separation": 0.556,
-   "self_noise": 0.444,
-   "score": 0.111,
+   "separation": 0.528,
+   "self_noise": 0.333,
+   "score": 0.222,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "wonder": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4763,10 +5633,16 @@
   },
   {
    "prompt": "Name a random French word.",
-   "separation": 0.667,
-   "self_noise": 0.111,
-   "score": 0.556,
+   "separation": 0.5,
+   "self_noise": 0.083,
+   "score": 0.417,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "papillon": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4791,10 +5667,16 @@
   },
   {
    "prompt": "Name a random Spanish word.",
-   "separation": 0.667,
+   "separation": 0.5,
    "self_noise": 0.0,
-   "score": 0.667,
+   "score": 0.5,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "mariposa": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4817,10 +5699,18 @@
   },
   {
    "prompt": "Name a random German word.",
-   "separation": 0.667,
-   "self_noise": 0.556,
-   "score": 0.111,
+   "separation": 0.75,
+   "self_noise": 0.5,
+   "score": 0.278,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "wolkenkratzer": 4,
+      "waldlichtung": 1,
+      "sonnenblume": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4849,10 +5739,16 @@
   },
   {
    "prompt": "Name a random Japanese word.",
-   "separation": 0.0,
+   "separation": 0.5,
    "self_noise": 0.0,
-   "score": 0.0,
+   "score": 0.5,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "木漏れ日": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4875,10 +5771,16 @@
   },
   {
    "prompt": "Name a random palindrome.",
-   "separation": 0.556,
-   "self_noise": 0.111,
-   "score": 0.556,
+   "separation": 0.417,
+   "self_noise": 0.083,
+   "score": 0.361,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "racecar": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4904,10 +5806,17 @@
   },
   {
    "prompt": "Name a random word that rhymes with cat.",
-   "separation": 0.444,
-   "self_noise": 0.0,
-   "score": 0.444,
+   "separation": 0.472,
+   "self_noise": 0.083,
+   "score": 0.306,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "bat": 5,
+      "hat": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4932,10 +5841,17 @@
   },
   {
    "prompt": "Name a random long English word.",
-   "separation": 0.778,
-   "self_noise": 0.667,
-   "score": 0.222,
+   "separation": 0.722,
+   "self_noise": 0.583,
+   "score": 0.194,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "incomprehensibility": 5,
+      "antidisestablishmentarianism": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -4964,10 +5880,18 @@
   },
   {
    "prompt": "Name a random onomatopoeia.",
-   "separation": 0.722,
-   "self_noise": 0.778,
-   "score": 0.111,
+   "separation": 0.667,
+   "self_noise": 0.75,
+   "score": 0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "splat": 3,
+      "splash": 2,
+      "buzz": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5001,10 +5925,16 @@
   },
   {
    "prompt": "Name a random virtue.",
-   "separation": 0.222,
+   "separation": 0.167,
    "self_noise": 0.0,
-   "score": 0.222,
+   "score": 0.167,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "patience": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5032,6 +5962,12 @@
    "self_noise": 0.0,
    "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "cartographer": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5054,10 +5990,17 @@
   },
   {
    "prompt": "Name a random hobby.",
-   "separation": 0.611,
-   "self_noise": 0.444,
-   "score": 0.444,
+   "separation": 0.472,
+   "self_noise": 0.5,
+   "score": 0.333,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "birdwatching": 4,
+      "pottery": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5084,10 +6027,16 @@
   },
   {
    "prompt": "Name a random school subject.",
-   "separation": 0.222,
-   "self_noise": 0.222,
-   "score": 0.222,
+   "separation": 0.167,
+   "self_noise": 0.167,
+   "score": 0.056,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "geography": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5111,10 +6060,16 @@
   },
   {
    "prompt": "Name a random unit of measurement.",
-   "separation": 0.333,
-   "self_noise": 0.444,
-   "score": -0.444,
+   "separation": 0.278,
+   "self_noise": 0.333,
+   "score": -0.167,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "furlong": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5139,10 +6094,16 @@
   },
   {
    "prompt": "Name a random currency.",
-   "separation": 0.944,
-   "self_noise": 0.556,
-   "score": 0.444,
+   "separation": 0.778,
+   "self_noise": 0.417,
+   "score": 0.361,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "swissfranc": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5173,10 +6134,17 @@
   },
   {
    "prompt": "Name a random language.",
-   "separation": 0.556,
+   "separation": 0.417,
    "self_noise": 0.333,
-   "score": 0.333,
+   "score": 0.167,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "swahili": 5,
+      "basque": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5203,10 +6171,17 @@
   },
   {
    "prompt": "Name a random superpower.",
-   "separation": 0.278,
-   "self_noise": 0.222,
-   "score": -0.0,
+   "separation": 0.25,
+   "self_noise": 0.167,
+   "score": 0.056,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "teleportation": 4,
+      "gravitymanipulation": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5233,10 +6208,16 @@
   },
   {
    "prompt": "Name a random Olympic sport.",
-   "separation": 0.167,
-   "self_noise": 0.222,
+   "separation": 0.139,
+   "self_noise": 0.167,
    "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "fencing": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5261,10 +6242,18 @@
   },
   {
    "prompt": "Name a random martial art.",
-   "separation": 0.667,
-   "self_noise": 0.444,
-   "score": 0.111,
+   "separation": 0.583,
+   "self_noise": 0.417,
+   "score": 0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "capoeira": 3,
+      "silat": 2,
+      "pencaksilat": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5292,10 +6281,18 @@
   },
   {
    "prompt": "Name a random yoga pose.",
-   "separation": 0.5,
-   "self_noise": 0.222,
-   "score": 0.222,
+   "separation": 0.556,
+   "self_noise": 0.333,
+   "score": 0.333,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "halfmoonpose": 3,
+      "treepose": 2,
+      "trianglepose": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5321,10 +6318,17 @@
   },
   {
    "prompt": "Name a random knot.",
-   "separation": 0.667,
-   "self_noise": 0.111,
-   "score": 0.556,
+   "separation": 0.528,
+   "self_noise": 0.167,
+   "score": 0.389,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "figureeightknot": 5,
+      "bowline": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5354,6 +6358,12 @@
    "self_noise": 0.0,
    "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "diwali": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5376,10 +6386,16 @@
   },
   {
    "prompt": "Name a random color of the rainbow.",
-   "separation": 0.722,
-   "self_noise": 0.222,
-   "score": 0.556,
+   "separation": 0.639,
+   "self_noise": 0.167,
+   "score": 0.5,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "violet": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5405,10 +6421,16 @@
   },
   {
    "prompt": "Name a random taste.",
-   "separation": 0.333,
-   "self_noise": 0.222,
-   "score": 0.0,
+   "separation": 0.278,
+   "self_noise": 0.167,
+   "score": 0.056,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "umami": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5434,10 +6456,16 @@
   },
   {
    "prompt": "随便说一个中国城市。",
-   "separation": 0.556,
-   "self_noise": 0.111,
-   "score": 0.333,
+   "separation": 0.417,
+   "self_noise": 0.083,
+   "score": 0.306,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "成都": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5461,10 +6489,16 @@
   },
   {
    "prompt": "随便说一个成语。",
-   "separation": 0.833,
-   "self_noise": 0.333,
-   "score": 0.444,
+   "separation": 0.722,
+   "self_noise": 0.25,
+   "score": 0.417,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "水到渠成": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5491,10 +6525,17 @@
   },
   {
    "prompt": "随便说一个汉字。",
-   "separation": 0.556,
-   "self_noise": 0.111,
-   "score": 0.444,
+   "separation": 0.639,
+   "self_noise": 0.25,
+   "score": 0.472,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "云": 4,
+      "澄": 2
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5523,6 +6564,12 @@
    "self_noise": 0.0,
    "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "宫保鸡丁": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5549,6 +6596,12 @@
    "self_noise": 0.0,
    "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "李白": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5572,9 +6625,16 @@
   {
    "prompt": "随便说一个中文名字。",
    "separation": 0.556,
-   "self_noise": 0.444,
-   "score": 0.333,
+   "self_noise": 0.417,
+   "score": 0.194,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "林晓雨": 5,
+      "林知远": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5604,10 +6664,16 @@
   },
   {
    "prompt": "随便说一种中药。",
-   "separation": 0.444,
-   "self_noise": 0.333,
-   "score": 0.222,
+   "separation": 0.389,
+   "self_noise": 0.25,
+   "score": 0.139,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "黄芪": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5634,10 +6700,17 @@
   },
   {
    "prompt": "随便说一个节气。",
-   "separation": 0.722,
-   "self_noise": 0.111,
+   "separation": 0.778,
+   "self_noise": 0.167,
    "score": 0.667,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "白露": 5,
+      "清明": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5666,6 +6739,12 @@
    "self_noise": 0.0,
    "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "唐朝": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5688,10 +6767,17 @@
   },
   {
    "prompt": "随便说一种茶。",
-   "separation": 0.111,
-   "self_noise": 0.111,
+   "separation": 0.139,
+   "self_noise": 0.167,
    "score": -0.111,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "龙井茶": 5,
+      "铁观音": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5715,10 +6801,16 @@
   },
   {
    "prompt": "随便说一个省份。",
-   "separation": 0.667,
-   "self_noise": 0.111,
-   "score": 0.556,
+   "separation": 0.5,
+   "self_noise": 0.083,
+   "score": 0.417,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "四川省": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5742,10 +6834,16 @@
   },
   {
    "prompt": "随便说一种乐器（中国传统）。",
-   "separation": 0.111,
-   "self_noise": 0.111,
-   "score": 0.111,
+   "separation": 0.083,
+   "self_noise": 0.083,
+   "score": 0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "古筝": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5770,9 +6868,15 @@
   {
    "prompt": "随便说一个姓氏。",
    "separation": 0.611,
-   "self_noise": 0.444,
-   "score": 0.444,
+   "self_noise": 0.333,
+   "score": 0.389,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "陈": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5802,10 +6906,16 @@
   },
   {
    "prompt": "随便说一种水果。",
-   "separation": 0.222,
+   "separation": 0.167,
    "self_noise": 0.0,
-   "score": 0.222,
+   "score": 0.167,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "苹果": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5833,6 +6943,12 @@
    "self_noise": 0.0,
    "score": 0.0,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "蓝色": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5855,10 +6971,17 @@
   },
   {
    "prompt": "随便说一种动物。",
-   "separation": 0.667,
-   "self_noise": 0.556,
-   "score": 0.333,
+   "separation": 0.556,
+   "self_noise": 0.5,
+   "score": 0.222,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "海豚": 5,
+      "猫": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5890,6 +7013,12 @@
    "self_noise": 0.0,
    "score": 0.667,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "林黛玉": 6
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5912,10 +7041,17 @@
   },
   {
    "prompt": "随便说一个数字，1 到 100。",
-   "separation": 0.556,
-   "self_noise": 0.111,
-   "score": 0.556,
+   "separation": 0.472,
+   "self_noise": 0.167,
+   "score": 0.389,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "37": 5,
+      "47": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5941,10 +7077,17 @@
   },
   {
    "prompt": "随便说一个词语。",
-   "separation": 0.722,
-   "self_noise": 0.667,
-   "score": 0.0,
+   "separation": 0.639,
+   "self_noise": 0.583,
+   "score": 0.028,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "星河": 5,
+      "晨曦": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
@@ -5976,10 +7119,18 @@
   },
   {
    "prompt": "随便说一种小吃。",
-   "separation": 0.444,
-   "self_noise": 0.333,
-   "score": -0.111,
+   "separation": 0.472,
+   "self_noise": 0.417,
+   "score": -0.083,
    "models": {
+    "codex/gpt-6-astra": {
+     "samples": 6,
+     "counts": {
+      "煎饼果子": 3,
+      "臭豆腐": 2,
+      "章鱼小丸子": 1
+     }
+    },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
