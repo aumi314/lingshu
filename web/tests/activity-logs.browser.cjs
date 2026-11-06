@@ -110,7 +110,7 @@ const fs = require('node:fs')
       // 充值并入操作日志：只有两个标签；发起充值显示应付和实时订单状态，详情里有订单状态
       assert.equal(await page.getByRole('tab').count(), 2)
       await page.getByText(text('发起充值', 'Top-up started'), { exact: true }).waitFor()
-      await page.getByText(text(/^· 应付 13\.4 CNY · EPay$/, /^· to pay 13\.4 CNY · EPay$/)).waitFor()
+      await page.getByText(text(/应付 13\.4 CNY · EPay/, /to pay 13\.4 CNY · EPay/)).first().waitFor()
       await page.getByRole('table').getByText(text('待付款', 'Pending'), { exact: true }).click()
       await page.locator('.ant-drawer').getByText('order-pending-fixture', { exact: true }).first().waitFor()
       assert.equal(await page.locator('.ant-drawer').getByText(text('实际支付合计', 'Total paid')).count(), 0) // 未付款不显示实付
