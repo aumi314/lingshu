@@ -21,8 +21,9 @@ const fs = require('node:fs')
       const user = { id: 2, username: 'member-fixture', role: admin ? 'admin' : 'user', balance: '8', preferences: { language: en ? 'en' : 'zh', theme: 'dark' }, enabled: true, user_group_ids: [], created_at: new Date().toISOString() }
       const common = { id: 1, user_id: 2, username: user.username, created_at: new Date().toISOString(), status: 'success', operator: '', note: '' }
       const request = { ...common, type: 'request', event_key: 'request:1', request_id: 'req-fixture', key_name: 'fixture-key', model: 'fixture-model', upstream_model: admin ? 'upstream-fixture' : '', channel_name: admin ? 'fixture-channel' : '', group_name: 'fixture-group', group_ratio: '1', protocol: 'chat', stream: false, error: '', http_status: 200, input_tokens: 100, cache_read_tokens: 0, cache_write_tokens: 0, output_tokens: 20, reasoning_tokens: 0, cost: '0.25', balance_delta: '-0.25', attempts: 1, first_byte_ms: 100, total_ms: 200, input_price: '1', output_price: '2', price_rule: '', client_ip: '203.0.113.9' }
-      // 流式：输入 100 + 缓存读 300 → 命中 75%；可见输出 200 − 推理 100 ÷（3.0s − 1.0s）→ 50 tok/s
-      const streamed = { ...request, id: 3, event_key: 'request:3', request_id: 'req-stream', model: 'stream-model', stream: true, cache_read_tokens: 300, output_tokens: 200, reasoning_tokens: 100, first_byte_ms: 1000, total_ms: 3000, reasoning_effort: 'high' }
+      // 流式：输入 100 + 缓存读 300 → 命中 75%；可见输出 200 − 推理 100 ÷（3.7s − 1.7s）→ 50 tok/s
+      // 耗时拆分：读体 0.6s，0.7s 时发给上游 → 网关处理 0.1s、首字 1.0s、转发 3.0s
+      const streamed = { ...request, id: 3, event_key: 'request:3', request_id: 'req-stream', model: 'stream-model', stream: true, cache_read_tokens: 300, output_tokens: 200, reasoning_tokens: 100, first_byte_ms: 1700, total_ms: 3700, read_ms: 600, upstream_start_ms: 700, reasoning_effort: 'high' }
       // 上游攒好整段一次发出：首字后 0.05s 就结束，测不出速度
       const burst = { ...request, id: 4, event_key: 'request:4', request_id: 'req-burst', model: 'burst-model', stream: true, output_tokens: 300, first_byte_ms: 2000, total_ms: 2050 }
       const op = { created_at: common.created_at, user_id: 2, target_id: '2', target_name: 'member-fixture', note: '' }
@@ -59,6 +60,8 @@ const fs = require('node:fs')
       assert.equal(queries.at(-1).get('type'), 'request')
       await page.getByText('fixture-group', { exact: true }).first().waitFor()
       await page.getByText('1.0s · 50 tok/s', { exact: true }).waitFor()
+      await page.getByText(text('总耗时 3.7s · 读体 0.6s', 'Total 3.7s · upload 0.6s'), { exact: true }).waitFor()
+      assert.equal(await page.getByText(text(/读体/, /upload/)).count(), 1) // 读体不到 0.5 秒（旧日志为 0）不提示
       await page.getByText(text('Chat · 流式 · high', 'Chat · stream · high'), { exact: true }).waitFor()
       await page.getByText(text('Chat · 非流式', 'Chat · non-stream'), { exact: true }).first().waitFor()
       // 表格比屏幕宽时只在表格内左右滑，页面本身不能被撑宽
@@ -72,6 +75,13 @@ const fs = require('node:fs')
       await page.getByText('req-fixture', { exact: true }).waitFor()
       await page.locator('.ant-drawer').getByText('203.0.113.9', { exact: true }).waitFor()
       if (!admin) assert.equal(await page.getByText('fixture-channel', { exact: true }).count(), 0)
+      await page.locator('.ant-drawer').getByText('100 ms / 200 ms', { exact: true }).waitFor() // 旧日志：按旧口径显示
+      await page.locator('.ant-drawer-close').click()
+      await page.getByText('stream-model', { exact: true }).click()
+      const drawer = page.locator('.ant-drawer')
+      for (const [label, value] of [['读体', '0.60s'], ['网关处理', '0.10s'], ['首字', '1.00s'], ['转发', '3.00s'], ['总耗时', '3.70s']]) {
+        if (!en) assert.ok((await drawer.locator('tr').filter({ has: page.getByText(label, { exact: true }) }).innerText()).includes(value), label)
+      }
       await page.locator('.ant-drawer-close').click()
 
       // 操作日志：充值到账记为系统；余额类显示金额；改渠道 key 只显示“已更换”

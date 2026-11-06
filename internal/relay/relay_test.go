@@ -977,3 +977,41 @@ func TestGPTFastTier(t *testing.T) {
 		t.Fatalf("Ultrafast：cost %s tier %q 上游档位 %q", c, tier, up)
 	}
 }
+
+// 耗时拆分：读体按客户端实际上传用时记；首字从发给上游算起不含读体和网关处理。
+func TestTimingBreakdown(t *testing.T) {
+	e := newEnv(t)
+	e.upstream = func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(150 * time.Millisecond) // 上游“思考”
+		sse(w, `{"choices":[{"delta":{"content":"hi"}}]}`, `{"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":1}}`, `[DONE]`)
+	}
+	// 客户端分两次上传，中间停 200ms：模拟上行慢
+	pr, pw := io.Pipe()
+	go func() {
+		io.WriteString(pw, `{"model":"std-chat",`)
+		time.Sleep(200 * time.Millisecond)
+		io.WriteString(pw, `"stream":true}`)
+		pw.Close()
+	}()
+	req, _ := http.NewRequest(http.MethodPost, e.gateway.URL+"/v1/chat/completions", pr)
+	req.Header.Set("Authorization", "Bearer "+e.key)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	id := resp.Header.Get("X-Lingshu-Request-Id")
+	e.waitLog(id)
+	var read, start, first, total int
+	e.store.Pool.QueryRow(context.Background(), `SELECT read_ms, upstream_start_ms, first_byte_ms, total_ms FROM request_logs WHERE request_id = $1`, id).Scan(&read, &start, &first, &total)
+	if read < 150 || start < read { // 停顿 200ms，开头一小段与鉴权重叠
+		t.Errorf("读体 %dms 应 ≥ 150，发往上游时刻 %dms 应在读体之后", read, start)
+	}
+	if ttft := first - start; ttft < 150 || ttft > 1000 {
+		t.Errorf("从发给上游算的首字 = %dms，期望约 150ms（first %d, start %d）", ttft, first, start)
+	}
+	if total < first {
+		t.Errorf("总耗时 %d 小于首字 %d", total, first)
+	}
+}

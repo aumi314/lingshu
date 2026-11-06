@@ -148,6 +148,8 @@ export type LogEntry = {
   client_ip: string // 访问者 IP，旧日志为空
   reasoning_effort: string // 客户端要求的推理强度，原样记录，旧日志为空
   service_tier: '' | 'fast' | 'fast_downgraded' | 'unavailable' // GPT Fast 档位结果，'' 为标准
+  read_ms?: number // 读请求体用时；旧日志为 0
+  upstream_start_ms?: number // 发出最终上游请求的时刻（从进入网关算）；旧日志为 0，此时首字按旧口径（从进入网关算）
 }
 
 export type LogSummary = { requests: number; failed: number; input_tokens: number; cache_read_tokens: number; output_tokens: number; cost: string } // input_tokens 含缓存读写
