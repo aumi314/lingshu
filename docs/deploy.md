@@ -209,7 +209,7 @@ Cloudflare 曾对 Python 标准库默认 `Python-urllib` User-Agent 返回 1010�
 - 公网 HTTPS、管理员登录、Secure / HttpOnly 会话 cookie、首页和构建资源通过。TypeSafe / Nace 模板可用，当轮没有自动创建对应生产渠道。
 - 9 个启用渠道、12 个模型映射，三种聊天协议共 36/36 个真实流式测试通过，全部上报完整用量。公网 Chat 流式、Messages 和 Responses 非流式均 HTTP 200；Chat 样本含 259 个 SSE 事件及 `[DONE]`，首事件 0.415 秒、事件最大间隔 0.371 秒。
 - 三笔调用总扣费 `0.0003729000 USD`，与 token × 价格 × 分组倍率、测试余额减少和 key 已用额度精确一致。验收账号已停用，会话撤销，测试 key 已停用；测试日志保留。
-- 日常备份完成恢复演练，schema 9 的 15 张表逐表行数一致；验证库 `lingshu_restore_verify_20261023` 和 `lingshu_restore_release_4bef2a1` 保留供复核。这是历史版本的恢复证据。
+- 日常备份完成恢复演练，schema 9 的 15 张表逐表行数一致；验证库 `lingshu_restore_verify_20261023` 和 `lingshu_restore_release_4bef2a1` 曾保留供复核，2026-11-06 清理备份时删除。这是历史版本的恢复证据。
 - 既有容器 ID、启动时间及重启计数保持不变，只对 Caddy 平滑 reload。数据库回环监听、应用网桥监听和三个服务 / timer 的开机启动验证通过。
 
 DMIT 初始安装前备份和验收 JSON 保存在 root 私有目录 `/var/backups/lingshu-dmit-copy-20261023/`，包括原 Caddyfile、UFW 规则、既有数据库备份、快照 manifest、容器基线、协议计费与恢复演练结果。归档及数据库含密钥，保留在主机私有目录，不进入 Git。
