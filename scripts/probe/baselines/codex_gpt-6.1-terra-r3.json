@@ -216,12 +216,12 @@
     "uruguay"
    ],
    "Name a random island.": [
+    "borneo",
+    "saba",
+    "madeira",
     "socotra",
-    "somiguel",
-    "madagascar",
-    "socotra",
-    "lombok",
-    "somiguel"
+    "sardinia",
+    "socotra"
    ],
    "Name a random mountain.": [
     "mountelbrus",
@@ -440,11 +440,11 @@
     "balllightning"
    ],
    "Name a random cheese.": [
+    "gruyère",
     "gouda",
-    "gouda",
-    "comt",
-    "taleggio",
-    "gouda",
+    "gruyère",
+    "gruyère",
+    "gruyère",
     "gouda"
    ],
    "Name a random spice.": [
@@ -512,7 +512,7 @@
     "oolong"
    ],
    "Name a random coffee drink.": [
-    "cortado",
+    "cappuccino",
     "cortado",
     "cortado",
     "cortado",
@@ -697,35 +697,35 @@
    ],
    "Name a random painter.": [
     "hilmaafklint",
+    "remediosvaro",
     "hilmaafklint",
-    "hilmaafklint",
-    "hilmaafklint",
+    "remediosvaro",
     "hilmaafklint",
     "hilmaafklint"
    ],
    "Name a random composer.": [
+    "claraschumann",
+    "claraschumann",
     "claudedebussy",
     "claudedebussy",
-    "claudedebussy",
-    "claudedebussy",
-    "claudedebussy",
-    "claraschumann"
+    "claraschumann",
+    "claudedebussy"
    ],
    "Name a random novelist.": [
-    "tonimorrison",
+    "ursulakleguin",
     "ursulakleguin",
     "tonimorrison",
     "tonimorrison",
-    "tonimorrison",
-    "ursulakleguin"
+    "ursulakleguin",
+    "tonimorrison"
    ],
    "Name a random poet.": [
-    "wisawaszymborska",
-    "wisawaszymborska",
-    "wisawaszymborska",
-    "wisawaszymborska",
-    "wisawaszymborska",
-    "wisawaszymborska"
+    "wisławaszymborska",
+    "wisławaszymborska",
+    "wisławaszymborska",
+    "maryoliver",
+    "wisławaszymborska",
+    "adalimón"
    ],
    "Name a random philosopher.": [
     "simoneweil",
@@ -792,12 +792,12 @@
     "hermes"
    ],
    "Name a random Norse god.": [
-    "heimdall",
-    "tr",
     "tyr",
-    "tyr",
-    "heimdall",
-    "tr"
+    "freyr",
+    "týr",
+    "týr",
+    "týr",
+    "týr"
    ],
    "Name a random zodiac sign.": [
     "aquarius",
@@ -1035,7 +1035,7 @@
     "papillon",
     "papillon",
     "papillon",
-    "papillon",
+    "pamplemousse",
     "papillon",
     "papillon"
    ],
@@ -1049,19 +1049,19 @@
    ],
    "Name a random German word.": [
     "schmetterling",
+    "waldeinsamkeit",
     "schmetterling",
     "schmetterling",
-    "schmetterling",
-    "schmetterling",
-    "waldeinsamkeit"
+    "waldeinsamkeit",
+    "schmetterling"
    ],
    "Name a random Japanese word.": [
-    "木漏日",
-    "木漏日",
-    "木漏日",
-    "木漏日",
-    "木漏日",
-    "木漏日"
+    "木漏れ日",
+    "木漏れ日",
+    "木漏れ日",
+    "木漏れ日",
+    "木漏れ日",
+    "木漏れ日"
    ],
    "Name a random palindrome.": [
     "racecar",
@@ -1376,7 +1376,7 @@
     "煎饼果子"
    ]
   },
-  "finished_at": "2026-11-06T15:36:18-0800",
-  "elapsed_seconds": 3.0
+  "finished_at": "2026-11-06T15:56:21-0800",
+  "elapsed_seconds": 30.5
  }
 }
