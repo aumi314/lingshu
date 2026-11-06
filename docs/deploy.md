@@ -98,7 +98,7 @@ ssh -i ~/.ssh/dmit_lax_ed25519 -o IdentitiesOnly=yes root@136.175.178.126
 | 拉取部署 | `deploy/release/lingshu-dmit-deploy` | DMIT `/usr/local/bin/lingshu-deploy` |
 | 定时触发 | `deploy/release/lingshu-dmit-deploy.service`、`.timer` | `/etc/systemd/system/lingshu-deploy.service`、`lingshu-deploy.timer` |
 
-部署脚本每次：读清单 → 提交与 `/opt/lingshu/release.json` 相同就退出 → 待执行迁移含破坏性迁移（删表、删列、`TRUNCATE`、`DELETE FROM`；删约束、索引等不算，规则在 `release.yml`）则暂停 → 下载成品并核对清单哈希 → 单独备份 `/var/backups/lingshu/lingshu-deploy-<时间>-<提交>.dump`（保留 10 份，不占每日备份名额）并检查可读 → 保存 `prev-<提交>` → 原子替换、重启 → 30 秒内健康检查 → 写 `release.json`（`source` 为 `github-actions main-latest`）。健康检查失败自动换回旧版本，并记 `/var/lib/lingshu-deploy/failed-<提交>`，同一提交不再重试。
+部署脚本每次：读清单 → 提交与 `/opt/lingshu/release.json` 相同就退出 → 待执行迁移含破坏性迁移（删表、删列、`TRUNCATE`、`DELETE FROM`；删约束、索引等不算，规则在 `release.yml`）则暂停 → 下载成品并核对清单哈希 → 单独备份 `/var/backups/lingshu/lingshu-deploy-<时间>-<提交>.dump`（保留 10 份，不占每日备份名额）并检查可读 → 保存 `prev-<提交>` → 原子替换、重启 → 30 秒内健康检查 → 写 `release.json`（`source` 为 `github-actions main-latest`）→ 清掉这个提交的暂停 / 放行标记，旧版本只留最近 5 套。健康检查失败自动换回旧版本，并记 `/var/lib/lingshu-deploy/failed-<提交>`，同一提交不再重试。
 
 在 DMIT 上查看与干预：
 
@@ -140,7 +140,20 @@ GitHub 或自动发布不可用时使用。
 
 ## 备份、恢复与回滚
 
-`lingshu-backup.timer` 每天服务器时间 04:00 触发，随机延后最多十分钟。脚本在 `/var/backups/lingshu/` 生成 PostgreSQL custom-format dump 及 SHA-256 文件，目录为 root 私有；仅轮换脚本生成的常规备份，保留最近 14 份。当前备份保存在 DMIT 本机，持续异地备份待安排。
+`lingshu-backup.timer` 每天服务器时间 04:00 触发，随机延后最多十分钟。脚本在 `/var/backups/lingshu/` 生成 PostgreSQL custom-format dump 及 SHA-256 文件，目录为 root 私有。
+
+保留策略（2026-11-06 调整）：
+
+| 类别 | 文件 | 保留 | 清理者 |
+|---|---|---|---|
+| 每日备份 | `lingshu-<UTC 时间>.dump` | 分层：最近 14 天每天一份，再往前 8 周每周一份，再往前 6 个月每月一份（约 27 份）；同一周期多次备份留最新的；刚生成的一份不删 | `lingshu-backup` |
+| 发布前备份 | `lingshu-deploy-<时间>-<提交>.dump` | 最近 10 份 | `lingshu-deploy` |
+| 旧版本 | `/opt/lingshu/lingshu.prev-<提交>`、`env.prev-<提交>`、`release.prev-<提交>.json` | 最近 5 套（按程序文件时间），发布成功后清理 | `lingshu-deploy` |
+| 安装基线 | `/var/backups/lingshu-dmit-copy-20261023/` | 长期保留（整体停用时恢复原 Caddyfile、UFW 用） | 手动 |
+
+改为分层前是“最近 14 份”，手动发布一天跑好几次备份时，实际只能覆盖一周左右。手动做的临时备份不要用 `lingshu-<时间>.dump` 这个名字，否则会被每日轮换按日期处理；用带说明的后缀，例如 `lingshu-<时间>-pre-<用途>.dump`，用完手动删除。
+
+当前备份都在 DMIT 本机，机器整体故障时会和数据库一起丢失；异地备份待安排。
 
 在 DMIT 上手动备份并检查：
 

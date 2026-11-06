@@ -110,3 +110,12 @@ PY
 mv -f "$opt/release.json.new" "$opt/release.json"
 schema=$(docker exec lingshu-postgres psql -U lingshu -d lingshu -tAc 'SELECT max(version) FROM schema_migrations')
 echo "已发布 $short，schema $schema"
+rm -f -- "$state/hold-$commit" "$state/approve-$commit"
+
+# 旧版本只留最近 5 套（程序、配置、发布标记），按程序文件时间排序；更早的回滚意义不大，需要时可从对应提交重新构建。
+# 放在发布成功之后：发布失败时刚保存的旧版本一定还在
+mapfile -t stale < <(find "$opt" -maxdepth 1 -type f -name 'lingshu.prev-*' -printf '%T@ %f\n' | sort -rn | tail -n +6 | cut -d' ' -f2)
+for f in "${stale[@]}"; do
+  s=${f#lingshu.prev-}
+  rm -f -- "$opt/$f" "$opt/env.prev-$s" "$opt/release.prev-$s.json"
+done
