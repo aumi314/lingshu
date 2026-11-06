@@ -13,6 +13,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
+
+	"github.com/aumi314/lingshu/internal/payments"
 )
 
 // ---- 操作日志 ----
@@ -239,6 +241,24 @@ func recordBalance(ctx context.Context, tx pgx.Tx, actor *int64, userID int64, a
 	})
 }
 
+// recordTopupCreate 记录用户发起一笔在线充值（充值并入操作日志，2026-11-06）。操作人取 context 里的下单用户；
+// 订单之后的状态不再写新记录，查询时按 order_id 实时关联。
+func recordTopupCreate(ctx context.Context, tx pgx.Tx, o payments.Order) error {
+	str := func(field, v string) Change {
+		b, _ := json.Marshal(v)
+		return Change{Field: field, To: b}
+	}
+	return record(ctx, tx, operation{
+		userID: o.UserID, action: "topup.create", targetType: "topup", targetID: o.ID, targetName: o.ID, orderID: o.ID,
+		changes: []Change{
+			str("credit_usd", o.CreditUSD.String()),
+			str("pay_amount", o.Amount.String()+" "+o.Currency),
+			str("provider", o.Provider),
+			str("method", o.Method),
+		},
+	})
+}
+
 // ---- 查询 ----
 
 type OperationLog struct {
@@ -308,7 +328,7 @@ func (s *Store) ListOperations(ctx context.Context, f LogFilter, member bool) ([
 		SELECT o.id, o.created_at, o.actor_id, COALESCE(a.username, NULLIF(o.actor_name, ''), ''), o.user_id, o.action, o.target_type,
 		       o.target_id, o.target_name, o.changes, o.note, o.amount::text,
 		       t.id, COALESCE(t.provider, ''), COALESCE(t.method, ''), COALESCE(t.currency, ''),
-		       COALESCE(t.amount, 0)::text, COALESCE(t.tax, 0)::text, COALESCE(t.total, 0)::text, t.completed_at
+		       COALESCE(t.amount, 0)::text, COALESCE(t.tax, 0)::text, COALESCE(t.total, 0)::text, t.completed_at, COALESCE(t.status, '')
 		FROM operation_logs o
 		LEFT JOIN users a ON a.id = o.actor_id
 		LEFT JOIN topup_orders t ON t.id = o.order_id
@@ -323,7 +343,7 @@ func (s *Store) ListOperations(ctx context.Context, f LogFilter, member bool) ([
 		var order LogOrderSummary
 		var orderAmount, tax, paid string
 		err := r.Scan(&o.ID, &o.CreatedAt, &o.ActorID, &o.Actor, &o.UserID, &o.Action, &o.TargetType, &o.TargetID, &o.TargetName,
-			&changes, &o.Note, &amount, &orderID, &order.Provider, &order.Method, &order.Currency, &orderAmount, &tax, &paid, &order.CompletedAt)
+			&changes, &o.Note, &amount, &orderID, &order.Provider, &order.Method, &order.Currency, &orderAmount, &tax, &paid, &order.CompletedAt, &order.Status)
 		if err != nil {
 			return o, err
 		}

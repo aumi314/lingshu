@@ -27,7 +27,9 @@ const fs = require('node:fs')
       // 上游攒好整段一次发出：首字后 0.05s 就结束，测不出速度
       const burst = { ...request, id: 4, event_key: 'request:4', request_id: 'req-burst', model: 'burst-model', stream: true, output_tokens: 300, first_byte_ms: 2000, total_ms: 2050 }
       const op = { created_at: common.created_at, user_id: 2, target_id: '2', target_name: 'member-fixture', note: '' }
-      const topup = { ...op, id: 1, actor_id: null, actor: '', action: 'topup.credit', target_type: 'balance', changes: [{ field: 'balance', from: '5', to: '6' }], note: '在线充值 · epay', amount: '1', order: { id: 'order-fixture', provider: 'epay', method: 'alipay', currency: 'CNY', amount: '6.70', tax: '0.00', total: '6.70', completed_at: common.created_at } }
+      const topup = { ...op, id: 1, actor_id: null, actor: '', action: 'topup.credit', target_type: 'balance', changes: [{ field: 'balance', from: '5', to: '6' }], note: '在线充值 · epay', amount: '1', order: { id: 'order-fixture', provider: 'epay', method: 'alipay', currency: 'CNY', amount: '6.70', tax: '0.00', total: '6.70', completed_at: common.created_at, status: 'success' } }
+      // 发起充值：订单状态实时显示（这里还没付款）
+      const topupStart = { ...op, id: 5, actor_id: 2, actor: 'member-fixture', action: 'topup.create', target_type: 'topup', target_id: 'order-pending-fixture', target_name: 'order-pending-fixture', changes: [{ field: 'credit_usd', to: '2' }, { field: 'pay_amount', to: '13.4 CNY' }, { field: 'provider', to: 'epay' }, { field: 'method', to: 'alipay' }], order: { id: 'order-pending-fixture', provider: 'epay', method: 'alipay', currency: 'CNY', amount: '13.40', tax: '0', total: '0', completed_at: null, status: 'pending' } }
       const adjustment = { ...op, id: 2, actor_id: 1, actor: 'admin-fixture', action: 'balance.adjust', target_type: 'balance', changes: [{ field: 'balance', from: '6', to: '5.5' }], note: 'manual fixture', amount: '-0.5' }
       const channelOp = { ...op, id: 3, actor_id: 1, actor: 'admin-fixture', user_id: null, action: 'channel.update', target_type: 'channel', target_id: '7', target_name: 'channel-fixture', changes: [{ field: 'api_key', secret: true }, { field: 'enabled', from: true, to: false }] }
       const summary = { requests: 2, failed: 0, cost: '0.5', input_tokens: 500, cache_read_tokens: 300, output_tokens: 220, topup_total: '1', adjustment_net: '-0.5' }
@@ -41,12 +43,11 @@ const fs = require('node:fs')
         const json = (body, status = 200) => route.fulfill({ json: body, status })
         if (url.pathname === '/api/me') return json({ user, cny_per_usd: '6.7' })
         if (url.pathname === '/api/admin/users') return json([user])
-        if (url.pathname === '/api/admin/topups') { queries.push(url.searchParams); return json({ items: [{ id: 'order-pending-fixture', user_id: 2, provider: 'epay', environment: 'prod', credit_usd: '2', amount: '13.40', currency: 'CNY', status: 'pending', tax: '0', total: '0', admin_test: false, created_at: common.created_at, completed_at: null }], total: 1 }) }
         if (!url.pathname.endsWith('/logs')) return json({})
         queries.push(url.searchParams)
         if (fail) return json({ error: 'fixture load error' }, 500)
         const type = url.searchParams.get('type')
-        const logs = type === 'request' ? [request, streamed, burst] : type === 'operation' && !emptyBalance ? [topup, adjustment, ...(admin ? [channelOp] : [])] : []
+        const logs = type === 'request' ? [request, streamed, burst] : type === 'operation' && !emptyBalance ? [topupStart, topup, adjustment, ...(admin ? [channelOp] : [])] : []
         const body = { logs, total: logs.length, summary, models: ['fixture-model', 'stream-model'] }
         if (hold && type === 'request') delayed.push(() => json(body))
         else return json(body)
@@ -106,16 +107,17 @@ const fs = require('node:fs')
       await page.waitForTimeout(100)
       assert.equal(queries.at(-1).get('target'), admin ? 'channel' : 'api_key')
 
-      // 充值订单：只有管理员有这个标签，可按状态筛
-      if (admin) {
-        await tab('充值订单', 'Top-up orders')
-        await page.getByText('order-pending-fixture', { exact: true }).waitFor()
-        await page.getByText('待付款', { exact: true }).waitFor()
-        assert.equal(new URL(page.url()).searchParams.get('tab'), 'orders')
-        await tab('操作日志', 'Operation logs')
-        await page.getByText(text('额度调整', 'Balance adjustment'), { exact: true }).waitFor()
-      } else assert.equal(await page.getByRole('tab', { name: 'Top-up orders' }).count(), 0)
-      // 刷新保留标签
+      // 充值并入操作日志：只有两个标签；发起充值显示应付和实时订单状态，详情里有订单状态
+      assert.equal(await page.getByRole('tab').count(), 2)
+      await page.getByText(text('发起充值', 'Top-up started'), { exact: true }).waitFor()
+      await page.getByText(text(/应付 13\.4 CNY · EPay/, /to pay 13\.4 CNY · EPay/)).first().waitFor()
+      await page.getByRole('table').getByText(text('待付款', 'Pending'), { exact: true }).click()
+      await page.locator('.ant-drawer').getByText('order-pending-fixture', { exact: true }).first().waitFor()
+      assert.equal(await page.locator('.ant-drawer').getByText(text('实际支付合计', 'Total paid')).count(), 0) // 未付款不显示实付
+      await page.locator('.ant-drawer-close:visible').click()
+      // 刷新保留标签；旧的充值订单链接落到操作日志
+      await page.goto(base + '?tab=orders')
+      await page.getByText(text('额度调整', 'Balance adjustment'), { exact: true }).waitFor()
       await page.reload()
       await page.getByText(text('额度调整', 'Balance adjustment'), { exact: true }).waitFor()
 
@@ -154,6 +156,6 @@ const fs = require('node:fs')
       }
       await page.close()
     }
-    console.log('PASS: admin/member call/operation tabs, cache rate, first token and speed, operation labels and secret masking, system actor, target filter, details, order currency, tab in URL, empty/error states, delayed responses, Chinese/English, mobile')
+    console.log('PASS: admin/member call/operation tabs, cache rate, first token and speed, operation labels and secret masking, system actor, target filter, details, order currency, tab in URL, top-up orders merged into operations with live status, empty/error states, delayed responses, Chinese/English, mobile')
   } finally { await browser.close(); server.kill() }
 })().catch((error) => { console.error(error); process.exitCode = 1 })

@@ -180,7 +180,23 @@ func (s *Store) CreateTopup(ctx context.Context, userID int64, c payments.Config
 		return payments.Order{}, err
 	}
 	id := hex.EncodeToString(b)
-	return scanTopup(s.Pool.QueryRow(ctx, `INSERT INTO topup_orders(id,user_id,provider,version_id,environment,method,credit_usd,amount,currency,unit_price,request_key,admin_test) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(user_id,request_key) DO UPDATE SET request_key=EXCLUDED.request_key RETURNING `+topupColumns, id, userID, c.Provider, c.VersionID, c.Environment, method, credit.String(), amount.String(), c.Currency, c.UnitPrice.String(), key, adminTest))
+	var o payments.Order
+	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		// 同一个 request_key 重复提交返回原订单；只有真正新建时才记操作日志（并发重复提交时后到的等前一个提交后什么都不做）
+		var inserted string
+		err := tx.QueryRow(ctx, `INSERT INTO topup_orders(id,user_id,provider,version_id,environment,method,credit_usd,amount,currency,unit_price,request_key,admin_test) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(user_id,request_key) DO NOTHING RETURNING id`, id, userID, c.Provider, c.VersionID, c.Environment, method, credit.String(), amount.String(), c.Currency, c.UnitPrice.String(), key, adminTest).Scan(&inserted)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		if o, err = scanTopup(tx.QueryRow(ctx, `SELECT `+topupColumns+` FROM topup_orders WHERE user_id=$1 AND request_key=$2`, userID, key)); err != nil {
+			return err
+		}
+		if inserted == "" {
+			return nil
+		}
+		return recordTopupCreate(ctx, tx, o)
+	})
+	return o, err
 }
 
 func (s *Store) Topup(ctx context.Context, id string) (payments.Order, error) {

@@ -17,6 +17,7 @@ type LogOrderSummary struct {
 	Tax         decimal.Decimal `json:"tax"`
 	Total       decimal.Decimal `json:"total"`
 	CompletedAt *time.Time      `json:"completed_at"`
+	Status      string          `json:"status"` // 订单当前状态：pending、success、failed、expired
 }
 
 type ActivityLog struct {

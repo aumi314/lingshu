@@ -4,6 +4,7 @@ import type { TablePaginationConfig } from 'antd'
 import dayjs from 'dayjs'
 import type { OperationChange, OperationEntry } from '../api'
 import { useApp } from '../app'
+import { paymentNames } from '../payment'
 
 type T = ReturnType<typeof useApp>['t']
 type Money = ReturnType<typeof useApp>['money']
@@ -13,14 +14,26 @@ export function targetLabel(t: T, type: string): string {
     user: t('用户', 'User'), api_key: 'Key', balance: t('余额', 'Balance'), group: t('服务分组', 'Service group'),
     user_group: t('用户分组', 'User group'), model: t('模型', 'Model'), channel: t('渠道', 'Channel'),
     settings: t('系统设置', 'Settings'), payment: t('支付配置', 'Payment'), registration_code: t('注册码', 'Registration code'), redeem_code: t('兑换码', 'Redeem code'),
+    topup: t('充值订单', 'Top-up order'),
   } as Record<string, string>)[type] ?? type
 }
 
-export const targetTypes = ['user', 'api_key', 'balance', 'group', 'user_group', 'model', 'channel', 'settings', 'payment', 'registration_code', 'redeem_code']
+export const targetTypes = ['user', 'api_key', 'balance', 'topup', 'group', 'user_group', 'model', 'channel', 'settings', 'payment', 'registration_code', 'redeem_code']
+
+// 充值订单的当前状态（发起充值那条记录上实时显示）
+function orderStatus(t: T, status: string): [string, string] {
+  return ({
+    pending: ['default', t('待付款', 'Pending')],
+    success: ['green', t('已到账', 'Credited')],
+    failed: ['red', t('失败', 'Failed')],
+    expired: ['default', t('已过期', 'Expired')],
+  } as Record<string, [string, string]>)[status] ?? ['default', status]
+}
 
 function actionLabel(t: T, o: OperationEntry): string {
   const special: Record<string, string> = {
     'balance.adjust': t('额度调整', 'Balance adjustment'),
+    'topup.create': t('发起充值', 'Top-up started'),
     'topup.credit': t('充值到账', 'Top-up credited'),
     'registration_code.create': t('生成注册码', 'Generate codes'),
     'registration_code.update': t('撤销注册码', 'Revoke code'),
@@ -51,12 +64,14 @@ function fieldLabel(t: T, field: string): string {
     registration_mode: t('注册方式', 'Registration'), fx_mode: t('汇率模式', 'Rate mode'), user_concurrency: t('每用户并发上限', 'Per-user concurrency'), user_rpm: t('每用户每分钟请求数', 'Per-user RPM'), reserve_output_tokens: t('默认预扣输出', 'Default held output'), api_base_url: t('接入地址', 'API base URL'), deployment_mode: t('使用模式', 'Usage mode'),
     environment: t('环境', 'Environment'), currency: t('币种', 'Currency'), unit_price: t('单价', 'Unit price'),
     min_usd: t('最低额度', 'Min'), max_usd: t('最高额度', 'Max'), methods: t('支付方式', 'Methods'),
+    credit_usd: t('到账额度', 'Credit'), pay_amount: t('应付', 'To pay'), provider: t('支付服务', 'Provider'), method: t('支付方式', 'Method'),
   } as Record<string, string>)[field] ?? field
 }
 
 function valueText(t: T, money: Money, field: string, v: unknown): string {
   if (v === undefined || v === null || v === '') return '—'
-  if (field === 'balance') return money(v as string)
+  if (field === 'balance' || field === 'credit_usd') return money(v as string)
+  if (field === 'provider') return paymentNames[v as string] ?? String(v)
   if (field.endsWith('_price') && typeof v === 'string') return money(v, 6)
   if (field === 'enabled') return v ? t('启用', 'Enabled') : t('停用', 'Disabled')
   if (typeof v === 'boolean') return v ? t('是', 'Yes') : t('否', 'No')
@@ -71,6 +86,15 @@ function secretText(t: T, o: OperationEntry): string {
 
 // 一行摘要：余额类显示金额；修改显示前两项；新建、删除只给项数，细节点开看
 function summary(t: T, money: Money, o: OperationEntry) {
+  if (o.action === 'topup.create') {
+    const v = (field: string) => o.changes.find((c) => c.field === field)?.to
+    const [color, label] = orderStatus(t, o.order?.status ?? '')
+    return <>
+      {money(String(v('credit_usd') ?? '0'))}
+      <span className="muted"> · {t('应付', 'to pay')} {String(v('pay_amount') ?? '—')} · {paymentNames[String(v('provider'))] ?? String(v('provider') ?? '')}</span>
+      {o.order && <Tag color={color} style={{ marginLeft: 8 }}>{label}</Tag>}
+    </>
+  }
   if (o.amount !== undefined) {
     const n = Number(o.amount)
     const c = o.changes[0]
@@ -125,8 +149,9 @@ export default function OperationLogTable({ logs, loading, pagination }: { logs?
             {detail.note && <Descriptions.Item label={t('备注', 'Note')}>{detail.note}</Descriptions.Item>}
             {detail.order && <>
               <Descriptions.Item label={t('订单号', 'Order ID')}><Typography.Text copyable>{detail.order.id}</Typography.Text></Descriptions.Item>
-              <Descriptions.Item label={t('支付服务 / 方式', 'Provider / method')}>{detail.order.provider} / {detail.order.method || '—'}</Descriptions.Item>
-              <Descriptions.Item label={t('实际支付合计', 'Total paid')}>{detail.order.total} {detail.order.currency}</Descriptions.Item>
+              <Descriptions.Item label={t('支付服务 / 方式', 'Provider / method')}>{paymentNames[detail.order.provider] ?? detail.order.provider} / {detail.order.method || '—'}</Descriptions.Item>
+              <Descriptions.Item label={t('订单状态', 'Order status')}><Tag color={orderStatus(t, detail.order.status)[0]}>{orderStatus(t, detail.order.status)[1]}</Tag></Descriptions.Item>
+              {detail.order.status === 'success' && <Descriptions.Item label={t('实际支付合计', 'Total paid')}>{detail.order.total} {detail.order.currency}</Descriptions.Item>}
             </>}
           </Descriptions>
           <Table<OperationChange>

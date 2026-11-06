@@ -28,7 +28,6 @@ func (s *Server) registerPayments(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/payments/{provider}/test-order", s.admin(s.createTopup))
 	mux.HandleFunc("POST /api/admin/payments/waffo_pancake/catalog", s.admin(s.pancakeCatalog))
 	mux.HandleFunc("POST /api/admin/payments/waffo_pancake/create-product", s.admin(s.createPancakeProduct))
-	mux.HandleFunc("GET /api/admin/topups", s.admin(s.listTopups))
 	mux.HandleFunc("GET /api/payments/{provider}/{version}/{environment}/notify", s.paymentNotify)
 	mux.HandleFunc("POST /api/payments/{provider}/{version}/{environment}/notify", s.paymentNotify)
 }
@@ -305,10 +304,7 @@ func (s *Server) listTopups(w http.ResponseWriter, r *http.Request) {
 		size = 20
 	}
 	q := r.URL.Query()
-	f := store.TopupFilter{UserID: currentUser(r).ID, Status: q.Get("status")}
-	if strings.HasPrefix(r.URL.Path, "/api/admin/") {
-		f.UserID, _ = strconv.ParseInt(q.Get("user_id"), 10, 64) // 管理员看全部，可按用户筛
-	}
+	f := store.TopupFilter{UserID: currentUser(r).ID, Status: q.Get("status")} // 只看自己的；管理员在操作日志里看全站充值
 	switch f.Status {
 	case "", "pending", "success", "failed", "expired":
 	default:

@@ -140,6 +140,6 @@ export default function PaymentSettings() {
   return <div style={{ marginTop: 20 }}>
     {!publicURL && <Alert showIcon type="warning" title={t('请设置 LINGSHU_PUBLIC_URL 后启用在线支付', 'Set LINGSHU_PUBLIC_URL before enabling online payments')} style={{ marginBottom: 16 }} />}
     <Collapse items={services.map((s) => ({ key: s.config.provider, label: <Space>{paymentNames[s.config.provider]}<Tag color={s.config.enabled && s.ready ? 'green' : 'default'}>{s.config.enabled && s.ready ? t('已启用', 'Enabled') : t('未开放', 'Not available')}</Tag></Space>, children: <ServiceForm service={s} onSave={load} /> }))} />
-    <Typography.Paragraph type="secondary" style={{ marginTop: 16 }}>{t('充值订单在「全站日志 → 充值订单」里查看。', 'Top-up orders are under All logs → Top-up orders.')}</Typography.Paragraph>
+    <Typography.Paragraph type="secondary" style={{ marginTop: 16 }}>{t('充值记录在「全站日志 → 操作日志」里查看，对象选“充值订单”可只看充值。', 'Top-ups are under All logs → Operation logs; filter by "Top-up order" to see only top-ups.')}</Typography.Paragraph>
   </div>
 }

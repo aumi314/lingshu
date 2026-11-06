@@ -254,7 +254,8 @@ func TestTopupCreditOperation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	logs, sum, total, err := s.ListOperations(context.Background(), LogFilter{UserID: 1}, true)
+	// 另有一条下单时的“发起充值”（对象是订单），这里只看余额类的入账记录
+	logs, sum, total, err := s.ListOperations(context.Background(), LogFilter{UserID: 1, Target: "balance"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,54 +2,60 @@ package api
 
 import (
 	"context"
+	"strings"
 	"testing"
+
+	"github.com/aumi314/lingshu/internal/store"
 )
 
-// 充值订单列表（全站日志的「充值订单」标签）：管理员可按用户、状态、时间筛选；成员只能看自己的。
-func TestTopupOrderFilters(t *testing.T) {
+// 充值并入操作日志（2026-11-06）：发起在线充值记一条“发起充值”，重复提交不重复记；订单状态实时显示；
+// 成员能看到自己的，管理员能按“充值订单”筛选；全站订单列表接口已去掉。
+func TestTopupOrdersInOperationLog(t *testing.T) {
 	e := newEnv(t)
-	for _, q := range []string{
-		`INSERT INTO payment_config_versions(id,provider,config,secrets) VALUES(1,'epay','{}','{}')`,
-		`INSERT INTO topup_orders(id,user_id,provider,version_id,environment,credit_usd,amount,currency,unit_price,status,request_key,method,tax,total,created_at) VALUES
-			('bob-paid',2,'epay',1,'prod',1,6.7,'CNY',6.7,'success','k1','alipay',0,6.7,'2026-11-01T00:00:00Z'),
-			('bob-pending',2,'epay',1,'prod',2,13.4,'CNY',6.7,'pending','k2','alipay',0,0,'2026-11-03T00:00:00Z'),
-			('admin-paid',1,'epay',1,'prod',1,6.7,'CNY',6.7,'success','k3','alipay',0,6.7,'2026-11-02T00:00:00Z')`,
-	} {
-		if _, err := e.store.Pool.Exec(context.Background(), q); err != nil {
-			t.Fatal(err)
-		}
+	admin, bob := e.login("admin"), e.login("bob")
+	configurePayment(t, e, admin, "epay")
+	if _, err := e.store.Pool.Exec(context.Background(), `INSERT INTO settings(key,value) VALUES('payment_enabled','true') ON CONFLICT(key) DO UPDATE SET value='true'`); err != nil {
+		t.Fatal(err)
 	}
-	a, bob := e.login("admin"), e.login("bob")
-	type list struct {
-		Items []struct {
-			ID string `json:"id"`
-		} `json:"items"`
-		Total int `json:"total"`
+	in := map[string]any{"provider": "epay", "method": "alipay", "credit_usd": "2", "request_key": "fixture-order-0001"}
+	var order struct {
+		ID string `json:"id"`
 	}
-	ids := func(c *client, path string) (int, []string) {
-		var l list
-		if code, b := c.do("GET", path, nil, &l); code != 200 {
-			t.Fatalf("%s: %d %s", path, code, b)
-		}
-		out := []string{}
-		for _, o := range l.Items {
-			out = append(out, o.ID)
-		}
-		return l.Total, out
+	if code, body := bob.do("POST", "/api/me/topups", in, &order); code != 200 {
+		t.Fatal(code, body)
 	}
-	if total, got := ids(a, "/api/admin/topups"); total != 3 || got[0] != "bob-pending" {
-		t.Fatalf("管理员看全部、按时间倒序: %d %v", total, got)
+	bob.do("POST", "/api/me/topups", in, nil) // 同一个 request_key 重复提交：返回原订单，不再记一条
+
+	type resp struct {
+		Logs  []store.OperationLog `json:"logs"`
+		Total int64                `json:"total"`
 	}
-	if total, got := ids(a, "/api/admin/topups?user_id=2&status=success"); total != 1 || got[0] != "bob-paid" {
-		t.Fatalf("按用户和状态筛: %d %v", total, got)
+	var all resp
+	if code, body := admin.do("GET", "/api/admin/logs?type=operation&target=topup", nil, &all); code != 200 || all.Total != 1 {
+		t.Fatalf("管理员按充值订单筛选应只有 1 条: %d %s", code, body)
 	}
-	if total, _ := ids(a, "/api/admin/topups?from=2026-11-02T00:00:00Z&to=2026-11-03T00:00:00Z"); total != 1 {
-		t.Fatalf("按时间筛: %d", total)
+	l := all.Logs[0]
+	if l.Action != "topup.create" || l.Actor != "bob" || l.Order == nil || l.Order.ID != order.ID || l.Order.Status != "pending" || l.Order.Currency != "CNY" {
+		t.Fatalf("发起充值记录不对: %+v %+v", l, l.Order)
 	}
-	if total, got := ids(bob, "/api/me/topups?user_id=1"); total != 2 || got[0] != "bob-pending" {
-		t.Fatalf("成员只能看自己的: %d %v", total, got)
+	changes := map[string]string{}
+	for _, c := range l.Changes {
+		changes[c.Field] = strings.Trim(string(c.To), `"`)
 	}
-	if code, _ := a.do("GET", "/api/admin/topups?status=bogus", nil, nil); code != 400 {
-		t.Fatalf("非法状态: %d", code)
+	if changes["credit_usd"] != "2" || changes["pay_amount"] != "13.4 CNY" || changes["provider"] != "epay" || changes["method"] != "alipay" {
+		t.Fatalf("订单摘要: %v", changes)
+	}
+
+	// 状态在查询时实时关联：订单失败后同一条记录显示失败
+	e.store.Pool.Exec(context.Background(), `UPDATE topup_orders SET status = 'failed' WHERE id = $1`, order.ID)
+	var mine resp
+	if code, body := bob.do("GET", "/api/me/logs?type=operation&target=topup", nil, &mine); code != 200 || mine.Total != 1 || mine.Logs[0].Order.Status != "failed" {
+		t.Fatalf("成员看自己的充值，状态实时: %d %s", code, body)
+	}
+	if code, _ := admin.do("GET", "/api/admin/topups", nil, nil); code != 404 && code != 405 {
+		t.Fatalf("全站订单列表接口应已去掉: %d", code)
+	}
+	if code, _ := admin.do("GET", "/api/admin/logs?type=operation&target=redeem_code", nil, nil); code != 200 {
+		t.Fatalf("按兑换码筛选: %d", code)
 	}
 }

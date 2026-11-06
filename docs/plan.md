@@ -304,3 +304,5 @@ GPT Fast 计费（2026-11-06 ✅ 已发布 DMIT）：模型加「Fast 倍率」�
 - 安装基线 `/var/backups/lingshu-dmit-copy-20261023/` 保留。
 
 待定：异地备份。
+
+充值并入操作日志（2026-11-06）：日志只留调用日志、操作日志两个标签；发起在线充值记“发起充值”，订单状态实时关联（迁移 0027 补记已有订单）；去掉 `GET /api/admin/topups`。顺带修了按“兑换码”筛选操作日志报 400 的问题：接口白名单漏了 `redeem_code`。测试：`TestTopupOrdersInOperationLog` 取代原订单筛选测试；`activity-logs.browser.cjs` 改为检查只有两个标签、发起充值的实时状态和旧链接。规则见 `docs/decisions.md`「充值订单与兑换码」。

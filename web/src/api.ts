@@ -180,7 +180,7 @@ export type OperationEntry = {
   changes: OperationChange[]
   note: string
   amount?: string
-  order?: { id: string; provider: string; method: string; currency: string; amount: string; tax: string; total: string; completed_at: string | null }
+  order?: { id: string; provider: string; method: string; currency: string; amount: string; tax: string; total: string; completed_at: string | null; status: 'pending' | 'success' | 'failed' | 'expired' } // status 为订单当前状态
 }
 export type OperationLogsResponse = { logs: OperationEntry[]; total: number; summary: { topup_total: string; adjustment_net: string } }
 

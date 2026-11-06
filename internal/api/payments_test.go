@@ -47,7 +47,7 @@ func TestPaymentPermissionsQuotesAndSecretLifecycle(t *testing.T) {
 	e := newEnv(t)
 	admin, bob := e.login("admin"), e.login("bob")
 	c := configurePayment(t, e, admin, "epay")
-	for _, path := range []string{"/api/admin/payments", "/api/admin/topups"} {
+	for _, path := range []string{"/api/admin/payments"} {
 		if code, _ := bob.do("GET", path, nil, nil); code != 403 {
 			t.Fatalf("user accessed %s: %d", path, code)
 		}
