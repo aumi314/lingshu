@@ -1,0 +1,1382 @@
+{
+ "suite_version": 2,
+ "model": "codex/gpt-6.1-terra",
+ "round": 3,
+ "fingerprint": {
+  "samples": 6,
+  "errors": 0,
+  "stopped": false,
+  "answers": {
+   "Pick a random integer between 1 and 20.": [
+    "13",
+    "13",
+    "13",
+    "14",
+    "13",
+    "17"
+   ],
+   "Pick a random integer between 1 and 50.": [
+    "37",
+    "37",
+    "37",
+    "37",
+    "37",
+    "37"
+   ],
+   "Pick a random integer between 1 and 10000.": [
+    "7318",
+    "7384",
+    "7382",
+    "7283",
+    "7341",
+    "7382"
+   ],
+   "Pick a random even number between 1 and 100.": [
+    "64",
+    "64",
+    "68",
+    "64",
+    "42",
+    "68"
+   ],
+   "Pick a random three-digit number.": [
+    "742",
+    "728",
+    "731",
+    "731",
+    "731",
+    "683"
+   ],
+   "Pick a random year between 1900 and 2100.": [
+    "2047",
+    "1967",
+    "1973",
+    "2047",
+    "2047",
+    "2037"
+   ],
+   "Pick a random decimal number between 0 and 1 with two decimal places.": [
+    "037",
+    "073",
+    "073",
+    "063",
+    "073",
+    "037"
+   ],
+   "Pick a random four-digit PIN.": [
+    "6824",
+    "5837",
+    "7392",
+    "4827",
+    "7406",
+    "7294"
+   ],
+   "Pick a random time of day in HH:MM format.": [
+    "1437",
+    "1437",
+    "1437",
+    "1437",
+    "1437",
+    "1437"
+   ],
+   "Pick a random hex color code.": [
+    "7c4e91",
+    "7a3fc9",
+    "7c4eaf",
+    "7b3fc9",
+    "7c3fa8",
+    "7b4ec9"
+   ],
+   "Pick a random vowel.": [
+    "e",
+    "u",
+    "e",
+    "e",
+    "o",
+    "o"
+   ],
+   "Pick a random Greek letter.": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "Pick a random Roman numeral.": [
+    "xlvii",
+    "xlvii",
+    "xlvii",
+    "lxxxiv",
+    "xlvii",
+    "xlvii"
+   ],
+   "Pick a random boy's name.": [
+    "elliot",
+    "ethan",
+    "julian",
+    "julian",
+    "elliot",
+    "julian"
+   ],
+   "Pick a random girl's name.": [
+    "maya",
+    "clara",
+    "clara",
+    "clara",
+    "maya",
+    "clara"
+   ],
+   "Pick a random surname.": [
+    "whitaker",
+    "hollis",
+    "bennett",
+    "hollander",
+    "hollander",
+    "bennett"
+   ],
+   "Pick a random name for a dog.": [
+    "milo",
+    "milo",
+    "mochi",
+    "mochi",
+    "milo",
+    "milo"
+   ],
+   "Pick a random name for a cat.": [
+    "miso",
+    "mochi",
+    "mochi",
+    "miso",
+    "miso",
+    "mochi"
+   ],
+   "Invent a name for a fantasy wizard.": [
+    "vaelricmoonwhisper",
+    "vaelthornmoonweaver",
+    "vaelithmoonweaver",
+    "vaelthorin",
+    "vaelorinduskmere",
+    "vaelithstarweaver"
+   ],
+   "Invent a name for a tech startup.": [
+    "velora",
+    "veyora",
+    "velora",
+    "velnora",
+    "nexora",
+    "virello"
+   ],
+   "Invent a name for a spaceship.": [
+    "thequietmeridian",
+    "thequiethorizon",
+    "theemberwake",
+    "thequietmeridian",
+    "thequietmeridian",
+    "thequiethorizon"
+   ],
+   "Invent a name for a coffee shop.": [
+    "bramblebean",
+    "morrowbean",
+    "copperkettlecoffee",
+    "thequietgrind",
+    "copperfinchcoffee",
+    "mothmocha"
+   ],
+   "Name a random European capital.": [
+    "lisbon",
+    "ljubljana",
+    "ljubljana",
+    "ljubljana",
+    "ljubljana",
+    "ljubljana"
+   ],
+   "Name a random Asian country.": [
+    "laos",
+    "laos",
+    "laos",
+    "nepal",
+    "laos",
+    "laos"
+   ],
+   "Name a random African country.": [
+    "ghana",
+    "botswana",
+    "ghana",
+    "ghana",
+    "ghana",
+    "ghana"
+   ],
+   "Name a random South American country.": [
+    "uruguay",
+    "uruguay",
+    "uruguay",
+    "uruguay",
+    "uruguay",
+    "uruguay"
+   ],
+   "Name a random island.": [
+    "socotra",
+    "somiguel",
+    "madagascar",
+    "socotra",
+    "lombok",
+    "somiguel"
+   ],
+   "Name a random mountain.": [
+    "mountelbrus",
+    "mountelbrus",
+    "mountelbrus",
+    "mountelbrus",
+    "mountelbrus",
+    "mountelbrus"
+   ],
+   "Name a random river.": [
+    "zambezi",
+    "mekong",
+    "mekong",
+    "zambezi",
+    "mekong",
+    "danube"
+   ],
+   "Name a random lake.": [
+    "lakebaikal",
+    "lakebaikal",
+    "lakebaikal",
+    "lakebaikal",
+    "lakebaikal",
+    "lakebaikal"
+   ],
+   "Name a random desert.": [
+    "atacamadesert",
+    "atacamadesert",
+    "atacamadesert",
+    "atacamadesert",
+    "atacamadesert",
+    "atacamadesert"
+   ],
+   "Name a random ocean or sea.": [
+    "sargassosea",
+    "indianocean",
+    "indianocean",
+    "indianocean",
+    "sargassosea",
+    "indianocean"
+   ],
+   "Name a random US city.": [
+    "madisonwisconsin",
+    "madisonwisconsin",
+    "madisonwisconsin",
+    "madisonwisconsin",
+    "madisonwisconsin",
+    "madisonwisconsin"
+   ],
+   "Name a random Japanese city.": [
+    "kanazawa",
+    "kanazawa",
+    "kanazawa",
+    "kanazawa",
+    "kanazawa",
+    "kanazawa"
+   ],
+   "Name a random Canadian province.": [
+    "manitoba",
+    "manitoba",
+    "saskatchewan",
+    "manitoba",
+    "manitoba",
+    "manitoba"
+   ],
+   "Name a random national park.": [
+    "banffnationalpark",
+    "yellowstonenationalpark",
+    "banffnationalpark",
+    "banffnationalpark",
+    "zionnationalpark",
+    "torresdelpainenationalpark"
+   ],
+   "Name a random tree.": [
+    "silverbirch",
+    "silverbirch",
+    "silverbirch",
+    "oak",
+    "sycamore",
+    "silverbirch"
+   ],
+   "Name a random mushroom.": [
+    "chanterelle",
+    "chanterelle",
+    "chanterelle",
+    "chanterelle",
+    "chanterelle",
+    "chanterelle"
+   ],
+   "Name a random insect.": [
+    "dragonfly",
+    "lacewing",
+    "dragonfly",
+    "prayingmantis",
+    "dragonfly",
+    "dragonfly"
+   ],
+   "Name a random fish.": [
+    "mahimahi",
+    "haddock",
+    "haddock",
+    "haddock",
+    "bluetang",
+    "haddock"
+   ],
+   "Name a random reptile.": [
+    "tuatara",
+    "komododragon",
+    "komododragon",
+    "komododragon",
+    "komododragon",
+    "komododragon"
+   ],
+   "Name a random mammal.": [
+    "capybara",
+    "aardvark",
+    "capybara",
+    "capybara",
+    "capybara",
+    "pangolin"
+   ],
+   "Name a random dinosaur.": [
+    "stegosaurus",
+    "stegosaurus",
+    "stegosaurus",
+    "stegosaurus",
+    "stegosaurus",
+    "stegosaurus"
+   ],
+   "Name a random sea creature.": [
+    "leafyseadragon",
+    "leafyseadragon",
+    "leafyseadragon",
+    "leafyseadragon",
+    "leafyseadragon",
+    "leafyseadragon"
+   ],
+   "Name a random type of cloud.": [
+    "cirrus",
+    "cumulus",
+    "cirrus",
+    "cirrus",
+    "cirrus",
+    "cumulus"
+   ],
+   "Name a random constellation.": [
+    "lyra",
+    "lyra",
+    "cassiopeia",
+    "lyra",
+    "cygnus",
+    "lyra"
+   ],
+   "Name a random star.": [
+    "vega",
+    "vega",
+    "vega",
+    "vega",
+    "vega",
+    "vega"
+   ],
+   "Name a random moon in the solar system.": [
+    "enceladus",
+    "enceladus",
+    "enceladus",
+    "enceladus",
+    "enceladus",
+    "enceladus"
+   ],
+   "Name a random mineral.": [
+    "labradorite",
+    "labradorite",
+    "labradorite",
+    "labradorite",
+    "labradorite",
+    "labradorite"
+   ],
+   "Name a random metal.": [
+    "titanium",
+    "titanium",
+    "tungsten",
+    "titanium",
+    "titanium",
+    "titanium"
+   ],
+   "Name a random dog breed.": [
+    "whippet",
+    "whippet",
+    "whippet",
+    "whippet",
+    "samoyed",
+    "whippet"
+   ],
+   "Name a random cat breed.": [
+    "mainecoon",
+    "mainecoon",
+    "mainecoon",
+    "norwegianforestcat",
+    "mainecoon",
+    "mainecoon"
+   ],
+   "Name a random houseplant.": [
+    "monsteradeliciosa",
+    "monstera",
+    "spiderplant",
+    "monsteradeliciosa",
+    "pothos",
+    "spiderplant"
+   ],
+   "Name a random weather phenomenon.": [
+    "sunshower",
+    "balllightning",
+    "balllightning",
+    "balllightning",
+    "balllightning",
+    "balllightning"
+   ],
+   "Name a random cheese.": [
+    "gouda",
+    "gouda",
+    "comt",
+    "taleggio",
+    "gouda",
+    "gouda"
+   ],
+   "Name a random spice.": [
+    "cardamom",
+    "cardamom",
+    "cardamom",
+    "cardamom",
+    "cardamom",
+    "cardamom"
+   ],
+   "Name a random herb.": [
+    "rosemary",
+    "thyme",
+    "basil",
+    "rosemary",
+    "rosemary",
+    "basil"
+   ],
+   "Name a random dessert.": [
+    "tiramisu",
+    "tiramisu",
+    "tiramisu",
+    "tiramisu",
+    "tiramisu",
+    "tiramisu"
+   ],
+   "Name a random pasta shape.": [
+    "fusilli",
+    "fusilli",
+    "fusilli",
+    "fusilli",
+    "fusilli",
+    "fusilli"
+   ],
+   "Name a random bread.": [
+    "focaccia",
+    "brioche",
+    "focaccia",
+    "ciabatta",
+    "ciabatta",
+    "focaccia"
+   ],
+   "Name a random soup.": [
+    "minestrone",
+    "minestrone",
+    "minestrone",
+    "minestrone",
+    "minestrone",
+    "minestrone"
+   ],
+   "Name a random cocktail.": [
+    "paperplane",
+    "paperplane",
+    "negroni",
+    "paperplane",
+    "negroni",
+    "paperplane"
+   ],
+   "Name a random type of tea.": [
+    "oolong",
+    "oolong",
+    "oolongtea",
+    "oolongtea",
+    "oolongtea",
+    "oolong"
+   ],
+   "Name a random coffee drink.": [
+    "cortado",
+    "cortado",
+    "cortado",
+    "cortado",
+    "cortado",
+    "cortado"
+   ],
+   "Name a random pizza topping.": [
+    "mushrooms",
+    "mushrooms",
+    "mushrooms",
+    "mushrooms",
+    "mushrooms",
+    "mushrooms"
+   ],
+   "Name a random candy.": [
+    "twix",
+    "skittles",
+    "skittles",
+    "skittles",
+    "skittles",
+    "twix"
+   ],
+   "Name a random nut.": [
+    "cashew",
+    "pecan",
+    "pistachio",
+    "pistachio",
+    "pecan",
+    "pistachio"
+   ],
+   "Name a random berry.": [
+    "blueberry",
+    "blueberry",
+    "blueberry",
+    "blueberry",
+    "blueberry",
+    "blueberry"
+   ],
+   "Name a random citrus fruit.": [
+    "kumquat",
+    "kumquat",
+    "kumquat",
+    "pomelo",
+    "kumquat",
+    "kumquat"
+   ],
+   "Name a random breakfast food.": [
+    "waffles",
+    "pancakes",
+    "oatmeal",
+    "pancakes",
+    "oatmeal",
+    "pancakes"
+   ],
+   "Name a random sauce.": [
+    "chimichurri",
+    "chimichurri",
+    "chimichurri",
+    "chimichurri",
+    "chimichurri",
+    "chimichurri"
+   ],
+   "Name a random kitchen utensil.": [
+    "whisk",
+    "whisk",
+    "whisk",
+    "spatula",
+    "spatula",
+    "whisk"
+   ],
+   "Name a random piece of furniture.": [
+    "armchair",
+    "armchair",
+    "armchair",
+    "armchair",
+    "bookcase",
+    "bookshelf"
+   ],
+   "Name a random hand tool.": [
+    "hammer",
+    "hammer",
+    "hammer",
+    "wrench",
+    "clawhammer",
+    "wrench"
+   ],
+   "Name a random vehicle.": [
+    "bicycle",
+    "sailboat",
+    "bicycle",
+    "forklift",
+    "kayak",
+    "bicycle"
+   ],
+   "Name a random car brand.": [
+    "volvo",
+    "volvo",
+    "mazda",
+    "mazda",
+    "subaru",
+    "mazda"
+   ],
+   "Name a random board game.": [
+    "azul",
+    "azul",
+    "azul",
+    "azul",
+    "azul",
+    "azul"
+   ],
+   "Name a random card game.": [
+    "cribbage",
+    "cribbage",
+    "euchre",
+    "cribbage",
+    "cribbage",
+    "cribbage"
+   ],
+   "Name a random toy.": [
+    "kaleidoscope",
+    "kaleidoscope",
+    "yoyo",
+    "yoyo",
+    "kaleidoscope",
+    "kaleidoscope"
+   ],
+   "Name a random fabric.": [
+    "corduroy",
+    "velvet",
+    "corduroy",
+    "linen",
+    "corduroy",
+    "linen"
+   ],
+   "Name a random geometric shape.": [
+    "dodecahedron",
+    "trapezoid",
+    "trapezoid",
+    "trapezoid",
+    "trapezoid",
+    "dodecagon"
+   ],
+   "Name a random font.": [
+    "garamond",
+    "garamond",
+    "garamond",
+    "garamond",
+    "garamond",
+    "garamond"
+   ],
+   "Name a random piece of clothing.": [
+    "cardigan",
+    "cardigan",
+    "cardigan",
+    "cardigan",
+    "cardigan",
+    "cardigan"
+   ],
+   "Name a random shoe type.": [
+    "loafer",
+    "loafer",
+    "loafer",
+    "loafer",
+    "loafer",
+    "loafer"
+   ],
+   "Name a random office supply.": [
+    "stapler",
+    "stapler",
+    "stapler",
+    "stapler",
+    "stapler",
+    "stapler"
+   ],
+   "Name a random musical genre.": [
+    "bossanova",
+    "triphop",
+    "shoegaze",
+    "shoegaze",
+    "bossanova",
+    "bossanova"
+   ],
+   "Name a random painter.": [
+    "hilmaafklint",
+    "hilmaafklint",
+    "hilmaafklint",
+    "hilmaafklint",
+    "hilmaafklint",
+    "hilmaafklint"
+   ],
+   "Name a random composer.": [
+    "claudedebussy",
+    "claudedebussy",
+    "claudedebussy",
+    "claudedebussy",
+    "claudedebussy",
+    "claraschumann"
+   ],
+   "Name a random novelist.": [
+    "tonimorrison",
+    "ursulakleguin",
+    "tonimorrison",
+    "tonimorrison",
+    "tonimorrison",
+    "ursulakleguin"
+   ],
+   "Name a random poet.": [
+    "wisawaszymborska",
+    "wisawaszymborska",
+    "wisawaszymborska",
+    "wisawaszymborska",
+    "wisawaszymborska",
+    "wisawaszymborska"
+   ],
+   "Name a random philosopher.": [
+    "simoneweil",
+    "simonedebeauvoir",
+    "simoneweil",
+    "hannaharendt",
+    "simonedebeauvoir",
+    "simoneweil"
+   ],
+   "Name a random scientist.": [
+    "chienshiungwu",
+    "mariecurie",
+    "chienshiungwu",
+    "chienshiungwu",
+    "mariecurie",
+    "mariecurie"
+   ],
+   "Name a random mathematician.": [
+    "emmynoether",
+    "emmynoether",
+    "emmynoether",
+    "emmynoether",
+    "emmynoether",
+    "emmynoether"
+   ],
+   "Name a random inventor.": [
+    "nikolatesla",
+    "hedylamarr",
+    "nikolatesla",
+    "nikolatesla",
+    "hedylamarr",
+    "hedylamarr"
+   ],
+   "Name a random dance style.": [
+    "tango",
+    "forr",
+    "salsa",
+    "salsa",
+    "salsa",
+    "salsa"
+   ],
+   "Name a random movie genre.": [
+    "filmnoir",
+    "filmnoir",
+    "mystery",
+    "filmnoir",
+    "western",
+    "sciencefiction"
+   ],
+   "Name a random mythological creature.": [
+    "griffin",
+    "hippogriff",
+    "griffin",
+    "griffin",
+    "griffin",
+    "chimera"
+   ],
+   "Name a random Greek god.": [
+    "hermes",
+    "hermes",
+    "apollo",
+    "hermes",
+    "hermes",
+    "hermes"
+   ],
+   "Name a random Norse god.": [
+    "heimdall",
+    "tr",
+    "tyr",
+    "tyr",
+    "heimdall",
+    "tr"
+   ],
+   "Name a random zodiac sign.": [
+    "aquarius",
+    "aquarius",
+    "aquarius",
+    "sagittarius",
+    "aquarius",
+    "aquarius"
+   ],
+   "Name a random chess piece.": [
+    "knight",
+    "knight",
+    "knight",
+    "knight",
+    "knight",
+    "knight"
+   ],
+   "Name a random playing card.": [
+    "queenofhearts",
+    "sevenofhearts",
+    "sevenofhearts",
+    "sevenofhearts",
+    "sevenofhearts",
+    "sevenofdiamonds"
+   ],
+   "Name a random tarot card.": [
+    "thestar",
+    "thestar",
+    "thestar",
+    "thestar",
+    "thestar",
+    "thestar"
+   ],
+   "Name a random Shakespeare play.": [
+    "thetempest",
+    "twelfthnight",
+    "twelfthnight",
+    "twelfthnight",
+    "thetempest",
+    "thewinterstale"
+   ],
+   "Name a random art movement.": [
+    "surrealism",
+    "surrealism",
+    "surrealism",
+    "surrealism",
+    "surrealism",
+    "surrealism"
+   ],
+   "Name a random architectural style.": [
+    "brutalism",
+    "brutalism",
+    "brutalism",
+    "brutalism",
+    "brutalism",
+    "brutalism"
+   ],
+   "Name a random database.": [
+    "postgresql",
+    "postgresql",
+    "postgresql",
+    "postgresql",
+    "postgresql",
+    "postgresql"
+   ],
+   "Name a random Linux distribution.": [
+    "fedora",
+    "fedora",
+    "fedora",
+    "fedora",
+    "fedora",
+    "fedora"
+   ],
+   "Name a random text editor.": [
+    "notepad",
+    "notepad",
+    "notepad",
+    "kate",
+    "vim",
+    "vim"
+   ],
+   "Name a random CSS property.": [
+    "borderradius",
+    "borderradius",
+    "borderradius",
+    "borderradius",
+    "borderradius",
+    "borderradius"
+   ],
+   "Name a random HTTP status code.": [
+    "418imateapot",
+    "418imateapot",
+    "418imateapot",
+    "418imateapot",
+    "418imateapot",
+    "418imateapot"
+   ],
+   "Name a random TCP port number.": [
+    "47291",
+    "34782",
+    "43827",
+    "48217",
+    "48271",
+    "48271"
+   ],
+   "Name a random sorting algorithm.": [
+    "heapsort",
+    "mergesort",
+    "quicksort",
+    "mergesort",
+    "mergesort",
+    "mergesort"
+   ],
+   "Name a random design pattern.": [
+    "observerpattern",
+    "observerpattern",
+    "observerpattern",
+    "observerpattern",
+    "observerpattern",
+    "observerpattern"
+   ],
+   "Name a random git command.": [
+    "gitcherrypick",
+    "gitrebase",
+    "gitcherrypick",
+    "gitcherrypick",
+    "gitcherrypick",
+    "gitcherrypick"
+   ],
+   "Name a random Unix command.": [
+    "lsof",
+    "grep",
+    "grep",
+    "grep",
+    "grep",
+    "grep"
+   ],
+   "Name a random file extension.": [
+    "svg",
+    "webp",
+    "svg",
+    "webp",
+    "webp",
+    "webp"
+   ],
+   "Name a random keyboard key.": [
+    "f8",
+    "f8",
+    "f7",
+    "f7",
+    "f7",
+    "f7"
+   ],
+   "Name a random data structure.": [
+    "trie",
+    "treap",
+    "treap",
+    "treap",
+    "treap",
+    "fibonacciheap"
+   ],
+   "Name a random JavaScript framework.": [
+    "vuejs",
+    "svelte",
+    "svelte",
+    "vuejs",
+    "vuejs",
+    "vuejs"
+   ],
+   "Name a random Python library.": [
+    "pandas",
+    "httpx",
+    "numpy",
+    "httpx",
+    "requests",
+    "requests"
+   ],
+   "Name a random cryptographic hash function.": [
+    "sha256",
+    "sha256",
+    "sha256",
+    "sha256",
+    "sha256",
+    "sha256"
+   ],
+   "Name a random cloud computing service.": [
+    "amazonec2",
+    "amazonec2",
+    "amazonec2",
+    "amazons3",
+    "amazonec2",
+    "amazonec2"
+   ],
+   "Name a random emoji.": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "Name a random adjective.": [
+    "luminous",
+    "luminous",
+    "luminous",
+    "luminous",
+    "luminous",
+    "luminous"
+   ],
+   "Name a random verb.": [
+    "wander",
+    "wander",
+    "wander",
+    "wander",
+    "wander",
+    "wander"
+   ],
+   "Name a random noun.": [
+    "lantern",
+    "lantern",
+    "lantern",
+    "lantern",
+    "lantern",
+    "lantern"
+   ],
+   "Name a random emotion.": [
+    "wonder",
+    "wonder",
+    "wonder",
+    "awe",
+    "curiosity",
+    "wonder"
+   ],
+   "Name a random French word.": [
+    "papillon",
+    "papillon",
+    "papillon",
+    "papillon",
+    "papillon",
+    "papillon"
+   ],
+   "Name a random Spanish word.": [
+    "mariposa",
+    "mariposa",
+    "mariposa",
+    "mariposa",
+    "mariposa",
+    "mariposa"
+   ],
+   "Name a random German word.": [
+    "schmetterling",
+    "schmetterling",
+    "schmetterling",
+    "schmetterling",
+    "schmetterling",
+    "waldeinsamkeit"
+   ],
+   "Name a random Japanese word.": [
+    "木漏日",
+    "木漏日",
+    "木漏日",
+    "木漏日",
+    "木漏日",
+    "木漏日"
+   ],
+   "Name a random palindrome.": [
+    "racecar",
+    "racecar",
+    "racecar",
+    "racecar",
+    "racecar",
+    "racecar"
+   ],
+   "Name a random word that rhymes with cat.": [
+    "hat",
+    "bat",
+    "hat",
+    "hat",
+    "bat",
+    "hat"
+   ],
+   "Name a random long English word.": [
+    "incomprehensibility",
+    "floccinaucinihilipilification",
+    "incomprehensibility",
+    "incomprehensibilities",
+    "perspicaciousness",
+    "incomprehensibility"
+   ],
+   "Name a random onomatopoeia.": [
+    "sizzle",
+    "splat",
+    "splat",
+    "boom",
+    "buzz",
+    "buzz"
+   ],
+   "Name a random virtue.": [
+    "patience",
+    "patience",
+    "patience",
+    "patience",
+    "patience",
+    "patience"
+   ],
+   "Name a random profession.": [
+    "cartographer",
+    "cartographer",
+    "cartographer",
+    "cartographer",
+    "cartographer",
+    "cartographer"
+   ],
+   "Name a random hobby.": [
+    "pottery",
+    "birdwatching",
+    "pottery",
+    "pottery",
+    "pottery",
+    "pottery"
+   ],
+   "Name a random school subject.": [
+    "geography",
+    "geography",
+    "geography",
+    "geography",
+    "geography",
+    "geography"
+   ],
+   "Name a random unit of measurement.": [
+    "candela",
+    "furlong",
+    "furlong",
+    "furlong",
+    "furlong",
+    "furlong"
+   ],
+   "Name a random currency.": [
+    "tanzanianshilling",
+    "taka",
+    "nepaleserupee",
+    "botswanapula",
+    "bolivianboliviano",
+    "nepaleserupee"
+   ],
+   "Name a random language.": [
+    "swahili",
+    "swahili",
+    "swahili",
+    "swahili",
+    "swahili",
+    "basque"
+   ],
+   "Name a random superpower.": [
+    "teleportation",
+    "teleportation",
+    "teleportation",
+    "teleportation",
+    "teleportation",
+    "telekinesis"
+   ],
+   "Name a random Olympic sport.": [
+    "fencing",
+    "fencing",
+    "fencing",
+    "fencing",
+    "fencing",
+    "fencing"
+   ],
+   "Name a random martial art.": [
+    "judo",
+    "judo",
+    "judo",
+    "judo",
+    "capoeira",
+    "judo"
+   ],
+   "Name a random yoga pose.": [
+    "treepose",
+    "treepose",
+    "treepose",
+    "treepose",
+    "treepose",
+    "treepose"
+   ],
+   "Name a random knot.": [
+    "figureeightknot",
+    "figureeightknot",
+    "figureeightknot",
+    "figureeightknot",
+    "figureeightknot",
+    "figureeightknot"
+   ],
+   "Name a random holiday.": [
+    "diwali",
+    "diwali",
+    "diwali",
+    "diwali",
+    "diwali",
+    "diwali"
+   ],
+   "Name a random color of the rainbow.": [
+    "indigo",
+    "indigo",
+    "indigo",
+    "indigo",
+    "indigo",
+    "indigo"
+   ],
+   "Name a random taste.": [
+    "sour",
+    "umami",
+    "bitter",
+    "sour",
+    "umami",
+    "umami"
+   ],
+   "随便说一个中国城市。": [
+    "成都",
+    "成都",
+    "成都",
+    "成都",
+    "成都",
+    "成都"
+   ],
+   "随便说一个成语。": [
+    "画龙点睛",
+    "画龙点睛",
+    "画龙点睛",
+    "水到渠成",
+    "画龙点睛",
+    "画龙点睛"
+   ],
+   "随便说一个汉字。": [
+    "山",
+    "山",
+    "山",
+    "山",
+    "山",
+    "山"
+   ],
+   "随便说一道中国菜。": [
+    "宫保鸡丁",
+    "宫保鸡丁",
+    "宫保鸡丁",
+    "宫保鸡丁",
+    "宫保鸡丁",
+    "宫保鸡丁"
+   ],
+   "随便说一位古代诗人。": [
+    "李白",
+    "李白",
+    "李白",
+    "李白",
+    "李白",
+    "李白"
+   ],
+   "随便说一个中文名字。": [
+    "林知夏",
+    "林若溪",
+    "林知远",
+    "林知夏",
+    "林知远",
+    "林知远"
+   ],
+   "随便说一种中药。": [
+    "人参",
+    "人参",
+    "黄芪",
+    "黄芪",
+    "人参",
+    "甘草"
+   ],
+   "随便说一个节气。": [
+    "立春",
+    "立春",
+    "立春",
+    "立春",
+    "立春",
+    "立春"
+   ],
+   "随便说一个朝代。": [
+    "唐朝",
+    "唐朝",
+    "唐朝",
+    "唐朝",
+    "唐朝",
+    "唐朝"
+   ],
+   "随便说一种茶。": [
+    "龙井茶",
+    "龙井茶",
+    "龙井茶",
+    "龙井茶",
+    "龙井茶",
+    "龙井茶"
+   ],
+   "随便说一个省份。": [
+    "四川省",
+    "四川省",
+    "四川省",
+    "四川省",
+    "四川省",
+    "四川省"
+   ],
+   "随便说一种乐器（中国传统）。": [
+    "古筝",
+    "古筝",
+    "古筝",
+    "古筝",
+    "古筝",
+    "古筝"
+   ],
+   "随便说一个姓氏。": [
+    "王",
+    "李",
+    "林",
+    "王",
+    "张",
+    "王"
+   ],
+   "随便说一种水果。": [
+    "苹果",
+    "苹果",
+    "苹果",
+    "苹果",
+    "苹果",
+    "苹果"
+   ],
+   "随便说一个颜色。": [
+    "蓝色",
+    "蓝色",
+    "蓝色",
+    "蓝色",
+    "蓝色",
+    "蓝色"
+   ],
+   "随便说一种动物。": [
+    "海豚",
+    "熊猫",
+    "熊猫",
+    "大熊猫",
+    "猫",
+    "熊猫"
+   ],
+   "随便说一部四大名著里的人物。": [
+    "孙悟空",
+    "孙悟空",
+    "孙悟空",
+    "孙悟空",
+    "孙悟空",
+    "孙悟空"
+   ],
+   "随便说一个数字，1 到 100。": [
+    "42",
+    "37",
+    "42",
+    "42",
+    "47",
+    "42"
+   ],
+   "随便说一个词语。": [
+    "星光",
+    "星河",
+    "清风",
+    "星河",
+    "星河",
+    "星辰"
+   ],
+   "随便说一种小吃。": [
+    "煎饼果子",
+    "糖葫芦",
+    "糖葫芦",
+    "糖葫芦",
+    "煎饼果子",
+    "煎饼果子"
+   ]
+  },
+  "finished_at": "2026-11-06T07:58:40-0800",
+  "elapsed_seconds": 686.0
+ }
+}
