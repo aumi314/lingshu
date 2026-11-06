@@ -1,0 +1,368 @@
+{
+ "suite_version": 1,
+ "model": "codex/gpt-6-luna",
+ "round": 2,
+ "tokens": {
+  "base": [
+   3467,
+   3467
+  ],
+  "anchor": 3468,
+  "deltas": {
+   "english": 17,
+   "chinese": 32,
+   "japanese": 24,
+   "code": 36,
+   "json": 43,
+   "numbers": 34,
+   "emoji": 27,
+   "whitespace": 10,
+   "rare_cjk": 15,
+   "url": 20,
+   "repeat": 8,
+   "glitch": 17
+  },
+  "finished_at": "2026-11-06T07:16:56-0800",
+  "elapsed_seconds": 47.2
+ },
+ "fingerprint": {
+  "samples": 6,
+  "errors": 0,
+  "answers": {
+   "0": [
+    "73",
+    "47",
+    "47",
+    "47",
+    "73",
+    "37"
+   ],
+   "1": [
+    "7",
+    "7",
+    "7",
+    "7",
+    "7",
+    "7"
+   ],
+   "2": [
+    "683",
+    "683",
+    "637",
+    "637",
+    "637",
+    "683"
+   ],
+   "3": [
+    "47",
+    "47",
+    "73",
+    "47",
+    "53",
+    "47"
+   ],
+   "4": [
+    "q",
+    "q",
+    "q",
+    "r",
+    "q",
+    "q"
+   ],
+   "5": [
+    "teal",
+    "teal",
+    "ultramarine",
+    "indigo",
+    "lavender",
+    "cerulean"
+   ],
+   "6": [
+    "quokka",
+    "redpanda",
+    "otter",
+    "pangolin",
+    "capybara",
+    "capybara"
+   ],
+   "7": [
+    "mango",
+    "mango",
+    "mango",
+    "mango",
+    "mango",
+    "mango"
+   ],
+   "8": [
+    "artichoke",
+    "artichoke",
+    "parsnip",
+    "artichoke",
+    "artichoke",
+    "artichoke"
+   ],
+   "9": [
+    "portugal",
+    "bhutan",
+    "bhutan",
+    "ghana",
+    "bhutan",
+    "uruguay"
+   ],
+   "10": [
+    "valparaso",
+    "lisbon",
+    "valparaso",
+    "valparaso",
+    "tbilisi",
+    "lisbon"
+   ],
+   "11": [
+    "oregon",
+    "maine",
+    "oregon",
+    "vermont",
+    "vermont",
+    "vermont"
+   ],
+   "12": [
+    "neptune",
+    "neptune",
+    "neptune",
+    "neptune",
+    "neptune",
+    "neptune"
+   ],
+   "13": [
+    "palladium",
+    "molybdenum",
+    "osmium",
+    "gallium",
+    "osmium",
+    "vanadium"
+   ],
+   "14": [
+    "marimba",
+    "oboe",
+    "bassoon",
+    "bassoon",
+    "oboe",
+    "oboe"
+   ],
+   "15": [
+    "elixir",
+    "elixir",
+    "elixir",
+    "rust",
+    "rust",
+    "elixir"
+   ],
+   "16": [
+    "dahlia",
+    "dahlia",
+    "zinnia",
+    "cosmos",
+    "dahlia",
+    "hibiscus"
+   ],
+   "17": [
+    "kingfisher",
+    "kingfisher",
+    "kingfisher",
+    "kingfisher",
+    "kingfisher",
+    "kingfisher"
+   ],
+   "18": [
+    "moonstone",
+    "labradorite",
+    "amethyst",
+    "labradorite",
+    "moonstone",
+    "moonstone"
+   ],
+   "19": [
+    "fencing",
+    "badminton",
+    "fencing",
+    "fencing",
+    "curling",
+    "badminton"
+   ],
+   "20": [
+    "maya",
+    "evelyn",
+    "amelia",
+    "mabel",
+    "harper",
+    "maya"
+   ],
+   "21": [
+    "thursday",
+    "thursday",
+    "thursday",
+    "thursday",
+    "thursday",
+    "thursday"
+   ],
+   "22": [
+    "november",
+    "october",
+    "september",
+    "september",
+    "october",
+    "october"
+   ],
+   "23": [
+    "mellifluous",
+    "lantern",
+    "lantern",
+    "lantern",
+    "luminous",
+    "mellifluous"
+   ]
+  },
+  "finished_at": "2026-11-06T07:18:13-0800",
+  "elapsed_seconds": 76.5
+ },
+ "math": {
+  "problems": [
+   {
+    "kind": "recurrence",
+    "tier": "medium",
+    "question": "Let x1 = 2 and x(k+1) = (6*x(k)^2 + 8) mod 97. What is x65? Answer with the number only.",
+    "answer": 30
+   },
+   {
+    "kind": "lattice",
+    "tier": "medium",
+    "question": "On a grid, count the monotone lattice paths from (0,0) to (8,9) using unit steps right (+1,0) or up (0,+1) that never visit any of the points (1,4), (3,1), (6,1). Answer with the number only.",
+    "answer": 15067
+   },
+   {
+    "kind": "lattice_hard",
+    "tier": "hard",
+    "question": "On a grid, count the monotone lattice paths from (0,0) to (11,10) using unit steps right (+1,0) or up (0,+1) that never visit any of the points (1,2), (3,5), (4,9), (6,1), (10,3), (10,9). Answer with the number only.",
+    "answer": 79684
+   },
+   {
+    "kind": "subset_mod",
+    "tier": "hard",
+    "question": "How many 5-element subsets of {1, 2, ..., 24} have a sum divisible by 13? Answer with the number only.",
+    "answer": 3269
+   },
+   {
+    "kind": "digit_sum",
+    "tier": "hard",
+    "question": "How many integers n with 1 <= n < 10000000 have a digit sum equal to 36? Answer with the number only.",
+    "answer": 436975
+   },
+   {
+    "kind": "recurrence_hard",
+    "tier": "hard",
+    "question": "Let x1 = 47 and x(k+1) = (4*x(k)^2 + 29*x(k) + 12) mod 997. What is x201? Answer with the number only.",
+    "answer": 393
+   }
+  ],
+  "runs": [
+   {
+    "problem": 0,
+    "correct": false,
+    "got": "55",
+    "reasoning_tokens": 555,
+    "seconds": 20.11,
+    "error": null
+   },
+   {
+    "problem": 0,
+    "correct": true,
+    "got": "30",
+    "reasoning_tokens": 304,
+    "seconds": 14.62,
+    "error": null
+   },
+   {
+    "problem": 1,
+    "correct": true,
+    "got": "15067",
+    "reasoning_tokens": 277,
+    "seconds": 11.13,
+    "error": null
+   },
+   {
+    "problem": 1,
+    "correct": true,
+    "got": "15067",
+    "reasoning_tokens": 250,
+    "seconds": 9.93,
+    "error": null
+   },
+   {
+    "problem": 2,
+    "correct": true,
+    "got": "79684",
+    "reasoning_tokens": 697,
+    "seconds": 19.08,
+    "error": null
+   },
+   {
+    "problem": 2,
+    "correct": true,
+    "got": "79684",
+    "reasoning_tokens": 711,
+    "seconds": 21.84,
+    "error": null
+   },
+   {
+    "problem": 3,
+    "correct": false,
+    "got": "2960",
+    "reasoning_tokens": 1123,
+    "seconds": 30.77,
+    "error": null
+   },
+   {
+    "problem": 3,
+    "correct": true,
+    "got": "3269",
+    "reasoning_tokens": 783,
+    "seconds": 22.73,
+    "error": null
+   },
+   {
+    "problem": 4,
+    "correct": true,
+    "got": "436975",
+    "reasoning_tokens": 202,
+    "seconds": 9.54,
+    "error": null
+   },
+   {
+    "problem": 4,
+    "correct": true,
+    "got": "436975",
+    "reasoning_tokens": 233,
+    "seconds": 9.82,
+    "error": null
+   },
+   {
+    "problem": 5,
+    "correct": false,
+    "got": " \\(x_{201}\\) without a computation tool.",
+    "reasoning_tokens": 867,
+    "seconds": 23.42,
+    "error": null
+   },
+   {
+    "problem": 5,
+    "correct": false,
+    "got": " without calculating the 200 iterations.",
+    "reasoning_tokens": 516,
+    "seconds": 25.2,
+    "error": null
+   }
+  ],
+  "finished_at": "2026-11-06T07:19:00-0800",
+  "elapsed_seconds": 47.0
+ }
+}
