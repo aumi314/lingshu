@@ -104,7 +104,7 @@
 
 ### 方法与有效性
 
-总计 60 次调用，低于 70 次上限。默认 `max_tokens=128`；失效 E 批的补充诱导样本改为 512。实验发生于北京时间 2026-11-07；本轮固定沿用第一轮 UA 2.2.5，以保持 D03 条件一致，没有刷新 UA。
+总计 63 次调用，低于 70 次上限。默认 `max_tokens=128`；失效 E 批的补充诱导样本改为 512。实验发生于北京时间 2026-11-07；本轮固定沿用第一轮 UA 2.2.5，以保持 D03 条件一致，没有刷新 UA。
 
 本轮以第一轮 D03 作为基准：个人 key、PR 的 Bun 1.3.14 ClientHello、`opencode/latest/2.2.5/cli`、一个真实格式的 `x-opencode-session`、完整系统提示词、五个占位工具、`tool_choice: "auto"`、上游 SSE 和 `include_usage=true`。模型固定 `deepseek-v4.1-flash-free`，默认问题为 `Reply with exactly: OK`，每次新建连接，调用间隔至少 4 秒。有效批次 A-D 共 39 次，每批开始和结束 D03 均 HTTP 200、`billing_source=free`；批次 E 的结束对照和批次 F 的开始对照均 HTTP 429，因此 E/F 全部作废。E/F 的结果只记录作废原因，不用于结论。
 
@@ -221,4 +221,6 @@ Bun 捕获的 ALPN 仅提供 `http/1.1`；Go 允许 HTTP/2 协商但服务端实
 
 ### 第二把 key 的复核（2026-11-07）
 
-用户提供第二把 OpenCode key 后，使用同一临时 runner 先发 D03 起始对照：个人 key、Bun ClientHello、`opencode/latest/2.2.5/cli`、真实格式 `x-opencode-session`、完整提示词、五个工具、`tool_choice: "auto"`、流式。该请求返回 HTTP 429 `FreeUsageLimitError`，没有 usage 或 `billing_source`。按批次规则未继续发送精简组合，因此第二把 key 没有产生有效的提示词、工具或协议结论，也没有将该结果解释为 key 类型差异。临时程序和远端文件已清理。
+用户提供第二把 OpenCode key 后，使用同一临时 runner 先发 D03 起始对照：个人 key、Bun ClientHello、`opencode/latest/2.2.5/cli`、真实格式 `x-opencode-session`、完整提示词、五个工具、`tool_choice: "auto"`、流式。该请求返回 HTTP 429 `FreeUsageLimitError`，没有 usage 或 `billing_source`；随后按用户要求重试一次，仍为 429。按批次规则未继续发送精简组合，因此第二把 key 没有产生有效的提示词、工具或协议结论，也没有将该结果解释为 key 类型差异。
+
+第三把 key 的 D03 起始对照也返回 HTTP 429 `FreeUsageLimitError`，没有 usage 或 `billing_source`，按规则立即停止，未发送后续精简组合。第二把重试和第三把起始对照共增加 2 次请求，均只作为无效对照记录；本轮累计 63 次调用。临时程序和远端文件已清理。
