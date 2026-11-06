@@ -1,0 +1,416 @@
+{
+ "suite_version": 1,
+ "model": "codex/gpt-6.1-sol",
+ "round": 1,
+ "tokens": {
+  "base": [
+   4158,
+   4158
+  ],
+  "anchor": 4159,
+  "deltas": {
+   "english": 17,
+   "chinese": 32,
+   "japanese": 24,
+   "code": 36,
+   "json": 43,
+   "numbers": 34,
+   "emoji": 27,
+   "whitespace": 10,
+   "rare_cjk": 15,
+   "url": 20,
+   "repeat": 8,
+   "glitch": 17
+  },
+  "finished_at": "2026-11-06T06:31:53-0800",
+  "elapsed_seconds": 51.2
+ },
+ "fingerprint": {
+  "samples": 6,
+  "errors": 0,
+  "answers": {
+   "0": [
+    "47",
+    "47",
+    "37",
+    "47",
+    "73",
+    "73"
+   ],
+   "1": [
+    "7",
+    "7",
+    "7",
+    "7",
+    "7",
+    "7"
+   ],
+   "2": [
+    "713",
+    "683",
+    "731",
+    "731",
+    "731",
+    "637"
+   ],
+   "3": [
+    "47",
+    "47",
+    "73",
+    "73",
+    "47",
+    "47"
+   ],
+   "4": [
+    "r",
+    "r",
+    "r",
+    "r",
+    "q",
+    "q"
+   ],
+   "5": [
+    "cerulean",
+    "cerulean",
+    "cerulean",
+    "cerulean",
+    "cerulean",
+    "cerulean"
+   ],
+   "6": [
+    "pangolin",
+    "pangolin",
+    "pangolin",
+    "pangolin",
+    "pangolin",
+    "pangolin"
+   ],
+   "7": [
+    "mango",
+    "mango",
+    "mango",
+    "mango",
+    "mango",
+    "mango"
+   ],
+   "8": [
+    "carrot",
+    "parsnip",
+    "carrot",
+    "parsnip",
+    "broccoli",
+    "carrot"
+   ],
+   "9": [
+    "namibia",
+    "namibia",
+    "uruguay",
+    "uruguay",
+    "uruguay",
+    "namibia"
+   ],
+   "10": [
+    "valparaso",
+    "valparaso",
+    "valparaso",
+    "valparaso",
+    "valparaso",
+    "lisbon"
+   ],
+   "11": [
+    "oregon",
+    "oregon",
+    "vermont",
+    "oregon",
+    "montana",
+    "oregon"
+   ],
+   "12": [
+    "neptune",
+    "neptune",
+    "neptune",
+    "neptune",
+    "neptune",
+    "neptune"
+   ],
+   "13": [
+    "rhenium",
+    "molybdenum",
+    "vanadium",
+    "vanadium",
+    "molybdenum",
+    "vanadium"
+   ],
+   "14": [
+    "bassoon",
+    "bassoon",
+    "bassoon",
+    "bassoon",
+    "bassoon",
+    "marimba"
+   ],
+   "15": [
+    "erlang",
+    "elixir",
+    "haskell",
+    "elixir",
+    "elixir",
+    "haskell"
+   ],
+   "16": [
+    "delphinium",
+    "zinnia",
+    "zinnia",
+    "delphinium",
+    "ranunculus",
+    "zinnia"
+   ],
+   "17": [
+    "cedarwaxwing",
+    "kingfisher",
+    "cedarwaxwing",
+    "kingfisher",
+    "cedarwaxwing",
+    "cedarwaxwing"
+   ],
+   "18": [
+    "amethyst",
+    "amethyst",
+    "labradorite",
+    "labradorite",
+    "labradorite",
+    "labradorite"
+   ],
+   "19": [
+    "badminton",
+    "badminton",
+    "badminton",
+    "badminton",
+    "badminton",
+    "badminton"
+   ],
+   "20": [
+    "clara",
+    "clara",
+    "clara",
+    "clara",
+    "clara",
+    "oliver"
+   ],
+   "21": [
+    "thursday",
+    "thursday",
+    "thursday",
+    "thursday",
+    "thursday",
+    "thursday"
+   ],
+   "22": [
+    "october",
+    "october",
+    "october",
+    "october",
+    "october",
+    "october"
+   ],
+   "23": [
+    "meadow",
+    "willow",
+    "meadow",
+    "meadow",
+    "lantern",
+    "meadow"
+   ]
+  },
+  "finished_at": "2026-11-06T06:33:48-0800",
+  "elapsed_seconds": 114.7
+ },
+ "math": {
+  "problems": [
+   {
+    "kind": "recurrence",
+    "tier": "medium",
+    "question": "Let x1 = 2 and x(k+1) = (6*x(k)^2 + 8) mod 97. What is x65? Answer with the number only.",
+    "answer": 30
+   },
+   {
+    "kind": "lattice",
+    "tier": "medium",
+    "question": "On a grid, count the monotone lattice paths from (0,0) to (8,9) using unit steps right (+1,0) or up (0,+1) that never visit any of the points (1,4), (3,1), (6,1). Answer with the number only.",
+    "answer": 15067
+   },
+   {
+    "kind": "lattice_hard",
+    "tier": "hard",
+    "question": "On a grid, count the monotone lattice paths from (0,0) to (11,10) using unit steps right (+1,0) or up (0,+1) that never visit any of the points (1,2), (3,5), (4,9), (6,1), (10,3), (10,9). Answer with the number only.",
+    "answer": 79684
+   },
+   {
+    "kind": "subset_mod",
+    "tier": "hard",
+    "question": "How many 5-element subsets of {1, 2, ..., 24} have a sum divisible by 13? Answer with the number only.",
+    "answer": 3269
+   },
+   {
+    "kind": "digit_sum",
+    "tier": "hard",
+    "question": "How many integers n with 1 <= n < 10000000 have a digit sum equal to 36? Answer with the number only.",
+    "answer": 436975
+   },
+   {
+    "kind": "recurrence_hard",
+    "tier": "hard",
+    "question": "Let x1 = 47 and x(k+1) = (4*x(k)^2 + 29*x(k) + 12) mod 997. What is x201? Answer with the number only.",
+    "answer": 393
+   }
+  ],
+  "runs": [
+   {
+    "problem": 0,
+    "correct": true,
+    "got": "30",
+    "reasoning_tokens": 189,
+    "seconds": 11.43,
+    "error": null
+   },
+   {
+    "problem": 0,
+    "correct": true,
+    "got": "30",
+    "reasoning_tokens": 234,
+    "seconds": 11.87,
+    "error": null
+   },
+   {
+    "problem": 1,
+    "correct": true,
+    "got": "15067",
+    "reasoning_tokens": 142,
+    "seconds": 10.19,
+    "error": null
+   },
+   {
+    "problem": 1,
+    "correct": true,
+    "got": "15067",
+    "reasoning_tokens": 162,
+    "seconds": 9.43,
+    "error": null
+   },
+   {
+    "problem": 2,
+    "correct": true,
+    "got": "79684",
+    "reasoning_tokens": 486,
+    "seconds": 23.18,
+    "error": null
+   },
+   {
+    "problem": 2,
+    "correct": true,
+    "got": "79684",
+    "reasoning_tokens": 449,
+    "seconds": 15.01,
+    "error": null
+   },
+   {
+    "problem": 3,
+    "correct": true,
+    "got": "3269",
+    "reasoning_tokens": 172,
+    "seconds": 14.56,
+    "error": null
+   },
+   {
+    "problem": 3,
+    "correct": true,
+    "got": "3269",
+    "reasoning_tokens": 184,
+    "seconds": 18.99,
+    "error": null
+   },
+   {
+    "problem": 4,
+    "correct": true,
+    "got": "436975",
+    "reasoning_tokens": 130,
+    "seconds": 12.37,
+    "error": null
+   },
+   {
+    "problem": 4,
+    "correct": true,
+    "got": "436975",
+    "reasoning_tokens": 133,
+    "seconds": 12.12,
+    "error": null
+   },
+   {
+    "problem": 5,
+    "correct": true,
+    "got": "393",
+    "reasoning_tokens": 661,
+    "seconds": 28.6,
+    "error": null
+   },
+   {
+    "problem": 5,
+    "correct": true,
+    "got": "393",
+    "reasoning_tokens": 624,
+    "seconds": 29.2,
+    "error": null
+   }
+  ],
+  "finished_at": "2026-11-06T06:34:41-0800",
+  "elapsed_seconds": 52.4
+ },
+ "needle": {
+  "prompt_tokens": 92211,
+  "found": 3,
+  "seconds": 8.03,
+  "error": null,
+  "finished_at": "2026-11-06T06:34:49-0800",
+  "elapsed_seconds": 8.0
+ },
+ "pelican": {
+  "samples": [
+   {
+    "file": "codex_gpt-6.1-sol-r1-1.html",
+    "output_tokens": 4848,
+    "reasoning_tokens": 120,
+    "seconds": 102.6,
+    "html_chars": 13539,
+    "shapes": 51,
+    "judge": {
+     "two_wheels_on_ground": true,
+     "frame_connected": true,
+     "rider_on_bike": true,
+     "limbs_plausible": true,
+     "pelican_recognizable": true,
+     "no_floating_parts": true,
+     "notes": "The recognizable pelican sits over the seat of a connected bicycle, with feet near the pedals and both wheels on the ground."
+    }
+   },
+   {
+    "file": "codex_gpt-6.1-sol-r1-2.html",
+    "output_tokens": 4541,
+    "reasoning_tokens": 293,
+    "seconds": 100.55,
+    "html_chars": 11840,
+    "shapes": 53,
+    "judge": {
+     "two_wheels_on_ground": true,
+     "frame_connected": true,
+     "rider_on_bike": true,
+     "limbs_plausible": true,
+     "pelican_recognizable": true,
+     "no_floating_parts": true,
+     "notes": "The pelican sits over the seat with feet near the pedals, and the bicycle components are connected with both wheels on the ground."
+    }
+   }
+  ],
+  "finished_at": "2026-11-06T06:45:56-0800",
+  "elapsed_seconds": 111.0
+ }
+}

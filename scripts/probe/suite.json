@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "note": "模型检测题（第 1 版，2026-11-06）。只能追加新版本，不改已有版本的内容：不同版本的结果不能互相比对。scripts/probe/probe.py 与以后灵枢的检测页面共用这份题。",
+  "tokens": {
+    "suffix": "\n\nReply with exactly: ok",
+    "probes": {
+      "english": "The quick brown fox jumps over the lazy dog while the committee deliberates on quarterly revenue.",
+      "chinese": "灵枢网关把请求转发给上游，按实际用量扣费，并记录每一次调用的耗时与缓存命中率。",
+      "japanese": "今日は東京で新しいプロジェクトの打ち合わせがあり、来週までに資料を準備します。",
+      "code": "def fib(n):\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n",
+      "json": "{\"id\": 42, \"tags\": [\"alpha\", \"beta\"], \"price\": 19.99, \"nested\": {\"ok\": true, \"list\": [1, 2, 3]}}",
+      "numbers": "3.14159265358979 1234567890 2026-11-06 0x7fffffff 1e-9 -273.15",
+      "emoji": "😀🚀🇨🇳👨‍👩‍👧‍👦🧑🏽‍💻✨",
+      "whitespace": "a\n\n\n    b\t\tc        d\r\n e",
+      "rare_cjk": "龘靐齉爩麤厵鱻",
+      "url": "https://example.com/path/to/resource?query=value&lang=zh-CN#section-3",
+      "repeat": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "glitch": " SolidGoldMagikarp petertodd davidjl externalToEVA StreamerBot"
+    }
+  },
+  "fingerprint": {
+    "effort": "none",
+    "samples": 6,
+    "suffix": " Reply with only the answer itself, nothing else.",
+    "prompts": [
+      "Pick a random integer between 1 and 100.",
+      "Pick a random integer between 1 and 10.",
+      "Pick a random integer between 1 and 1000.",
+      "Pick a random two-digit prime number.",
+      "Pick a random letter of the English alphabet.",
+      "Name a random color.",
+      "Name a random animal.",
+      "Name a random fruit.",
+      "Name a random vegetable.",
+      "Name a random country.",
+      "Name a random city.",
+      "Name a random US state.",
+      "Name a random planet.",
+      "Name a random chemical element.",
+      "Name a random musical instrument.",
+      "Name a random programming language.",
+      "Name a random flower.",
+      "Name a random bird.",
+      "Name a random gemstone.",
+      "Name a random sport.",
+      "Pick a random English first name.",
+      "Pick a random day of the week.",
+      "Pick a random month.",
+      "Pick a random English word."
+    ]
+  },
+  "math": {
+    "effort": "medium",
+    "repeats": 2,
+    "seed": 20261106,
+    "problems": [
+      {"kind": "recurrence", "tier": "medium"},
+      {"kind": "lattice", "tier": "medium"},
+      {"kind": "lattice_hard", "tier": "hard"},
+      {"kind": "subset_mod", "tier": "hard"},
+      {"kind": "digit_sum", "tier": "hard"},
+      {"kind": "recurrence_hard", "tier": "hard"}
+    ]
+  },
+  "needle": {
+    "effort": "low",
+    "tokens": 100000,
+    "seed": 20261107
+  },
+  "pelican": {
+    "effort": "medium",
+    "samples": 2,
+    "prompt": "创建一个HTML，内容是SVG，绘制一个鹈鹕骑自行车的2D动画，不用验证。不调用用任何skills，也不允许联网搜索。",
+    "judge_prompt": "This is a screenshot of an SVG animation that was supposed to show a pelican riding a bicycle. Judge only the drawing's structure, not its style. Answer each check with true or false and reply with JSON only, no other text: {\"two_wheels_on_ground\": two wheels, both resting on the ground and attached to the frame; \"frame_connected\": frame, fork, handlebar and seat are joined into one bicycle; \"rider_on_bike\": the pelican sits on or over the bicycle seat; \"limbs_plausible\": no legs or wings in impossible places (e.g. coming out of the beak, hanging below the wheels), feet near the pedals; \"pelican_recognizable\": a bird with a long beak and throat pouch; \"no_floating_parts\": no detached or floating pieces, nothing badly misplaced; \"notes\": one short sentence}"
+  }
+}

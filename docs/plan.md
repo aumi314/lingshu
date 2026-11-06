@@ -45,6 +45,7 @@ lingshu/
 │   └── api/                # /api 下的管理端、用户端接口
 ├── web/                    # React 前端
 ├── scripts/                # 冒烟测试等脚本（读 .env）
+│   └── probe/              # 模型检测：检测题 suite.json、脚本 probe.py、腿部测量 legs.js、官方样本 baselines/
 ├── deploy/                 # DMIT 的 systemd、Caddy、PostgreSQL 容器和备份配置
 └── docs/
 ```
@@ -310,3 +311,5 @@ GPT Fast 计费（2026-11-06 ✅ 已发布 DMIT）：模型加「Fast 倍率」�
 渠道连接状态（2026-11-06）：渠道列表去掉模型列，加“连接状态”（最近 24 小时成功率与次数、首字和速度中位数、缓存命中率、冷却中）；调用日志新增 `failed_channel_ids`（迁移 0028），换渠道成功的请求也把前面失败的渠道计入失败。测试：`TestChannelStatsCountFailover`（换渠道、断流、原样 400、用户断开、首字 / 速度 / 缓存口径）；新增 `web/tests/channels.browser.cjs` 并加入 CI。口径见 `docs/decisions.md`「渠道连接状态」。下一步：渠道质量与智商。
 
 OpenCode Zen 原生渠道（PR 交付，未部署）：内置 `opencode-zen` 模板和独立 Go TLS 客户端，直连官方 Chat 入口，不依赖外置适配层。免费模型按模板补充编码上下文、工具声明和会话，非流式客户端收到完整 Chat JSON，沿用原有路由、计费和日志。测试覆盖参数与工具保留、用量、截断、工具误调用、取消、代理和证书校验；独立测试库 `make test`、`go vet`、程序构建、前端类型检查与构建通过。最终代码从 DMIT 临时验证程序直连 `deepseek-v4.1-flash-free` 的流式、非流式及冒烟测试均 HTTP 200，完整 usage 已读取；临时程序已清理，无线上配置改动。接入与维护范围见 [OpenCode Zen](research/opencode-zen.md)。
+
+模型检测 · 试验阶段（2026-11-06）：本机脚本 `scripts/probe/probe.py` 按 `scripts/probe/suite.json`（第 1 版）检测分词指纹、单词指纹、数学题、大海捞针、鹈鹕（结构检查表和腿部测量 `legs.js`）。用用户的官方账号（本机 Magpie `codex/*`）给 gpt-6.1-sol、gpt-6-astra、gpt-6.1-terra、gpt-6-luna 建了两轮样本（`scripts/probe/baselines/`；第二轮未跑大海捞针，astra 第二轮的鹈鹕因额度中断）。单词指纹和最难的数学题都能把 terra、luna 和 sol、astra 分开，sol 和 astra 分不开；可疑阈值 0.40。中转 咔咔 的 sol、astra 未见掺水。待办：推理强度对鹈鹕腿的影响（high / xhigh）、题库扩到一两百题、灵枢「检测」页面。口径见 `docs/decisions.md`「模型检测」。

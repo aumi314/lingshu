@@ -42,14 +42,14 @@ jobs:
             echo "main 已前进到 $latest，跳过 $SHA，由更新的那次 CI 发布"
             echo "SKIP=1" >> "$GITHUB_ENV"
           fi
-      - name: 自上次发布以来只改了文档、许可证、CI 配置或服务器脚本就不发布（成品嵌提交号，否则每次都会触发一次无谓的重启）
+      - name: 自上次发布以来只改了文档、许可证、CI 配置或脚本就不发布（成品嵌提交号，否则每次都会触发一次无谓的重启）
         if: env.SKIP != '1'
         run: |
           prev=$(curl -fsSL --retry 3 https://github.com/${{ github.repository }}/releases/download/main-latest/manifest.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["commit"])' || true)
           if [ -n "$prev" ] && git cat-file -e "$prev^{commit}" 2>/dev/null; then
             changed=$(git diff --name-only "$prev" "$SHA")
-            # deploy/ 是手动装到服务器上的脚本和配置，不进成品
-            others=$(echo "$changed" | grep -vE '^(docs/|\.github/|deploy/|LICENSE$)|\.md$' || true)
+            # deploy/ 是手动装到服务器上的脚本和配置，scripts/ 是本机脚本，都不进成品
+            others=$(echo "$changed" | grep -vE '^(docs/|\.github/|deploy/|scripts/|LICENSE$)|\.md$' || true)
             if [ -n "$changed" ] && [ -z "$others" ]; then
               echo "自 ${prev:0:7} 以来只改了：" && echo "$changed"
               echo "SKIP=1" >> "$GITHUB_ENV"
