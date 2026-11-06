@@ -137,7 +137,7 @@ func (s *Server) user(next handler) http.HandlerFunc {
 // admin 要求已登录且是管理员。
 func (s *Server) admin(next handler) http.HandlerFunc {
 	return s.user(func(w http.ResponseWriter, r *http.Request) {
-		if currentUser(r).Role != "admin" {
+		if !isAdmin(currentUser(r).Role) {
 			writeError(w, http.StatusForbidden, "只有管理员能做这个操作")
 			return
 		}

@@ -48,7 +48,7 @@ export type Preferences = { language?: 'zh' | 'en'; currency?: 'USD' | 'CNY'; th
 export type User = {
   id: number
   username: string
-  role: 'admin' | 'user'
+  role: 'super_admin' | 'admin' | 'user'
   balance: string
   enabled: boolean
   preferences: Preferences
@@ -58,6 +58,9 @@ export type User = {
   note?: string  /** 该用户所有 key 最近一次调用的时间，只有管理端用户列表返回 */
   last_used_at?: string
 }
+
+// 超级管理员和管理员都能进后台，权限相同；超级管理员只多一项任免管理员
+export const isAdmin = (role?: string) => role === 'admin' || role === 'super_admin'
 
 export type UserGroup = { id: number; name: string; is_default: boolean }
 export type Group = { id: number; name: string; ratio: string; enabled: boolean; is_public: boolean; user_group_ids: number[]; description: string }

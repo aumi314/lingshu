@@ -173,11 +173,11 @@ func adminCreate(args []string) error {
 		if err := s.Migrate(ctx); err != nil {
 			return err
 		}
-		id, err := s.CreateUser(ctx, *username, string(hash), "admin")
+		id, err := s.CreateUser(ctx, *username, string(hash), "super_admin") // 初始化部署用，建的是超级管理员
 		if err != nil {
 			return err
 		}
-		fmt.Printf("管理员 %s 已创建（id=%d）\n", *username, id)
+		fmt.Printf("超级管理员 %s 已创建（id=%d）\n", *username, id)
 		return nil
 	})
 }

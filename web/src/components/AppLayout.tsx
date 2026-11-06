@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../app'
+import { isAdmin } from '../api'
 import Logo from './Logo'
 
 export default function AppLayout() {
@@ -36,7 +37,7 @@ export default function AppLayout() {
     { key: '/console/models', icon: <TagsOutlined />, label: t('模型与价格', 'Models & pricing') },
     { key: '/console/logs', icon: <BarChartOutlined />, label: t('账户日志', 'Account logs') },
     { key: '/console/wallet', icon: <WalletOutlined />, label: t('钱包充值', 'Wallet & top-up') },
-    ...(user?.role === 'admin'
+    ...(isAdmin(user?.role)
       ? [
           {
             type: 'group' as const,

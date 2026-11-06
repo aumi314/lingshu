@@ -42,3 +42,10 @@ func (s *Store) CreateUser(ctx context.Context, username, passwordHash, role str
 	}
 	return id, nil
 }
+
+// CountEnabledSuperAdmins 返回启用中的超级管理员数量，用于“至少保留一个”的保护。
+func (s *Store) CountEnabledSuperAdmins(ctx context.Context) (int, error) {
+	var n int
+	err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE role = 'super_admin' AND enabled`).Scan(&n)
+	return n, err
+}

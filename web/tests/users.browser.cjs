@@ -16,7 +16,7 @@ const path = require('node:path')
       }
     }
     const page = await browser.newPage()
-    const users = [1, 2, 3].map((id) => ({ id, username: `user${id}`, role: id === 1 ? 'admin' : 'user', balance: '5', enabled: true, user_group_ids: [1], preferences: {}, created_at: '2026-10-25' }))
+    const users = [1, 2, 3].map((id) => ({ id, username: `user${id}`, role: id === 1 ? 'super_admin' : 'user', balance: '5', enabled: true, user_group_ids: [1], preferences: {}, created_at: '2026-10-25' }))
     users[1].note = 'partner-note'
     users[1].last_used_at = '2026-11-03T08:00:00Z'
     users[2].user_group_ids = [1, 2]
@@ -71,7 +71,7 @@ const path = require('node:path')
     assert.equal(new URL(page.url()).searchParams.get('status'), 'all')
     assert.equal(await page.getByRole('button', { name: /用户分组管理/ }).count(), 0)
     assert.equal(await row(1).getByRole('combobox').count(), 0) // 角色不再在表格里直接改
-    await row(1).getByText('管理员', { exact: true }).waitFor()
+    await row(1).getByText('超级管理员', { exact: true }).waitFor()
     await row(2).getByText('partner-note', { exact: true }).waitFor()
     await row(2).getByText('公开分组 1 个', { exact: true }).waitFor()
     await row(3).getByText('vip-group', { exact: true }).waitFor()
@@ -172,7 +172,17 @@ const path = require('node:path')
     await row(2).getByRole('button', { name: 'Edit', exact: true }).click()
     await dialog.getByText('Account status', { exact: true }).waitFor()
     await dialog.getByRole('button', { name: 'Submit', exact: true }).waitFor()
-    console.log('PASS: enabled-only by default, status filter with counts and URL, service group access column, last call, note, role moved into dialog with self protection, access preview, cancel discards drafts, confirmation cancellation, failure preserves drafts, blank amount skips balance, mobile scroll and footer, English')
+    await close().catch(() => dialog.getByRole('button', { name: 'Cancel' }).click())
+
+    // 普通管理员：不能编辑超级管理员的账号，弹窗里不能改角色
+    users[0].role = 'admin'
+    users[1].role = 'super_admin'
+    await page.reload()
+    await row(2).waitFor()
+    assert.equal(await row(2).getByRole('button', { name: 'Edit', exact: true }).isDisabled(), true)
+    await row(3).getByRole('button', { name: 'Edit', exact: true }).click()
+    await dialog.getByText('Only super admins can change roles', { exact: true }).waitFor()
+    console.log('PASS: plain admin cannot edit super admin or change roles; enabled-only by default, status filter with counts and URL, service group access column, last call, note, role moved into dialog with self protection, access preview, cancel discards drafts, confirmation cancellation, failure preserves drafts, blank amount skips balance, mobile scroll and footer, English')
   } finally {
     await browser.close()
     server?.kill()
