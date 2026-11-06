@@ -195,7 +195,7 @@ export default function ModelsAdmin() {
               'OpenAI protocols only (chat / responses): when service_tier is fast or priority, the base or matched rule price is multiplied by this (OpenAI Fast is 2, long context too); standard price if the upstream downgrades. Empty = not offered: the gateway strips Fast and serves standard. Ultrafast is not offered.',
             )}
           >
-            <InputNumber min={0.01} max={100} step={0.5} placeholder={t('不开放', 'Off')} prefix="×" style={{ width: 160 }} />
+            <InputNumber min={0.01} max={100} step={1} placeholder={t('不开放', 'Off')} prefix="×" style={{ width: 160 }} />
           </Form.Item>
 
           <Divider titlePlacement="start" style={{ marginTop: 0 }}>
