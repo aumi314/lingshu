@@ -315,6 +315,7 @@ func (h *Handler) attemptAll(w http.ResponseWriter, r *http.Request, c *call, re
 		}
 		last = f
 		reasons = append(reasons, route.ChannelName+": "+f.reason)
+		c.log.FailedChannelIDs = append(c.log.FailedChannelIDs, route.ChannelID)
 		slog.Warn("渠道失败，换下一个", "request_id", c.log.RequestID, "channel", route.ChannelName, "reason", f.reason)
 	}
 	c.log.Status, c.log.HTTPStatus = "upstream_error", last.status

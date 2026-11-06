@@ -202,10 +202,23 @@ export type Channel = {
   group_ids: number[]
   models: ChannelModel[]
   cooling?: boolean
+  // 最近 24 小时的连接状态，没有任何尝试时为 null；口径见 internal/store/channel_stats.go
+  stats: ChannelStat | null
   // 上次查到的厂商余额，原样保存；只有 DeepSeek、Kimi、OpenRouter 能查
   balance: { currency: string; amount: string }[]
   balance_checked_at: string | null
   balance_error: string
+}
+
+export type ChannelStat = {
+  success: number
+  failed: number
+  first_token_ms: number | null // 成功流式请求的首字中位数（从发给上游算）
+  tokens_per_sec: number | null // 成功流式请求的输出速度中位数
+  cache_read_tokens: number
+  input_tokens: number // 含缓存读写
+  last_success_at: string | null
+  last_failure_at: string | null
 }
 
 export type ChannelTemplate = {

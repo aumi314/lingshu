@@ -1015,3 +1015,57 @@ func TestTimingBreakdown(t *testing.T) {
 		t.Errorf("总耗时 %d 小于首字 %d", total, first)
 	}
 }
+
+// 渠道连接状态：换渠道后成功的请求，前面失败的渠道也计入失败；统计口径见 store.ChannelStats。
+func TestChannelStatsCountFailover(t *testing.T) {
+	e := newEnv(t)
+	// 再挂一个优先级更低的 chat 渠道：渠道 1 先试、报 500，换到渠道 3 成功
+	e.exec(`INSERT INTO channels (id, name, api_key, base_url_chat, priority) SELECT 3, 'c-backup', api_key, base_url_chat || '-backup', -1 FROM channels WHERE id = 1`)
+	e.exec(`INSERT INTO channel_groups VALUES (3, 1)`)
+	e.exec(`INSERT INTO channel_models VALUES (3, 1, 'up-chat')`)
+	e.upstream = func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/v1-backup/") {
+			okUpstream(w, r)
+			return
+		}
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("应换到备用渠道成功: %d", resp.StatusCode)
+	}
+	e.waitLog(resp.Header.Get("X-Lingshu-Request-Id"))
+
+	// 再造几条：渠道 3 一次流式成功（首字从发给上游算 800ms，可见输出 300 ÷ 3s = 100 tok/s）、
+	// 一次已开始返回后断流（算失败）、一次原样返回的 400（请求本身的问题，不算）、一次用户断开（不算）
+	for _, q := range []string{
+		`(3, 'success', 200, true, 1000, 3000, 200, 1800, 4800, 300, 0)`,
+		`(3, 'upstream_error', 200, true, 10, 0, 0, 0, 0, 0, 0)`,
+		`(3, 'upstream_error', 400, false, 10, 0, 0, 0, 0, 0, 0)`,
+		`(3, 'client_cancelled', 200, true, 10, 0, 0, 0, 0, 0, 0)`,
+	} {
+		e.exec(`INSERT INTO request_logs (user_id, api_key_id, request_id, protocol, model, channel_id, status, http_status, stream,
+			input_tokens, cache_read_tokens, read_ms, upstream_start_ms, first_byte_ms, total_ms, output_tokens, reasoning_tokens)
+			SELECT 1, (SELECT id FROM api_keys LIMIT 1), 'fixture-' || md5(random()::text), 'chat', 'std-chat', ch, st, hs, s, inp, cr, 100, us, fb, tot, outp, rs
+			FROM (VALUES ` + q + `) AS v(ch, st, hs, s, inp, cr, us, fb, tot, outp, rs)`)
+	}
+	stats, err := e.store.ChannelStats(context.Background(), time.Now().Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := stats[1]; s.Success != 0 || s.Failed != 1 || s.LastFailureAt == nil {
+		t.Errorf("渠道 1 应记 1 次失败: %+v", s)
+	}
+	s := stats[3]
+	if s.Success != 2 || s.Failed != 1 {
+		t.Errorf("渠道 3 应成功 2 次（换渠道那次 + 流式）、失败 1 次（断流）: %+v", s)
+	}
+	if s.FirstTokenMS == nil || *s.FirstTokenMS != 1600 || s.TokensPerSec == nil || *s.TokensPerSec != 100 {
+		t.Errorf("首字中位数应 1600ms（从发给上游算）、速度 100 tok/s: %v %v", s.FirstTokenMS, s.TokensPerSec)
+	}
+	// 缓存：换渠道那次 800 输入 + 200 命中，流式那次 1000 输入 + 3000 命中 → 3200 / 5000
+	if s.CacheRead != 3200 || s.InputTokens != 5000 {
+		t.Errorf("缓存统计: %d / %d", s.CacheRead, s.InputTokens)
+	}
+}
