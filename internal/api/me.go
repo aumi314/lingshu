@@ -179,7 +179,7 @@ func parseLogFilter(r *http.Request) (store.LogFilter, string) {
 	}
 	if f.Type == "operation" {
 		switch f.Target = q.Get("target"); f.Target {
-		case "", "user", "api_key", "balance", "group", "user_group", "model", "channel", "settings", "payment", "registration_code":
+		case "", "user", "api_key", "balance", "group", "user_group", "model", "channel", "settings", "payment", "registration_code", "redeem_code", "topup":
 		default:
 			return f, "对象类型不正确"
 		}

@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, Card, Col, DatePicker, Descriptions, Drawer, Row, Select, Space, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
+import { Alert, Card, Col, DatePicker, Descriptions, Drawer, Row, Select, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useSearchParams } from 'react-router-dom'
 import { get, type LogEntry, type ActivityLogsResponse, type OperationLogsResponse, type RequestActivity, type User } from '../api'
 import { priceText, tokens, useApp } from '../app'
-import { paymentNames, type OrderList, type Topup } from '../payment'
 import { tierText } from '../pricing'
 import OperationLogTable, { targetLabel, targetTypes } from './OperationLogs'
 
-type Tab = 'calls' | 'operations' | 'orders' // 充值订单只给管理员
+type Tab = 'calls' | 'operations'
 type Filter = { range: [Dayjs, Dayjs]; model?: string; status?: string; user_id?: number; target?: string }
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`
@@ -32,12 +31,12 @@ function outputTPS(r: LogEntry): number | null {
 export default function Logs({ admin = false }: { admin?: boolean }) {
   const { money, t } = useApp()
   const [params, setParams] = useSearchParams()
-  const tab: Tab = params.get('tab') === 'operations' ? 'operations' : params.get('tab') === 'orders' && admin ? 'orders' : 'calls'
+  // 只有调用日志和操作日志两类（2026-11-06）：充值并入操作日志，旧链接 ?tab=orders 落到操作日志
+  const tab: Tab = params.get('tab') === 'operations' || params.get('tab') === 'orders' ? 'operations' : 'calls'
   const [filter, setFilter] = useState<Filter>({ range: [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')] })
   const [page, setPage] = useState(1)
   const [data, setData] = useState<ActivityLogsResponse | null>(null)
   const [ops, setOps] = useState<OperationLogsResponse | null>(null)
-  const [orders, setOrders] = useState<OrderList | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -69,12 +68,7 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
     if (filter.user_id) q.set('user_id', String(filter.user_id))
     const path = `${admin ? '/api/admin/logs' : '/api/me/logs'}?${q}`
     try {
-      if (tab === 'orders') {
-        q.delete('type')
-        if (filter.status) q.set('status', filter.status)
-        const result = await get<OrderList>(`/api/admin/topups?${q}`)
-        if (sequence === requestSequence.current) { setOrders(result); setError('') }
-      } else if (tab === 'calls') {
+      if (tab === 'calls') {
         const result = await get<ActivityLogsResponse>(path)
         if (sequence === requestSequence.current) { setData(result); setError('') }
       } else {
@@ -82,7 +76,7 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
         if (sequence === requestSequence.current) { setOps(result); setError('') }
       }
     } catch (e) {
-      if (sequence === requestSequence.current) { setData(null); setOps(null); setOrders(null); setError((e as Error).message) }
+      if (sequence === requestSequence.current) { setData(null); setOps(null); setError((e as Error).message) }
     } finally {
       if (sequence === requestSequence.current) setLoading(false)
     }
@@ -106,13 +100,12 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
     setPage(1)
     setData(null)
     setOps(null)
-    setOrders(null)
     setFilter((old) => ({ ...old, model: undefined, status: undefined, target: undefined }))
     setParams(key === 'calls' ? {} : { tab: key }, { replace: true })
   }
 
   const s = data?.summary
-  const pagination = { current: page, pageSize, total: (tab === 'calls' ? data?.total : tab === 'orders' ? orders?.total : ops?.total) ?? 0, onChange: setPage, showSizeChanger: false }
+  const pagination = { current: page, pageSize, total: (tab === 'calls' ? data?.total : ops?.total) ?? 0, onChange: setPage, showSizeChanger: false }
   const time = { title: t('时间', 'Time'), dataIndex: 'created_at', render: (v: string) => <span className="nowrap">{dayjs(v).format('MM-DD HH:mm:ss')}</span> }
 
   const calls = (
@@ -206,36 +199,6 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
     </>
   )
 
-  // 充值订单（原在支付设置里，2026-11-06 挪到这里：设置页只放设置）。成功到账的订单同时出现在操作日志的“充值到账”
-  const orderStatus: Record<string, [string, string]> = {
-    pending: ['default', t('待付款', 'Pending')],
-    success: ['green', t('已到账', 'Credited')],
-    failed: ['red', t('失败', 'Failed')],
-    expired: ['default', t('已过期', 'Expired')],
-  }
-  const userName = (id: number) => users.find((u) => u.id === id)?.username ?? `#${id}`
-  const ordersView = (
-    <Table<Topup>
-      rowKey="id"
-      size="small"
-      loading={loading}
-      dataSource={orders?.items}
-      pagination={pagination}
-      scroll={{ x: 'max-content' }}
-      locale={{ emptyText: t('这段时间没有充值订单', 'No top-up orders in this period') }}
-      columns={[
-        { title: t('创建时间', 'Created'), dataIndex: 'created_at', render: (v: string) => <span className="nowrap">{dayjs(v).format('MM-DD HH:mm:ss')}</span> },
-        { title: t('用户', 'User'), dataIndex: 'user_id', render: (v: number) => userName(v) },
-        { title: t('订单号', 'Order'), dataIndex: 'id', render: (v: string) => <Typography.Text copyable className="mono">{v}</Typography.Text> },
-        { title: t('服务', 'Provider'), dataIndex: 'provider', render: (v: string) => paymentNames[v] ?? v },
-        { title: t('到账额度', 'Credit'), dataIndex: 'credit_usd', align: 'right', render: (v: string) => money(v) },
-        { title: t('实付', 'Paid'), render: (_, o) => <span className="nowrap">{o.status === 'success' ? o.total : o.amount} {o.currency}</span> },
-        { title: t('状态', 'Status'), dataIndex: 'status', render: (v: string, o) => <Space size={4}><Tag color={orderStatus[v]?.[0]}>{orderStatus[v]?.[1] ?? v}</Tag>{o.environment === 'test' && <Tag>{t('测试', 'test')}</Tag>}</Space> },
-        { title: t('到账时间', 'Credited at'), dataIndex: 'completed_at', render: (v: string | null) => v ? <span className="nowrap">{dayjs(v).format('MM-DD HH:mm:ss')}</span> : '—' },
-      ]}
-    />
-  )
-
   const os = ops?.summary
   const operations = (
     <>
@@ -254,7 +217,7 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
       </Typography.Title>
       {error && <Alert type="error" title={error} showIcon style={{ marginBottom: 16 }} />}
 
-      <Tabs activeKey={tab} onChange={switchTab} items={[{ key: 'calls', label: t('调用日志', 'Call logs') }, { key: 'operations', label: t('操作日志', 'Operation logs') }, ...(admin ? [{ key: 'orders', label: t('充值订单', 'Top-up orders') }] : [])]} />
+      <Tabs activeKey={tab} onChange={switchTab} items={[{ key: 'calls', label: t('调用日志', 'Call logs') }, { key: 'operations', label: t('操作日志', 'Operation logs') }]} />
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <DatePicker.RangePicker
@@ -296,16 +259,6 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
           options={Object.entries(statusTag).map(([k, [, label]]) => ({ value: k, label }))}
         />
         </>}
-        {tab === 'orders' && (
-          <Select
-            allowClear
-            placeholder={t('全部状态', 'All statuses')}
-            style={{ width: 150 }}
-            value={filter.status}
-            onChange={(v) => update({ status: v })}
-            options={Object.entries(orderStatus).map(([k, [, label]]) => ({ value: k, label }))}
-          />
-        )}
         {tab === 'operations' && (
           <Select
             allowClear
@@ -313,12 +266,12 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
             style={{ width: 160 }}
             value={filter.target}
             onChange={(v) => update({ target: v })}
-            options={targetTypes.filter((type) => admin || ['user', 'api_key', 'balance'].includes(type)).map((type) => ({ value: type, label: targetLabel(t, type) }))}
+            options={targetTypes.filter((type) => admin || ['user', 'api_key', 'balance', 'topup'].includes(type)).map((type) => ({ value: type, label: targetLabel(t, type) }))}
           />
         )}
       </div>
 
-      {tab === 'calls' ? calls : tab === 'orders' ? ordersView : operations}
+      {tab === 'calls' ? calls : operations}
 
       <Drawer open={!!detail} onClose={() => setDetail(null)} title={t('请求详情', 'Request details')} size={520}>
         {detail && (
