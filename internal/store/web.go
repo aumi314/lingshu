@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -589,3 +590,41 @@ func (s *Store) CNYPerUSD(ctx context.Context) decimal.Decimal {
 }
 
 var defaultCNYPerUSD = decimal.RequireFromString("6.7")
+
+// CallLimits 是调用限制（2026-11-06 决策）：每个用户的并发上限、每分钟请求数上限（0 表示不限），
+// 以及预扣时输出最多按多少 token 算（请求写得更少按请求的；0 表示完全按请求写的上限）。没设置或格式不对时用默认值。
+type CallLimits struct {
+	Concurrency   int64 `json:"user_concurrency"`
+	RPM           int64 `json:"user_rpm"`
+	ReserveOutput int64 `json:"reserve_output_tokens"`
+}
+
+var DefaultCallLimits = CallLimits{Concurrency: 10, RPM: 120, ReserveOutput: 8192}
+
+func (s *Store) CallLimits(ctx context.Context) (CallLimits, error) {
+	l := DefaultCallLimits
+	rows, err := s.Pool.Query(ctx, `SELECT key, value FROM settings WHERE key IN ('user_concurrency', 'user_rpm', 'reserve_output_tokens')`)
+	if err != nil {
+		return l, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return l, err
+		}
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 0 {
+			continue
+		}
+		switch k {
+		case "user_concurrency":
+			l.Concurrency = n
+		case "user_rpm":
+			l.RPM = n
+		case "reserve_output_tokens":
+			l.ReserveOutput = n
+		}
+	}
+	return l, rows.Err()
+}

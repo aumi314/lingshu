@@ -10,7 +10,8 @@ type RegistrationCode = { id: number; prefix: string; created_at: string; used_b
 type GeneratedCode = { id: number; prefix: string; code: string }
 
 type FXStatus = { source: string; date?: string; rate?: string; checked_at?: string; error?: string }
-type Settings = { cny_per_usd: string; payment_enabled: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string; fx_mode?: string; fx_status?: FXStatus }
+type CallLimits = { user_concurrency: number; user_rpm: number; reserve_output_tokens: number }
+type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string; fx_mode?: string; fx_status?: FXStatus }
 
 export default function System() {
   const { t, reload } = useApp()
@@ -22,6 +23,8 @@ export default function System() {
   const tab = ['payments', 'registration'].includes(params.get('tab') ?? '') ? params.get('tab')! : 'operations'
   const [form] = Form.useForm<{ cny_per_usd: number }>()
   const [apiURLForm] = Form.useForm<{ api_base_url: string }>()
+  const [limitsForm] = Form.useForm<CallLimits>()
+  const [savingLimits, setSavingLimits] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savingAPIURL, setSavingAPIURL] = useState(false)
   const [deploymentMode, setDeploymentMode] = useState<'commercial_relay'>('commercial_relay')
@@ -39,6 +42,7 @@ export default function System() {
 
   const fill = (s: Settings) => {
     form.setFieldsValue({ cny_per_usd: Number(s.cny_per_usd) })
+    if (s.call_limits) limitsForm.setFieldsValue(s.call_limits)
     setFXMode(s.fx_mode === 'live' ? 'live' : 'manual')
     setFXStatus(s.fx_status ?? { source: 'Frankfurter' })
     apiURLForm.setFieldsValue({ api_base_url: s.api_base_url })
@@ -76,6 +80,19 @@ export default function System() {
       message.error((e as Error).message)
     } finally {
       setSavingFXMode(false)
+    }
+  }
+
+  const saveLimits = async () => {
+    const v = await limitsForm.validateFields()
+    setSavingLimits(true)
+    try {
+      await put('/api/admin/settings', v)
+      message.success(t('已保存，10 秒内生效', 'Saved; takes effect within 10 seconds'))
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSavingLimits(false)
     }
   }
 
@@ -240,6 +257,28 @@ export default function System() {
                   {fxStatus.error && <Alert type="warning" showIcon title={fxStatus.error} style={{ marginTop: 8 }} />}
                 </Space>
               )}
+            </Card>
+            <Card title={t('调用限制', 'Call limits')}>
+              <Typography.Paragraph type="secondary">
+                {t(
+                  '按用户计算，填 0 表示不限。超过并发或频率上限时返回 429 并告诉客户端多久后重试；调用前会按最大可能费用冻结额度，可用余额不够就拒绝，结算后多退少补，避免并发请求把余额扣成负数。',
+                  'Per user; 0 means unlimited. Over the concurrency or rate limit, requests get 429 with a retry hint. Before each call the maximum possible cost is held; if the available balance is short the call is refused, and the hold is settled against actual usage afterwards, so parallel calls cannot overdraw the balance.',
+                )}
+              </Typography.Paragraph>
+              <Form form={limitsForm} layout="vertical" onFinish={saveLimits} disabled={loading}>
+                <Space wrap size={24} align="start">
+                  <Form.Item name="user_concurrency" label={t('每个用户同时最多', 'Concurrent requests per user')} rules={[{ required: true }]}>
+                    <InputNumber min={0} max={1000000} precision={0} suffix={t('个请求', 'requests')} style={{ width: 180 }} />
+                  </Form.Item>
+                  <Form.Item name="user_rpm" label={t('每个用户每分钟最多', 'Requests per minute per user')} rules={[{ required: true }]}>
+                    <InputNumber min={0} max={1000000} precision={0} suffix={t('个请求', 'requests')} style={{ width: 180 }} />
+                  </Form.Item>
+                  <Form.Item name="reserve_output_tokens" label={t('预扣时输出最多按', 'Hold at most this much output')} rules={[{ required: true }]} extra={t('请求写得更少按请求的；回复超过它时可能小额透支，0 表示完全按请求写的上限冻结', 'Smaller request limits are used as is; replies beyond it may overdraw slightly; 0 holds the full request limit')}>
+                    <InputNumber min={0} max={1000000} precision={0} suffix="tokens" style={{ width: 180 }} />
+                  </Form.Item>
+                </Space>
+                <div><Button type="primary" htmlType="submit" loading={savingLimits}>{t('保存', 'Save')}</Button></div>
+              </Form>
             </Card>
             <Card title={t('API 接入地址', 'API base URL')}>
               <Typography.Paragraph type="secondary">

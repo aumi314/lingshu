@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/aumi314/lingshu/internal/relay/usage"
+	"github.com/shopspring/decimal"
 )
 
 func i64(n int64) *int64 { return &n }
@@ -152,5 +153,21 @@ func TestDateRange(t *testing.T) {
 		if _, err := Normalize(bad); err == nil {
 			t.Errorf("应报错: %+v", bad)
 		}
+	}
+}
+
+// 预扣金额：按估算输入和最大输出算，价格规则按估算输入长度匹配，乘分组倍率。
+func TestReserve(t *testing.T) {
+	d := decimal.RequireFromString
+	base := Prices{Input: d("1"), Output: d("2"), CacheRead: d("0.1")}
+	long := PriceRule{Name: "长上下文", InputAbove: i64(200000), Input: d("2"), Output: d("4")}
+	at := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
+	// 1000 输入 × $1 + 8192 输出 × $2 = 17384 / 1e6，倍率 0.5
+	if got := Reserve(1000, 8192, base, []PriceRule{long}, d("0.5"), at); !got.Equal(d("0.008692")) {
+		t.Errorf("短输入按基础价: %s", got)
+	}
+	// 30 万输入命中长上下文规则：300000 × $2 + 1000 × $4
+	if got := Reserve(300000, 1000, base, []PriceRule{long}, d("1"), at); !got.Equal(d("0.604")) {
+		t.Errorf("长输入按规则价: %s", got)
 	}
 }

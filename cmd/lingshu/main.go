@@ -103,6 +103,10 @@ func serve() error {
 	if err := s.Migrate(ctx); err != nil {
 		return err
 	}
+	// 上次进程里进行中的请求都已结束，它们冻结的额度一并释放
+	if err := s.ResetReservations(ctx); err != nil {
+		return err
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {

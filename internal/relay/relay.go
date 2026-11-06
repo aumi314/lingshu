@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,6 +52,8 @@ type Handler struct {
 	StreamHeaderTimeout time.Duration
 	BodyHeaderTimeout   time.Duration
 
+	limits *limiter // 每个用户的并发数和每分钟请求数
+
 	proxies proxyClients
 }
 
@@ -71,6 +74,7 @@ func NewHandler(s *store.Store) *Handler {
 		Health:              router.NewHealth(),
 		StreamHeaderTimeout: 60 * time.Second,
 		BodyHeaderTimeout:   5 * time.Minute,
+		limits:              newLimiter(),
 	}
 }
 
@@ -131,6 +135,15 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		c.reject(w, rej.Status, rej.Message)
 		return
 	}
+	// 并发与频率限制：超限返回 429 和 Retry-After，客户端会自动退避重试
+	limits := h.limits.limits(r.Context(), h.Store)
+	release, reason, retryAfter := h.limits.acquire(owner.UserID, limits, time.Now())
+	if release == nil {
+		w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+		c.reject(w, http.StatusTooManyRequests, reason)
+		return
+	}
+	defer release()
 
 	routes, err := h.Store.FindRoutes(r.Context(), owner.GroupID, string(c.proto), req.model)
 	if err != nil {
@@ -158,6 +171,30 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		}
 	}
 	c.log.GroupRatio = owner.GroupRatio
+
+	// 预扣：按最大可能费用冻结额度，可用余额不够就拒绝；结算时解冻并按实际扣费（finish → SettleRequest）
+	// 输出按“请求写的上限”和“预扣上限”取小：Claude Code 等常写 3–6 万，实际回复多为几千，
+	// 全额冻结会让余额不多的用户几乎无法并发；超过预扣上限的部分在结算时按实际扣（有界的小额透支）。
+	// 预扣上限设为 0 表示完全按请求写的上限冻结。
+	maxOutput := req.maxOutput
+	if cap := limits.ReserveOutput; cap > 0 && (maxOutput == 0 || maxOutput > cap) {
+		maxOutput = cap
+	}
+	input := usage.EstimateRequest(body)
+	if reserve := billing.Reserve(input, maxOutput, ordered[0].Prices, ordered[0].PriceRules, owner.GroupRatio, c.start); reserve.IsPositive() {
+		reserved, available, err := h.Store.Reserve(r.Context(), owner.UserID, reserve)
+		if err != nil {
+			c.reject(w, http.StatusInternalServerError, "冻结额度失败，请稍后重试")
+			slog.Error("预扣失败", "err", err)
+			return
+		}
+		if !reserved {
+			c.reject(w, http.StatusPaymentRequired, fmt.Sprintf("可用余额不够这次请求的最大可能费用：预估最多 $%s（输入约 %d token、最多输出 %d token），当前可用 $%s（已扣除进行中请求冻结的额度）。可以调低 max_tokens，或充值后再试",
+				reserve.StringFixed(4), input, maxOutput, available.StringFixed(4)))
+			return
+		}
+		c.log.Reserved = reserve
+	}
 	h.attemptAll(w, r, c, req, ordered)
 }
 
@@ -513,7 +550,7 @@ func (h *Handler) ServeUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	num := func(d decimal.Decimal) json.RawMessage { return json.RawMessage(d.String()) }
-	available := owner.Balance
+	available := owner.Balance.Sub(owner.Reserved) // 扣掉进行中请求冻结的额度
 	key := map[string]any{"name": owner.KeyName, "group": owner.GroupName, "quota_used": num(owner.QuotaUsed), "quota_limit": nil, "quota_remaining": nil}
 	if owner.QuotaLimit != nil {
 		remaining := owner.QuotaLimit.Sub(owner.QuotaUsed)
