@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -634,6 +635,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode, "api_base_url": apiBaseURL, "deployment_mode": deploymentMode,
+		"fx_mode": s.fxMode(r.Context()), "fx_status": s.fxStatus(r.Context()),
 	})
 }
 
@@ -682,12 +684,25 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		RegistrationMode *string          `json:"registration_mode"`
 		APIBaseURL       *string          `json:"api_base_url"`
 		DeploymentMode   *string          `json:"deployment_mode"`
+		FXMode           *string          `json:"fx_mode"`
 	}
 	if !readJSON(w, r, &in) {
 		return
 	}
 	if in.CNYPerUSD != nil && !in.CNYPerUSD.IsPositive() {
 		writeError(w, http.StatusBadRequest, "汇率要大于 0")
+		return
+	}
+	if in.FXMode != nil && *in.FXMode != "manual" && *in.FXMode != "live" {
+		writeError(w, http.StatusBadRequest, "汇率模式只能是手动或实时")
+		return
+	}
+	mode := s.fxMode(r.Context())
+	if in.FXMode != nil {
+		mode = *in.FXMode
+	}
+	if in.CNYPerUSD != nil && mode == "live" {
+		writeError(w, http.StatusBadRequest, "实时模式下汇率自动更新，要手动填写请先切到手动")
 		return
 	}
 	if in.RegistrationMode != nil && *in.RegistrationMode != "manual" && *in.RegistrationMode != "code" {
@@ -710,8 +725,11 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	if in.DeploymentMode != nil {
 		kv = append(kv, [2]string{"deployment_mode", *in.DeploymentMode})
 	}
+	if in.FXMode != nil {
+		kv = append(kv, [2]string{"fx_mode", *in.FXMode})
+	}
 	if in.CNYPerUSD != nil {
-		kv = append(kv, [2]string{"cny_per_usd", in.CNYPerUSD.String()})
+		kv = append(kv, [2]string{"cny_per_usd", in.CNYPerUSD.Round(4).String()})
 	}
 	if in.PaymentEnabled != nil {
 		kv = append(kv, [2]string{"payment_enabled", strconv.FormatBool(*in.PaymentEnabled)})
@@ -725,6 +743,12 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	if err := s.Store.SetSettings(r.Context(), kv); err != nil {
 		writeStoreError(w, err)
 		return
+	}
+	// 切到实时后马上拉一次，不用等一小时；失败原因写进状态，页面上能看到
+	if in.FXMode != nil && *in.FXMode == "live" {
+		if err := s.RefreshFX(r.Context()); err != nil {
+			slog.Warn("实时汇率更新失败", "err", err)
+		}
 	}
 	ok(w)
 }

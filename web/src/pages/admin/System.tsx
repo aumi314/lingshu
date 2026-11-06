@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Card, Form, Input, InputNumber, Modal, Radio, Space, Switch, Table, Tabs, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Radio, Space, Switch, Table, Tabs, Tag, Typography } from 'antd'
 import { useSearchParams } from 'react-router-dom'
+import dayjs from 'dayjs'
 import { del, get, post, put } from '../../api'
 import { useApp } from '../../app'
 import PaymentSettings from '../../components/PaymentSettings'
@@ -8,10 +9,16 @@ import PaymentSettings from '../../components/PaymentSettings'
 type RegistrationCode = { id: number; prefix: string; created_at: string; used_by: string; used_at: string | null; revoked_at: string | null }
 type GeneratedCode = { id: number; prefix: string; code: string }
 
+type FXStatus = { source: string; date?: string; rate?: string; checked_at?: string; error?: string }
+type Settings = { cny_per_usd: string; payment_enabled: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string; fx_mode?: string; fx_status?: FXStatus }
+
 export default function System() {
   const { t, reload } = useApp()
   const { message } = App.useApp()
   const [params, setParams] = useSearchParams()
+  const [fxMode, setFXMode] = useState<'manual' | 'live'>('manual')
+  const [fxStatus, setFXStatus] = useState<FXStatus>({ source: 'Frankfurter' })
+  const [savingFXMode, setSavingFXMode] = useState(false)
   const tab = ['payments', 'registration'].includes(params.get('tab') ?? '') ? params.get('tab')! : 'operations'
   const [form] = Form.useForm<{ cny_per_usd: number }>()
   const [apiURLForm] = Form.useForm<{ api_base_url: string }>()
@@ -30,8 +37,10 @@ export default function System() {
   const [generatingCodes, setGeneratingCodes] = useState(false)
   const [generatedCodes, setGeneratedCodes] = useState<GeneratedCode[] | null>(null)
 
-  const fill = (s: { cny_per_usd: string; payment_enabled: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string }) => {
+  const fill = (s: Settings) => {
     form.setFieldsValue({ cny_per_usd: Number(s.cny_per_usd) })
+    setFXMode(s.fx_mode === 'live' ? 'live' : 'manual')
+    setFXStatus(s.fx_status ?? { source: 'Frankfurter' })
     apiURLForm.setFieldsValue({ api_base_url: s.api_base_url })
     setDeploymentMode(s.deployment_mode === 'commercial_relay' ? s.deployment_mode : 'commercial_relay')
     setPaymentEnabled(s.payment_enabled)
@@ -39,7 +48,7 @@ export default function System() {
   }
 
   useEffect(() => {
-    get<{ cny_per_usd: string; payment_enabled: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string }>('/api/admin/settings')
+    get<Settings>('/api/admin/settings')
       .then(fill)
       .catch((e) => message.error(e.message))
       .finally(() => setLoading(false))
@@ -54,6 +63,21 @@ export default function System() {
       .catch((e) => message.error(e.message))
       .finally(() => setLoadingCodes(false))
   }, [tab, message])
+
+  // 切换汇率模式立即生效；切到实时会马上拉一次，再把最新汇率和状态取回来
+  const saveFXMode = async (mode: 'manual' | 'live') => {
+    setSavingFXMode(true)
+    try {
+      await put('/api/admin/settings', { fx_mode: mode })
+      fill(await get<Settings>('/api/admin/settings'))
+      message.success(mode === 'live' ? t('已切到实时汇率', 'Switched to live rate') : t('已切到手动汇率', 'Switched to manual rate'))
+      reload()
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSavingFXMode(false)
+    }
+  }
 
   const save = async () => {
     const v = await form.validateFields()
@@ -179,21 +203,43 @@ export default function System() {
                 <Button type="primary" loading={savingDeploymentMode} disabled={loading} onClick={saveDeploymentMode}>{t('保存', 'Save')}</Button>
               </div>
             </Card>
-            <Card title={t('显示汇率', 'Display exchange rate')}>
+            <Card title={t('汇率', 'Exchange rate')}>
               <Typography.Paragraph type="secondary">
                 {t(
-                  '账户和价格都按美元记账。汇率只影响人民币的显示，以及管理员用人民币录入价格、调整余额时的换算；已经保存的价格和余额不会变。',
-                  'Balances and prices are kept in USD. The rate only affects how CNY is displayed and how CNY input is converted; saved prices and balances do not change.',
+                  '账户和价格按美元记账。这个汇率同时用于：用户看到的人民币金额、你用人民币录价格和调余额时的换算、人民币充值（如 EPay）的单价。已保存的价格和余额不会变。',
+                  'Balances and prices are kept in USD. This one rate drives how CNY is shown to users, how your CNY input is converted, and the price of CNY top-ups (e.g. EPay). Saved prices and balances do not change.',
                 )}
               </Typography.Paragraph>
-              <Form form={form} layout="inline" onFinish={save}>
-                <Form.Item name="cny_per_usd" label={t('1 美元 =', '1 USD =')} rules={[{ required: true }]}>
-                  <InputNumber min={0.01} step={0.01} suffix={t('元', 'CNY')} style={{ width: 180 }} disabled={loading} />
-                </Form.Item>
-                <Button type="primary" htmlType="submit" loading={saving} disabled={loading}>
-                  {t('保存', 'Save')}
-                </Button>
-              </Form>
+              <div style={{ marginBottom: 16 }}>
+              <Radio.Group
+                optionType="button"
+                value={fxMode}
+                disabled={loading || savingFXMode}
+                onChange={(e) => saveFXMode(e.target.value)}
+                options={[{ value: 'manual', label: t('手动', 'Manual') }, { value: 'live', label: t('实时（跟随市场）', 'Live (market)') }]}
+              />
+              </div>
+              {fxMode === 'manual' ? (
+                <Form form={form} layout="inline" onFinish={save}>
+                  <Form.Item name="cny_per_usd" label={t('1 美元 =', '1 USD =')} rules={[{ required: true }]}>
+                    <InputNumber min={0.0001} step={0.01} precision={4} suffix={t('元', 'CNY')} style={{ width: 180 }} disabled={loading} />
+                  </Form.Item>
+                  <Button type="primary" htmlType="submit" loading={saving} disabled={loading}>
+                    {t('保存', 'Save')}
+                  </Button>
+                </Form>
+              ) : (
+                <Space direction="vertical" size={4}>
+                  <Typography.Text>{t('当前 1 美元 = ', 'Now 1 USD = ')}<b>{form.getFieldValue('cny_per_usd')}</b>{t(' 元', ' CNY')}</Typography.Text>
+                  <Typography.Text type="secondary">
+                    {t('来源 ', 'Source ')}<a href="https://frankfurter.dev" target="_blank" rel="noreferrer">{fxStatus.source}</a>
+                    {fxStatus.date && t(` · 数据日期 ${fxStatus.date}`, ` · data date ${fxStatus.date}`)}
+                    {fxStatus.checked_at && t(` · 上次检查 ${dayjs(fxStatus.checked_at).format('MM-DD HH:mm')}`, ` · checked ${dayjs(fxStatus.checked_at).format('MM-DD HH:mm')}`)}
+                    {t(' · 每小时检查一次，市场数据每天更新', ' · checked hourly, market data updates daily')}
+                  </Typography.Text>
+                  {fxStatus.error && <Alert type="warning" showIcon title={fxStatus.error} style={{ marginTop: 8 }} />}
+                </Space>
+              )}
             </Card>
             <Card title={t('API 接入地址', 'API base URL')}>
               <Typography.Paragraph type="secondary">

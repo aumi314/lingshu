@@ -21,6 +21,7 @@ type Server struct {
 	Web       fs.FS          // 前端构建产物，nil 时不提供页面
 	PublicURL string
 	Payments  *payments.Gateway
+	FXURL     string // 实时汇率接口，测试时替换；空表示 fx.URL
 
 	guard *loginGuard
 }
