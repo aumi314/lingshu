@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/shopspring/decimal"
 
@@ -460,8 +461,12 @@ func (s *Server) channelTemplates(w http.ResponseWriter, r *http.Request) {
 
 type channelView struct {
 	*store.Channel
-	Cooling bool `json:"cooling"` // 连续失败被暂时停用中
+	Cooling bool               `json:"cooling"` // 连续失败被暂时停用中
+	Stats   *store.ChannelStat `json:"stats"`   // 最近 24 小时的连接状态，没有任何尝试时为 null
 }
+
+// channelStatsWindow 是渠道页「连接状态」的统计窗口。
+const channelStatsWindow = 24 * time.Hour
 
 func (s *Server) listChannels(w http.ResponseWriter, r *http.Request) {
 	channels, err := s.Store.ListChannels(r.Context())
@@ -469,9 +474,17 @@ func (s *Server) listChannels(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	stats, err := s.Store.ChannelStats(r.Context(), time.Now().Add(-channelStatsWindow))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	out := make([]channelView, len(channels))
 	for i, c := range channels {
 		out[i] = channelView{Channel: c, Cooling: s.Relay.Health.Cooling(c.ID)}
+		if st, ok := stats[c.ID]; ok {
+			out[i].Stats = &st
+		}
 	}
 	writeJSON(w, http.StatusOK, out)
 }

@@ -204,10 +204,18 @@ type RequestLog struct {
 	Attempts           int
 	FirstByteMS        int // 以下三个都从进入网关算起
 	TotalMS            int
-	UpstreamStartMS    int // 发出最终那次上游请求的时刻，0 表示没发到上游
-	ReadMS             int // 读请求体用的时间
+	UpstreamStartMS    int     // 发出最终那次上游请求的时刻，0 表示没发到上游
+	ReadMS             int     // 读请求体用的时间
+	FailedChannelIDs   []int64 // 失败过的渠道（可换渠道重试的失败，按尝试顺序），渠道连接状态据此统计失败
 	UpstreamResponseID string
 	Reserved           decimal.Decimal // 放行时冻结的额度，结算时解冻（不写进日志表）
+}
+
+func failedIDs(ids []int64) []int64 {
+	if ids == nil {
+		return []int64{} // 列不允许 NULL
+	}
+	return ids
 }
 
 // SettleRequest 在一个事务里写日志、扣用户余额、加 key 的已用额度，并更新 key 最后使用时间。
@@ -229,16 +237,16 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 				input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, reasoning_tokens, usage_estimated,
 				input_price, output_price, cache_read_price, cache_write_price, group_ratio, cost,
 				attempts, first_byte_ms, total_ms, upstream_response_id, channel_name, key_name, price_rule, group_name, client_ip, reasoning_effort,
-				service_tier, read_ms, upstream_start_ms
+				service_tier, read_ms, upstream_start_ms, failed_channel_ids
 			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)`,
+			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38)`,
 			l.RequestID, l.UserID, l.APIKeyID, l.GroupID, l.Protocol, l.Model, l.UpstreamModel, channelID,
 			l.Stream, l.Status, l.HTTPStatus, l.Error,
 			l.InputTokens, l.CacheReadTokens, l.CacheWriteTokens, l.OutputTokens, l.ReasoningTokens, l.UsageEstimated,
 			l.Prices.Input.String(), l.Prices.Output.String(), l.Prices.CacheRead.String(), l.Prices.CacheWrite.String(),
 			ratio.String(), l.Cost.String(),
 			l.Attempts, l.FirstByteMS, l.TotalMS, l.UpstreamResponseID, l.ChannelName, l.KeyName, l.PriceRule, l.GroupName, l.ClientIP, l.ReasoningEffort,
-			l.ServiceTier, l.ReadMS, l.UpstreamStartMS,
+			l.ServiceTier, l.ReadMS, l.UpstreamStartMS, failedIDs(l.FailedChannelIDs),
 		); err != nil {
 			return fmt.Errorf("写请求日志: %w", err)
 		}

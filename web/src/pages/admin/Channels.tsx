@@ -24,6 +24,7 @@ import { CheckCircleFilled, CloseCircleFilled, DeleteOutlined, PlusOutlined, War
 import { del, get, post, put, type Channel, type ChannelTemplate, type Group, type Model, type ProbeResult } from '../../api'
 import { useApp } from '../../app'
 import VendorIcon from '../../components/VendorIcon'
+import ChannelStatus from '../../components/ChannelStatus'
 import { BalanceCell, BalanceModal } from '../../components/ChannelBalance'
 import { DragHandle, SortableBody, SortableRow } from '../../components/SortableRows'
 import { arrayMove } from '@dnd-kit/sortable'
@@ -387,25 +388,12 @@ export default function Channels() {
           },
           { title: t('协议', 'Protocols'), render: (_, c) => protocols(c).map((p) => <Tag key={p}>{protocolLabel[p]}</Tag>) },
           {
-            title: t('模型', 'Models'),
-            dataIndex: 'models',
-            render: (ms: Channel['models']) =>
-              ms.length ? (
-                <Tooltip
-                  title={ms.map((m) => (
-                    <div key={m.model_id} className="mono">
-                      {m.model_name}
-                      {m.upstream_name && ` ← ${m.upstream_name}`}
-                    </div>
-                  ))}
-                >
-                  <span style={{ display: 'block', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {ms.map((m) => m.model_name).join(', ')}
-                  </span>
-                </Tooltip>
-              ) : (
-                <Typography.Text type="warning">{t('未配置模型', 'No models')}</Typography.Text>
-              ),
+            title: (
+              <Tooltip title={t('最近 24 小时：成功率（次数）；首字、输出速度为中位数，首字从发给上游算起；缓存为命中率。失败只算渠道自身的问题，参数错、上下文超长这类请求本身的问题不算。', 'Last 24 hours: success rate (attempts); first token and speed are medians, first token measured from sending upstream; cache is hit rate. Only failures caused by the channel count.')}>
+                {t('连接状态', 'Connection')}
+              </Tooltip>
+            ),
+            render: (_, c) => <ChannelStatus channel={c} />,
           },
           { title: t('服务分组', 'Service groups'), dataIndex: 'group_ids', render: (ids: number[]) => ids.map((id) => <Tag key={id}>{groupByID.get(id)?.name}</Tag>) },
           { title: t('优先级', 'Priority'), dataIndex: 'priority' },
@@ -439,14 +427,7 @@ export default function Channels() {
           {
             title: t('启用', 'Enabled'),
             render: (_, c) => (
-              <Space>
-                <Switch size="small" checked={c.enabled} onChange={(v) => toggle(c, v)} />
-                {c.cooling && (
-                  <Tooltip title={t('连续失败，暂停 5 分钟后自动恢复', 'Paused after repeated failures; resumes automatically in 5 minutes')}>
-                    <Tag color="orange">{t('冷却中', 'Cooling')}</Tag>
-                  </Tooltip>
-                )}
-              </Space>
+              <Switch size="small" checked={c.enabled} onChange={(v) => toggle(c, v)} />
             ),
           },
         ]}
