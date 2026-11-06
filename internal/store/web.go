@@ -181,7 +181,7 @@ func (s *Store) UpdateUser(ctx context.Context, id int64, p UserPatch) error {
 				if _, err := tx.Exec(ctx, `INSERT INTO balance_adjustments(user_id,amount,balance_after,operator_id,note) VALUES($1,$2::numeric,$3::numeric,$4,$5)`, id, delta.String(), after, change.OperatorID, change.Note); err != nil {
 					return err
 				}
-				if err := recordBalance(ctx, tx, nil, id, delta, after, change.Note, ""); err != nil {
+				if err := recordBalance(ctx, tx, nil, id, delta, after, change.Note, "", "balance.adjust"); err != nil {
 					return err
 				}
 			}
@@ -239,7 +239,7 @@ func (s *Store) AdjustBalance(ctx context.Context, userID int64, amount decimal.
 			VALUES ($1, $2::numeric, $3::numeric, $4, $5)`, userID, amount.String(), after, operatorID, note); err != nil {
 			return err
 		}
-		return recordBalance(ctx, tx, &operatorID, userID, amount, after, note, "")
+		return recordBalance(ctx, tx, &operatorID, userID, amount, after, note, "", "balance.adjust")
 	})
 	if err != nil {
 		return decimal.Zero, err

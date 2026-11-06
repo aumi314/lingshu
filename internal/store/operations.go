@@ -222,15 +222,12 @@ func track(ctx context.Context, tx pgx.Tx, e entity, id *int64, userID int64, fn
 	return recordSnapshots(ctx, tx, e, *id, userID, before, after)
 }
 
-// recordBalance 记录一次余额变动（人工调整或充值到账），与 balance_adjustments 一一对应。
-func recordBalance(ctx context.Context, tx pgx.Tx, actor *int64, userID int64, amount decimal.Decimal, after, note, orderID string) error {
+// recordBalance 记录一次余额变动，与 balance_adjustments 一一对应。action 为 balance.adjust（人工调整）、
+// topup.credit（在线充值到账）或 redeem.credit（兑换码充值）。
+func recordBalance(ctx context.Context, tx pgx.Tx, actor *int64, userID int64, amount decimal.Decimal, after, note, orderID, action string) error {
 	afterValue := mustDecimal(after)
 	from, _ := json.Marshal(afterValue.Sub(amount).String())
 	to, _ := json.Marshal(afterValue.String())
-	action := "balance.adjust"
-	if orderID != "" {
-		action = "topup.credit"
-	}
 	var name string
 	if err := tx.QueryRow(ctx, `SELECT username FROM users WHERE id = $1`, userID).Scan(&name); err != nil {
 		return err
@@ -295,7 +292,7 @@ func (s *Store) ListOperations(ctx context.Context, f LogFilter, member bool) ([
 	var total int64
 	var topup, adjustment string
 	if err := s.Pool.QueryRow(ctx, `SELECT count(*),
-		COALESCE(sum(o.amount) FILTER (WHERE o.action = 'topup.credit'), 0)::text,
+		COALESCE(sum(o.amount) FILTER (WHERE o.action IN ('topup.credit', 'redeem.credit')), 0)::text,
 		COALESCE(sum(o.amount) FILTER (WHERE o.action = 'balance.adjust'), 0)::text
 		FROM operation_logs o `+where, args...).Scan(&total, &topup, &adjustment); err != nil {
 		return nil, summary, 0, err

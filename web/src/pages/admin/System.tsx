@@ -5,6 +5,7 @@ import dayjs from 'dayjs'
 import { del, get, post, put } from '../../api'
 import { useApp } from '../../app'
 import PaymentSettings from '../../components/PaymentSettings'
+import RedeemCodes from '../../components/RedeemCodes'
 
 type RegistrationCode = { id: number; prefix: string; created_at: string; used_by: string; used_at: string | null; revoked_at: string | null }
 type GeneratedCode = { id: number; prefix: string; code: string }
@@ -20,7 +21,7 @@ export default function System() {
   const [fxMode, setFXMode] = useState<'manual' | 'live'>('manual')
   const [fxStatus, setFXStatus] = useState<FXStatus>({ source: 'Frankfurter' })
   const [savingFXMode, setSavingFXMode] = useState(false)
-  const tab = ['payments', 'registration'].includes(params.get('tab') ?? '') ? params.get('tab')! : 'operations'
+  const tab = ['payments', 'registration', 'redeem'].includes(params.get('tab') ?? '') ? params.get('tab')! : 'operations'
   const [form] = Form.useForm<{ cny_per_usd: number }>()
   const [apiURLForm] = Form.useForm<{ api_base_url: string }>()
   const [limitsForm] = Form.useForm<CallLimits>()
@@ -307,6 +308,7 @@ export default function System() {
               <PaymentSettings />
             </Card>
           ) },
+          { key: 'redeem', label: t('兑换码', 'Redeem codes'), children: <RedeemCodes /> },
           { key: 'registration', label: t('注册管理', 'Registration'), children: (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
               <Card title={t('开放程度', 'Registration access')}>

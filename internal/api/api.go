@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/aumi314/lingshu/internal/payments"
 	"github.com/aumi314/lingshu/internal/relay"
@@ -23,12 +24,14 @@ type Server struct {
 	Payments  *payments.Gateway
 	FXURL     string // 实时汇率接口，测试时替换；空表示 fx.URL
 
-	guard *loginGuard
+	guard       *loginGuard
+	redeemGuard *redeemGuard
 }
 
 func (s *Server) Register(mux *http.ServeMux) {
 	// 登录
 	s.guard = newLoginGuard()
+	s.redeemGuard = &redeemGuard{fails: map[int64][]time.Time{}}
 	if s.Payments == nil {
 		s.Payments = payments.NewGateway()
 	}
@@ -61,6 +64,12 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/registration-codes", s.admin(s.listRegistrationCodes))
 	mux.HandleFunc("POST /api/admin/registration-codes", s.admin(s.createRegistrationCodes))
 	mux.HandleFunc("DELETE /api/admin/registration-codes/{id}", s.admin(s.revokeRegistrationCode))
+
+	// 兑换码充值
+	mux.HandleFunc("GET /api/admin/redeem-codes", s.admin(s.listRedeemCodes))
+	mux.HandleFunc("POST /api/admin/redeem-codes", s.admin(s.createRedeemCodes))
+	mux.HandleFunc("DELETE /api/admin/redeem-codes/{id}", s.admin(s.revokeRedeemCode))
+	mux.HandleFunc("POST /api/me/redeem", s.user(s.redeem))
 
 	mux.HandleFunc("GET /api/admin/user-groups", s.admin(s.listUserGroups))
 	mux.HandleFunc("POST /api/admin/user-groups", s.admin(s.saveUserGroup))

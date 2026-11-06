@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Alert, App, Button, Collapse, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tag, Typography } from 'antd'
-import dayjs from 'dayjs'
+import { Alert, App, Button, Collapse, Form, Input, InputNumber, Modal, Select, Space, Switch, Tag, Typography } from 'antd'
 import { ApiError, get, post, put } from '../api'
 import { useApp } from '../app'
-import { paymentNames, payOrder, type OrderList, type PaymentService, type Topup } from '../payment'
+import { paymentNames, payOrder, type PaymentService, type Topup } from '../payment'
 
 const valueFields: Record<string, [string, string][]> = {
   epay: [['gateway', '支付网关 / Gateway URL'], ['merchant_id', '商户 ID / Merchant ID']],
@@ -136,24 +135,11 @@ export default function PaymentSettings() {
   const { message } = App.useApp()
   const [services, setServices] = useState<PaymentService[]>([])
   const [publicURL, setPublicURL] = useState('')
-  const [orders, setOrders] = useState<OrderList>({ items: [], total: 0 })
-  const [page, setPage] = useState(1)
   const load = () => get<{ services: PaymentService[]; public_url: string }>('/api/admin/payments').then((v) => { setServices(v.services); setPublicURL(v.public_url) }).catch((e) => message.error(e.message))
   useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { get<OrderList>(`/api/admin/topups?page=${page}`).then(setOrders).catch((e) => message.error(e.message)) }, [page, message])
   return <div style={{ marginTop: 20 }}>
     {!publicURL && <Alert showIcon type="warning" title={t('请设置 LINGSHU_PUBLIC_URL 后启用在线支付', 'Set LINGSHU_PUBLIC_URL before enabling online payments')} style={{ marginBottom: 16 }} />}
     <Collapse items={services.map((s) => ({ key: s.config.provider, label: <Space>{paymentNames[s.config.provider]}<Tag color={s.config.enabled && s.ready ? 'green' : 'default'}>{s.config.enabled && s.ready ? t('已启用', 'Enabled') : t('未开放', 'Not available')}</Tag></Space>, children: <ServiceForm service={s} onSave={load} /> }))} />
-    <Typography.Title level={5} style={{ marginTop: 24 }}>{t('充值订单', 'Top-up orders')}</Typography.Title>
-    <Table rowKey="id" size="small" scroll={{ x: 850 }} dataSource={orders.items} pagination={{ current: page, total: orders.total, pageSize: 20, showSizeChanger: false, onChange: setPage }} columns={[
-      { title: t('订单号', 'Order'), dataIndex: 'id', render: (v) => <Typography.Text copyable>{v}</Typography.Text> },
-      { title: t('用户 ID', 'User ID'), dataIndex: 'user_id' },
-      { title: t('服务', 'Provider'), dataIndex: 'provider', render: (v) => paymentNames[v] },
-      { title: t('到账 USD', 'Credit USD'), dataIndex: 'credit_usd' },
-      { title: t('实付报价', 'Payment quote'), render: (_, o) => `${o.amount} ${o.currency}` },
-      { title: t('税费', 'Tax'), dataIndex: 'tax' },
-      { title: t('状态', 'Status'), render: (_, o) => <Space><Tag>{o.status}</Tag>{o.environment === 'test' && <Tag>test</Tag>}</Space> },
-      { title: t('创建时间', 'Created'), dataIndex: 'created_at', render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm') },
-    ]} />
+    <Typography.Paragraph type="secondary" style={{ marginTop: 16 }}>{t('充值订单在「全站日志 → 充值订单」里查看。', 'Top-up orders are under All logs → Top-up orders.')}</Typography.Paragraph>
   </div>
 }

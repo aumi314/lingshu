@@ -178,6 +178,13 @@ func TestOperationLogCoverage(t *testing.T) {
 	if o.ActorID == nil || o.UserID == nil || *o.ActorID != *o.UserID {
 		t.Fatalf("自助注册的操作人应是新用户自己: %+v", o)
 	}
+	var redeemCodes []store.NewRegistrationCode
+	step("POST /api/admin/redeem-codes", a, "/api/admin/redeem-codes", map[string]any{"count": 2, "amount": "5"}, &redeemCodes, "redeem_code.create")
+	step("DELETE /api/admin/redeem-codes/{id}", a, "/api/admin/redeem-codes/"+itoa(redeemCodes[0].ID), nil, nil, "redeem_code.update")
+	o = step("POST /api/me/redeem", bob, "/api/me/redeem", map[string]string{"code": redeemCodes[1].Code}, nil, "redeem.credit")
+	if *o.ActorID != 2 || *o.UserID != 2 {
+		t.Fatalf("兑换的操作人和受影响用户都是成员自己: %+v", o)
+	}
 	var key struct {
 		ID int64 `json:"id"`
 	}

@@ -12,11 +12,11 @@ export function targetLabel(t: T, type: string): string {
   return ({
     user: t('用户', 'User'), api_key: 'Key', balance: t('余额', 'Balance'), group: t('服务分组', 'Service group'),
     user_group: t('用户分组', 'User group'), model: t('模型', 'Model'), channel: t('渠道', 'Channel'),
-    settings: t('系统设置', 'Settings'), payment: t('支付配置', 'Payment'), registration_code: t('注册码', 'Registration code'),
+    settings: t('系统设置', 'Settings'), payment: t('支付配置', 'Payment'), registration_code: t('注册码', 'Registration code'), redeem_code: t('兑换码', 'Redeem code'),
   } as Record<string, string>)[type] ?? type
 }
 
-export const targetTypes = ['user', 'api_key', 'balance', 'group', 'user_group', 'model', 'channel', 'settings', 'payment', 'registration_code']
+export const targetTypes = ['user', 'api_key', 'balance', 'group', 'user_group', 'model', 'channel', 'settings', 'payment', 'registration_code', 'redeem_code']
 
 function actionLabel(t: T, o: OperationEntry): string {
   const special: Record<string, string> = {
@@ -24,6 +24,9 @@ function actionLabel(t: T, o: OperationEntry): string {
     'topup.credit': t('充值到账', 'Top-up credited'),
     'registration_code.create': t('生成注册码', 'Generate codes'),
     'registration_code.update': t('撤销注册码', 'Revoke code'),
+    'redeem.credit': t('兑换码充值', 'Code redeemed'),
+    'redeem_code.create': t('生成兑换码', 'Generate redeem codes'),
+    'redeem_code.update': t('撤销兑换码', 'Revoke redeem code'),
   }
   if (special[o.action]) return special[o.action]
   if (o.action === 'user.create' && o.actor_id !== null && o.actor_id === o.user_id) return t('注册', 'Sign up')
@@ -44,7 +47,7 @@ function fieldLabel(t: T, field: string): string {
     template: t('模板', 'Template'), api_key: 'API key', priority: t('优先级', 'Priority'), base_url_chat: 'Chat URL',
     base_url_messages: 'Messages URL', base_url_responses: 'Responses URL', base_url_systemone: 'System One URL', proxy_url: t('代理', 'Proxy'),
     groups: t('服务分组', 'Service groups'), models: t('模型映射', 'Models'), balance: t('余额', 'Balance'), status: t('状态', 'Status'),
-    prefixes: t('注册码', 'Codes'), cny_per_usd: t('显示汇率', 'Exchange rate'), payment_enabled: t('开放充值', 'Top-up enabled'),
+    prefixes: t('码', 'Codes'), amount: t('面额', 'Amount'), cny_per_usd: t('显示汇率', 'Exchange rate'), payment_enabled: t('开放充值', 'Top-up enabled'),
     registration_mode: t('注册方式', 'Registration'), fx_mode: t('汇率模式', 'Rate mode'), user_concurrency: t('每用户并发上限', 'Per-user concurrency'), user_rpm: t('每用户每分钟请求数', 'Per-user RPM'), reserve_output_tokens: t('默认预扣输出', 'Default held output'), api_base_url: t('接入地址', 'API base URL'), deployment_mode: t('使用模式', 'Usage mode'),
     environment: t('环境', 'Environment'), currency: t('币种', 'Currency'), unit_price: t('单价', 'Unit price'),
     min_usd: t('最低额度', 'Min'), max_usd: t('最高额度', 'Max'), methods: t('支付方式', 'Methods'),

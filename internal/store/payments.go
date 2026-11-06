@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aumi314/lingshu/internal/payments"
 	"github.com/jackc/pgx/v5"
@@ -186,12 +187,21 @@ func (s *Store) Topup(ctx context.Context, id string) (payments.Order, error) {
 	return scanTopup(s.Pool.QueryRow(ctx, `SELECT `+topupColumns+` FROM topup_orders WHERE id=$1`, id))
 }
 
-func (s *Store) Topups(ctx context.Context, userID int64, page, size int) ([]payments.Order, int, error) {
+// TopupFilter 筛选充值订单：用户（0 表示全部）、状态（空表示全部）、创建时间范围。
+type TopupFilter struct {
+	UserID   int64
+	Status   string
+	From, To *time.Time
+}
+
+func (s *Store) Topups(ctx context.Context, f TopupFilter, page, size int) ([]payments.Order, int, error) {
+	const where = `WHERE ($1::bigint=0 OR user_id=$1) AND ($2::text='' OR status=$2)
+		AND ($3::timestamptz IS NULL OR created_at >= $3) AND ($4::timestamptz IS NULL OR created_at < $4)`
 	var total int
-	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM topup_orders WHERE ($1::bigint=0 OR user_id=$1)`, userID).Scan(&total); err != nil {
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM topup_orders `+where, f.UserID, f.Status, f.From, f.To).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT `+topupColumns+` FROM topup_orders WHERE ($1::bigint=0 OR user_id=$1) ORDER BY created_at DESC,id LIMIT $2 OFFSET $3`, userID, size, (page-1)*size)
+	rows, err := s.Pool.Query(ctx, `SELECT `+topupColumns+` FROM topup_orders `+where+` ORDER BY created_at DESC,id LIMIT $5 OFFSET $6`, f.UserID, f.Status, f.From, f.To, size, (page-1)*size)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -261,6 +271,6 @@ func (s *Store) ApplyTopupEvent(ctx context.Context, provider string, versionID 
 		}
 		// 入账一律记为系统：用户点“核对付款”触发时 context 里是用户本人
 		var system int64
-		return recordBalance(ctx, tx, &system, o.UserID, o.CreditUSD, after, "在线充值 · "+provider, o.ID)
+		return recordBalance(ctx, tx, &system, o.UserID, o.CreditUSD, after, "在线充值 · "+provider, o.ID, "topup.credit")
 	})
 }
