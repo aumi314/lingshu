@@ -98,3 +98,122 @@
 - 可供确认后的 PR 精简方向：只保留 `x-opencode-session`，移除其余三个冗余会话头；测试组里项目、链路、`x-opencode-client` 和 `Accept` 均可去掉。是否保留这些头以兼容厂商未来规则属于实现决策。当前证据支持暂时保留 Bun TLS、提示词、工具和流式转换；匿名 key 需在其对照成功时重测。以上为建议，本次未修改实现。
 
 这些结果是该时间、模型、出口及账户上的黑盒观察；服务端可能调整规则，429 也可能由额度触发。
+
+
+## 第二轮实验：减小改动（2026-11-07）
+
+### 方法与有效性
+
+总计 60 次调用，低于 70 次上限。默认 `max_tokens=128`；失效 E 批的补充诱导样本改为 512。实验发生于北京时间 2026-11-07；本轮固定沿用第一轮 UA 2.2.5，以保持 D03 条件一致，没有刷新 UA。
+
+本轮以第一轮 D03 作为基准：个人 key、PR 的 Bun 1.3.14 ClientHello、`opencode/latest/2.2.5/cli`、一个真实格式的 `x-opencode-session`、完整系统提示词、五个占位工具、`tool_choice: "auto"`、上游 SSE 和 `include_usage=true`。模型固定 `deepseek-v4.1-flash-free`，默认问题为 `Reply with exactly: OK`，每次新建连接，调用间隔至少 4 秒。有效批次 A-D 共 39 次，每批开始和结束 D03 均 HTTP 200、`billing_source=free`；批次 E 的结束对照和批次 F 的开始对照均 HTTP 429，因此 E/F 全部作废。E/F 的结果只记录作废原因，不用于结论。
+
+程序记录 HTTP 状态、错误前 300 字、响应体 `usage.opencode.billing_source`、输入/输出 token、`finish_reason`、结构化 `tool_calls`、实际协议和 ALPN。第一轮已知服务器没有返回 billing source 响应头，本轮继续以响应体 usage 为准。全部有效成功样本均有 `[DONE]` 和 usage，cost 为 0；输入 token 含缓存 token，输出含 reasoning token。错误 F 复用第一轮表前所列的完整 `FreeUsageLimitError` 响应，长度少于 300 字。Bun ClientHello 只提供 `http/1.1`；`ForceAttemptHTTP2` 的两次请求实际也协商为 `HTTP/1.1`，所以本轮没有获得 Go HTTP/2 成功样本。
+
+### 结果表
+
+表中条件列依次是系统提示词、工具集合、`tool_choice`、问题；`full` 是完整注入，`first` 只保留第一句，`emptyenv` 为空环境块，`unrelated` 为普通助手提示词，`userbefore/userafter` 分别表示用户 system 在注入前/后；注入内容均完整。用户 system 固定为 `Answer concisely in English. Preserve any requested tool use.`。`files` 问题为 `List the files in the current directory.`，`weather` 为 `What's the weather in Paris?`；`get_weather` 声明必填字符串参数 `city`。`five` 为五个占位工具，`bash`/`read`/`two` 为对应最小集合，`empty-schema` 为五个同名工具但参数 schema 为空对象，`renamed`/`noop` 使用非 OpenCode 名称。工具集合列中的 `none` 表示不发送工具，choice 列中的 `none` 表示声明工具但禁止结构化调用；`user` 是五个占位工具加 `get_weather`。SSE 内容中出现 DSML 文本不计为结构化 `tool_calls`。
+
+| 组别 | 条件（system/tools/choice/question） | HTTP | 错误 | billing | in/out | tool_calls | finish | 协议 | 内容摘要 |
+|---|---|---:|---|---|---:|---|---|---|---|
+| R2A01-D03-start | full/five/auto/ok | 200 | — | free | 542/21 | — | stop | HTTP/1.1 | OK |
+| R2A02-none-ok | full/five/none/ok | 200 | — | free | 95/3 | — | stop | HTTP/1.1 | OK |
+| R2A03-none-files | full/five/none/files | 200 | — | free | 98/77 | — | stop | HTTP/1.1 |   <｜DSML｜ calls> <｜DSML｜ invoke name="bash"> <｜DSML｜ parameter name="command" string="true">ls -la</ |
+| R2A04-auto-files | full/five/auto/files | 200 | — | free | 545/128 | — | length | HTTP/1.1 | I'm not able to list the directory contents. Although bash/glob/read-style tools are listed in my en |
+| R2A05-auto-files | full/five/auto/files | 200 | — | free | 545/128 | — | length | HTTP/1.1 | I’m unable to list the |
+| R2A06-auto-files | full/five/auto/files | 200 | — | free | 545/128 | — | length | HTTP/1.1 | I can't list the files for you — in this session none of the tools that would let me inspect the fil |
+| R2A07-user-weather | full/user/auto/weather | 200 | — | free | 592/55 | get_weather | tool_calls | HTTP/1.1 | — |
+| R2A08-none-ok-repeat | full/five/none/ok | 200 | — | free | 95/3 | — | stop | HTTP/1.1 | OK |
+| R2A09-none-files-repeat | full/five/none/files | 200 | — | free | 98/128 | — | length | HTTP/1.1 | — |
+| R2A10-user-weather-repeat | full/user/auto/weather | 200 | — | free | 592/58 | get_weather | tool_calls | HTTP/1.1 | — |
+| R2A11-D03-end | full/five/auto/ok | 200 | — | free | 542/16 | — | stop | HTTP/1.1 | OK |
+| R2B01-D03-start | full/five/auto/ok | 200 | — | free | 542/3 | — | stop | HTTP/1.1 | OK |
+| R2B02-first-sentence | first/five/auto/ok | 429 | F (429) | — | — | — | — | HTTP/1.1 | — |
+| R2B03-empty-env | emptyenv/five/auto/ok | 429 | F (429) | — | — | — | — | HTTP/1.1 | — |
+| R2B04-unrelated | unrelated/five/auto/ok | 429 | F (429) | — | — | — | — | HTTP/1.1 | — |
+| R2B05-injection-before | userafter/five/auto/ok | 200 | — | free | 557/3 | — | stop | HTTP/1.1 | OK |
+| R2B06-injection-after | userbefore/five/auto/ok | 200 | — | free | 557/3 | — | stop | HTTP/1.1 | OK |
+| R2B07-first-sentence-repeat | first/five/auto/ok | 429 | F (429) | — | — | — | — | HTTP/1.1 | — |
+| R2B08-empty-env-repeat | emptyenv/five/auto/ok | 429 | F (429) | — | — | — | — | HTTP/1.1 | — |
+| R2B09-D03-end | full/five/auto/ok | 200 | — | free | 542/12 | — | stop | HTTP/1.1 | OK |
+| R2C01-D03-start | full/five/auto/ok | 200 | — | free | 542/14 | — | stop | HTTP/1.1 | OK |
+| R2C02-bash | full/bash/auto/ok | 429 | F (429) | — | — | — | — | HTTP/1.1 | — |
+| R2C03-read | full/read/auto/ok | 200 | — | free | 353/3 | — | stop | HTTP/1.1 | OK |
+| R2C04-two | full/two/auto/ok | 200 | — | free | 400/17 | — | stop | HTTP/1.1 | OK |
+| R2C05-empty-schema | full/empty-schema/auto/ok | 200 | — | free | 467/3 | — | stop | HTTP/1.1 | OK |
+| R2C06-renamed-five | full/renamed/auto/ok | 429 | F (429) | — | — | — | — | HTTP/1.1 | — |
+| R2C07-noop | full/noop/auto/ok | 429 | F (429) | — | — | — | — | HTTP/1.1 | — |
+| R2C08-D03-end | full/five/auto/ok | 200 | — | free | 542/3 | — | stop | HTTP/1.1 | OK |
+| R2D01-D03-start | full/five/auto/ok | 200 | — | free | 542/15 | — | stop | HTTP/1.1 | OK |
+| R2D02-go-h2 | full/five/auto/ok | 429 | F (429) | — | — | — | — | HTTP/1.1 | — |
+| R2D03-go-h2-repeat | full/five/auto/ok | 429 | F (429) | — | — | — | — | HTTP/1.1 | — |
+| R2D04-read-repeat | full/read/auto/ok | 200 | — | free | 353/3 | — | stop | HTTP/1.1 | OK |
+| R2D05-two-repeat | full/two/auto/ok | 200 | — | free | 400/15 | — | stop | HTTP/1.1 | OK |
+| R2D06-schema-repeat | full/empty-schema/auto/ok | 200 | — | free | 467/3 | — | stop | HTTP/1.1 | OK |
+| R2D07-before-repeat | userafter/five/auto/ok | 200 | — | free | 557/3 | — | stop | HTTP/1.1 | OK |
+| R2D08-after-repeat | userbefore/five/auto/ok | 200 | — | free | 557/17 | — | stop | HTTP/1.1 | OK |
+| R2D09-read-none | full/read/none/ok | 200 | — | free | 95/3 | — | stop | HTTP/1.1 | OK |
+| R2D10-read-none-repeat | full/read/none/ok | 200 | — | free | 95/3 | — | stop | HTTP/1.1 | OK |
+| R2D11-D03-end | full/five/auto/ok | 200 | — | free | 542/3 | — | stop | HTTP/1.1 | OK |
+
+### 失效批次
+
+| 批次 | 请求数 | 对照 | 处理 |
+|---|---:|---|---|
+| E | 15 | 首次 D03 为 200，结束 D03 为 429 | 整批作废；不使用环境字段、用户工具、长输出和 `tool_choice:none` 的重复结果 |
+| F | 6 | 首次 D03 为 429，结束 D03 为 429 | 整批作废；不使用会话复用和一天前 session 的结果 |
+
+两批失败请求均返回同一 `FreeUsageLimitError`。F 批采用预排批量执行，起始对照失败后仍发出了剩余五次请求，共计入 60 次预算；这些请求全为无效结果。有效批次的对照成功与失效批次的对照失败发生在同一账户和出口上，说明服务状态在实验期间发生了变化。
+
+### 结论
+
+- `tool_choice: "none"` 在简单问题上两次成功，输入/output 为 95/3，模型返回 OK。诱导文件问题两次也返回 HTTP 200，均没有结构化 `tool_calls`；其中一次正文出现 DSML 风格的 `invoke name="bash"`，另一次用完 128 token 思考预算后正文为空（`finish_reason=length`）。本程序没有执行任何工具，客户端可能看到模拟工具调用的文本。
+- `auto` 下的三次诱导文件请求都返回 HTTP 200，均没有结构化工具调用，且 `finish_reason=length`，输出被 128 token 上限截断；这只能记录为 0/3 结构化占位工具调用，不能当作低概率估计。长输出复测所在 E 批作废，未形成有效分母。
+- 用户自带工具的有效样本在 A 批含五个占位工具时两次都调用了结构化 `get_weather`，说明用户工具可以正常保留。只带用户工具的关键测试落在失效 E 批，尚未形成可用结论。
+- 系统提示词的有效 B 批中，完整提示词改成只保留第一句、空环境块或无关提示词均为 429；完整提示词放在用户 system 前或后均为 200。第一轮提示词消融与本轮 B 批共同支持保留完整 OpenCode 提示词；E 批对更细的环境字段拆分作废。
+- 工具集合的有效 C/D 批中，单个 `read`、`bash+read`、五个同名工具的空 schema 均成功，其中 `read` 和 `bash+read` 有重复成功；只留 `bash`、把五个工具改成无关名称或只用 `noop` 均 429。当前重复成功的最小工具集合是单个 `read`（保留 PR 原 schema）。五工具的空 schema 是另一项成功结果；“read+空 schema”未组合验证。无关名称的失败与名称相关，但名称、工具数和 schema 的完整服务端规则仍待细分。
+- Go 标准 Transport 开启 `ForceAttemptHTTP2` 的两次请求实际 ALPN 为 `http/1.1` 且 HTTP 429；这既没有得到 HTTP/2 成功，也没有证明 Go TLS 本身可以移除。需要以后用带 h2 ALPN 的同一 Bun spec 或真正 HTTP/2 客户端再拆分。
+- 会话复用和过期 session 批次无有效对照，缓存 TTL 暂不调整。
+
+### 对 PR #21 的精简建议
+
+1. 工具补全的精简候选是只补同名 `read`（已有同名真实工具时保留调用方定义），依据 R2C03/R2D04；`bash+read` 是另一已重复成功的集合（R2C04/R2D05）。正式采用前需补测单 read 与用户真实工具组合以及诱导工具调用；本轮真实工具成功样本仍携带五个占位工具。五工具使用空参数 schema 的结果也可用（R2C05/R2D06）；如要同时改成单 read 和空 schema，应另测组合后再采用。
+2. `tool_choice: "none"` 可作为调用方没有自带工具时的候选策略：简单问题的重复依据是 R2A02/R2A08/R2D09/R2D10。诱导问题暴露 DSML 文本和空输出，因此暂不建议作为默认通用策略；保留调用方已有 tool_choice，继续允许其真实工具调用。
+3. 注入提示词放在用户 system 前后都能通过，依据 R2B05/R2B06/R2D07/R2D08；具体删减环境字段需重跑有效对照，E 批已作废。
+4. 暂不删除 uTLS、强制上游 SSE 或完整提示词；Go HTTP/2 本轮没有成功样本。工具自动调用路径仍保留占位工具调用检测，单 read 成功不代表该风险已消失。
+5. 暂不修改会话缓存 TTL；复用/过期 session 未形成有效批次。
+
+本节只记录实验和建议，未修改 PR #21 实现、未部署、未修改线上数据。
+
+### 传输细节与作废记录
+
+- `R2A01-D03-start`：ALPN `http/1.1`，Accept-Encoding `gzip`，Connection `close`；实际写入头顺序 `Host → User-Agent → Content-Length → Authorization → Content-Type → X-Opencode-Session → Accept-Encoding → Connection`。顺序只含字段名，未记录鉴权值。
+- `R2D02-go-h2`：ALPN `http/1.1`，Accept-Encoding `gzip`，Connection `close`；实际写入头顺序 `Host → User-Agent → Content-Length → Authorization → Content-Type → X-Opencode-Session → Accept-Encoding → Connection`。顺序只含字段名，未记录鉴权值。
+
+Bun 捕获的 ALPN 仅提供 `http/1.1`；Go 允许 HTTP/2 协商但服务端实际选择 `http/1.1`。两者实际压缩头均为 gzip，应用请求头顺序相同；本轮没有得出真正 HTTP/2 的判定结果。
+
+以下记录全部标为 **INVALID**，只供复核批次失败及用量，不参与上面的结论。条件中的额外 system 值表示分别删除某一环境字段、只保留环境块或只保留工作目录；session=reuse 三次使用同一进程内编号，old 为一天前生成规则的编号。
+
+| 组别（全作废） | system/tools/choice/question/session/max_tokens | HTTP | 错误 | billing | in/out | tool_calls | finish | 协议 |
+|---|---|---:|---|---|---|---|---|---|
+| R2E01-D03-start INVALID | full/five/auto/ok/new/128 | 200 | — | free | 542/13 | — | stop | HTTP/1.1 |
+| R2E02-envonly INVALID | envonly/five/auto/ok/new/128 | 200 | — | free | 520/31 | — | stop | HTTP/1.1 |
+| R2E03-minenv INVALID | minenv/five/auto/ok/new/128 | 200 | — | free | 494/16 | — | stop | HTTP/1.1 |
+| R2E04-nodir INVALID | nodir/five/auto/ok/new/128 | 429 | F (429) | — | — | — | — | HTTP/1.1 |
+| R2E05-noroot INVALID | noroot/five/auto/ok/new/128 | 200 | — | free | 532/3 | — | stop | HTTP/1.1 |
+| R2E06-nogit INVALID | nogit/five/auto/ok/new/128 | 200 | — | free | 533/3 | — | stop | HTTP/1.1 |
+| R2E07-noplatform INVALID | noplatform/five/auto/ok/new/128 | 200 | — | free | 537/3 | — | stop | HTTP/1.1 |
+| R2E08-user-tool-only INVALID | full/user-only/auto/weather/new/128 | 429 | F (429) | — | — | — | — | HTTP/1.1 |
+| R2E09-omit-choice INVALID | full/five/omit/ok/new/128 | 200 | — | free | 542/3 | — | stop | HTTP/1.1 |
+| R2E10-auto-files-512 INVALID | full/five/auto/files/new/512 | 200 | — | free | 545/93 | — | stop | HTTP/1.1 |
+| R2E11-auto-files-512 INVALID | full/five/auto/files/new/512 | 200 | — | free | 545/245 | — | stop | HTTP/1.1 |
+| R2E12-auto-files-512 INVALID | full/five/auto/files/new/512 | 200 | — | free | 545/245 | — | stop | HTTP/1.1 |
+| R2E13-none-files-512 INVALID | full/five/none/files/new/512 | 200 | — | free | 98/51 | — | stop | HTTP/1.1 |
+| R2E14-none-files-512-repeat INVALID | full/five/none/files/new/512 | 429 | F (429) | — | — | — | — | HTTP/1.1 |
+| R2E15-D03-end INVALID | full/five/auto/ok/new/128 | 429 | F (429) | — | — | — | — | HTTP/1.1 |
+| R2F01-D03-start INVALID | full/five/auto/ok/new/128 | 429 | F (429) | — | — | — | — | HTTP/1.1 |
+| R2F02-reuse-1 INVALID | full/five/auto/ok/reuse/128 | 429 | F (429) | — | — | — | — | HTTP/1.1 |
+| R2F03-reuse-2 INVALID | full/five/auto/ok/reuse/128 | 429 | F (429) | — | — | — | — | HTTP/1.1 |
+| R2F04-reuse-3 INVALID | full/five/auto/ok/reuse/128 | 429 | F (429) | — | — | — | — | HTTP/1.1 |
+| R2F05-old-session INVALID | full/five/auto/ok/old/128 | 429 | F (429) | — | — | — | — | HTTP/1.1 |
+| R2F06-D03-end INVALID | full/five/auto/ok/new/128 | 429 | F (429) | — | — | — | — | HTTP/1.1 |
