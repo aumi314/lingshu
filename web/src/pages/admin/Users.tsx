@@ -55,6 +55,9 @@ export default function Users() {
   }
 
   const symbol = currency === 'CNY' ? '¥' : '$'
+  // 超级管理员只多一项任免管理员；超级管理员的账号只有超级管理员能改（服务端同样校验）
+  const isSuper = me?.role === 'super_admin'
+  const roleOptions = [{ value: 'user', label: t('成员', 'Member') }, { value: 'admin', label: t('管理员', 'Admin') }, { value: 'super_admin', label: t('超级管理员', 'Super admin') }]
 
   // 用户能用的服务分组：启用中，且对所有用户开放或开放给他所在的某个用户分组
   const accessible = (userGroupIDs: number[]) => groups.filter((g) => g.enabled && (g.is_public || g.user_group_ids.some((id) => userGroupIDs.includes(id))))
@@ -176,7 +179,7 @@ export default function Users() {
               </div>
             ),
           },
-          { title: t('角色', 'Role'), dataIndex: 'role', render: (v) => v === 'admin' ? <Tag color="blue">{t('管理员', 'Admin')}</Tag> : <span className="muted">{t('成员', 'Member')}</span> },
+          { title: t('角色', 'Role'), dataIndex: 'role', render: (v) => v === 'super_admin' ? <Tag color="purple">{t('超级管理员', 'Super admin')}</Tag> : v === 'admin' ? <Tag color="blue">{t('管理员', 'Admin')}</Tag> : <span className="muted">{t('成员', 'Member')}</span> },
           { title: t('可用服务分组', 'Service groups'), render: (_, u) => accessCell(u.user_group_ids ?? []) },
           {
             title: t('余额', 'Balance'),
@@ -193,7 +196,9 @@ export default function Users() {
             title: '',
             align: 'right',
             render: (_, u) => (
-              <Button size="small" type="link" onClick={() => openEdit(u)}>{t('编辑', 'Edit')}</Button>
+              u.role === 'super_admin' && !isSuper
+                ? <Tooltip title={t('只有超级管理员能修改超级管理员的账号', 'Only super admins can edit a super admin')}><Button size="small" type="link" disabled>{t('编辑', 'Edit')}</Button></Tooltip>
+                : <Button size="small" type="link" onClick={() => openEdit(u)}>{t('编辑', 'Edit')}</Button>
             ),
           },
         ]}
@@ -217,9 +222,11 @@ export default function Users() {
           <Form.Item name="password" label={t('初始密码', 'Initial password')} rules={[{ required: true, min: 12, message: t('至少 12 位', 'At least 12 characters') }]} extra={t('对方登录后可以在设置里自己改', 'They can change it in Settings after signing in')}>
             <Input.Password autoComplete="new-password" />
           </Form.Item>
-          <Form.Item name="role" label={t('角色', 'Role')}>
-            <Segmented options={[{ value: 'user', label: t('成员', 'Member') }, { value: 'admin', label: t('管理员', 'Admin') }]} />
-          </Form.Item>
+          {isSuper && (
+            <Form.Item name="role" label={t('角色', 'Role')}>
+              <Segmented options={roleOptions} />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 
@@ -258,8 +265,8 @@ export default function Users() {
               placeholder={t('例如：外部合作方，额度按月给', 'e.g. External partner, monthly allowance')}
             />
           </Form.Item>
-          <Form.Item name="role" label={t('角色', 'Role')} extra={editingUser?.id === me?.id ? t('不能取消自己的管理员身份', 'You cannot remove your own admin role') : t('管理员能进入后台管理；能用哪些模型由下面的用户分组决定', 'Admins can manage the console; model access is decided by user groups below')}>
-            <Segmented disabled={submitting || editingUser?.id === me?.id} options={[{ value: 'user', label: t('成员', 'Member') }, { value: 'admin', label: t('管理员', 'Admin') }]} />
+          <Form.Item name="role" label={t('角色', 'Role')} extra={!isSuper ? t('只有超级管理员能任免管理员', 'Only super admins can change roles') : editingUser?.id === me?.id ? t('不能取消自己的管理员身份', 'You cannot remove your own admin role') : t('管理员和超级管理员都能进入后台；超级管理员另外能任免管理员。能用哪些模型由下面的用户分组决定', 'Admins and super admins can manage the console; only super admins can change roles. Model access is decided by user groups below')}>
+            <Segmented disabled={submitting || !isSuper || editingUser?.id === me?.id} options={roleOptions} />
           </Form.Item>
           <Form.Item name="user_group_ids" label={t('用户分组', 'User groups')} extra={<span>{t('可用服务分组：', 'Service groups: ')}{accessible(editingGroupIDs ?? []).map((g) => g.name).join('、') || t('无', 'None')}</span>}>
             <Select mode="multiple" options={userGroups.map((g) => ({ value: g.id, label: g.name }))} placeholder={t('选择用户分组', 'Select user groups')} />

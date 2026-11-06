@@ -29,7 +29,25 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, users)
 }
 
-func validRole(role string) bool { return role == "admin" || role == "user" }
+func validRole(role string) bool { return role == "super_admin" || role == "admin" || role == "user" }
+
+// isAdmin：超级管理员和管理员都能进后台，权限相同；超级管理员只多一项任免管理员（2026-11-06 决策）。
+func isAdmin(role string) bool { return role == "super_admin" || role == "admin" }
+
+// guardTarget 检查当前管理员能否改这个用户：超级管理员的账号只有超级管理员能改，
+// 否则管理员可以重置超级管理员的密码再登录进去给自己升级，任免权就形同虚设。
+func (s *Server) guardTarget(w http.ResponseWriter, r *http.Request, id int64) (*store.User, bool) {
+	target, err := s.Store.UserByID(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return nil, false
+	}
+	if target.Role == "super_admin" && currentUser(r).Role != "super_admin" {
+		writeError(w, http.StatusForbidden, "只有超级管理员能修改超级管理员的账号")
+		return nil, false
+	}
+	return target, true
+}
 
 // userNoteLimit 是管理员内部备注的字数上限，避免无界文本进库。
 const userNoteLimit = 500
@@ -52,7 +70,11 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		in.Role = "user"
 	}
 	if !validRole(in.Role) {
-		writeError(w, http.StatusBadRequest, "角色只能是 admin 或 user")
+		writeError(w, http.StatusBadRequest, "角色只能是 super_admin、admin 或 user")
+		return
+	}
+	if in.Role != "user" && currentUser(r).Role != "super_admin" {
+		writeError(w, http.StatusForbidden, "只有超级管理员能任命管理员")
 		return
 	}
 	hash, msg := hashPassword(in.Password)
@@ -95,9 +117,29 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me := currentUser(r)
-	if id == me.ID && ((in.Enabled != nil && !*in.Enabled) || (in.Role != nil && *in.Role != "admin")) {
+	if id == me.ID && ((in.Enabled != nil && !*in.Enabled) || (in.Role != nil && !isAdmin(*in.Role))) {
 		writeError(w, http.StatusBadRequest, "不能停用自己或取消自己的管理员身份，避免把自己锁在外面")
 		return
+	}
+	target, allowed := s.guardTarget(w, r, id)
+	if !allowed {
+		return
+	}
+	if in.Role != nil && *in.Role != target.Role && me.Role != "super_admin" {
+		writeError(w, http.StatusForbidden, "只有超级管理员能任免管理员")
+		return
+	}
+	// 至少保留一个启用中的超级管理员
+	if target.Role == "super_admin" && target.Enabled && ((in.Role != nil && *in.Role != "super_admin") || (in.Enabled != nil && !*in.Enabled)) {
+		n, err := s.Store.CountEnabledSuperAdmins(r.Context())
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		if n <= 1 {
+			writeError(w, http.StatusBadRequest, "至少要保留一个启用中的超级管理员，先任命另一位再改")
+			return
+		}
 	}
 	var p store.UserPatch
 	if in.Username != nil {
@@ -118,7 +160,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Role != nil {
 		if !validRole(*in.Role) {
-			writeError(w, http.StatusBadRequest, "角色只能是 admin 或 user")
+			writeError(w, http.StatusBadRequest, "角色只能是 super_admin、admin 或 user")
 			return
 		}
 		p.Role = in.Role
@@ -165,6 +207,9 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 func (s *Server) adjustBalance(w http.ResponseWriter, r *http.Request) {
 	id, okID := pathID(w, r)
 	if !okID {
+		return
+	}
+	if _, allowed := s.guardTarget(w, r, id); !allowed {
 		return
 	}
 	var in struct {
@@ -220,6 +265,9 @@ func (s *Server) balanceHistory(w http.ResponseWriter, r *http.Request) {
 func (s *Server) setUserGroups(w http.ResponseWriter, r *http.Request) {
 	id, okID := pathID(w, r)
 	if !okID {
+		return
+	}
+	if _, allowed := s.guardTarget(w, r, id); !allowed {
 		return
 	}
 	var in struct {

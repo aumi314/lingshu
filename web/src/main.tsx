@@ -7,6 +7,7 @@ import enUS from 'antd/locale/en_US'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
 import { AppProvider, useApp } from './app'
+import { isAdmin } from './api'
 import AppLayout from './components/AppLayout'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -78,7 +79,7 @@ function Root() {
                 <Route path="logs" element={<Logs />} />
                 <Route path="wallet" element={<Wallet />} />
                 <Route path="settings" element={<Settings />} />
-                {user?.role === 'admin' && (
+                {isAdmin(user?.role) && (
                   <Route path="admin">
                     <Route path="users" element={<Users />} />
                     <Route path="pricing" element={<Pricing />} />

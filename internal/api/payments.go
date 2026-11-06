@@ -341,7 +341,7 @@ func (s *Server) topupCheckout(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if o.AdminTest && currentUser(r).Role != "admin" {
+	if o.AdminTest && !isAdmin(currentUser(r).Role) {
 		writeError(w, 403, "此订单是管理员验收订单")
 		return
 	}

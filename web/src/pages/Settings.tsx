@@ -44,7 +44,7 @@ export default function Settings() {
         <Descriptions column={1}>
           <Descriptions.Item label={t('用户名', 'Username')}>{user?.username}</Descriptions.Item>
           <Descriptions.Item label={t('角色', 'Role')}>
-            <Tag color={user?.role === 'admin' ? 'blue' : undefined}>{user?.role === 'admin' ? t('管理员', 'Admin') : t('成员', 'Member')}</Tag>
+            <Tag color={user?.role === 'super_admin' ? 'purple' : user?.role === 'admin' ? 'blue' : undefined}>{user?.role === 'super_admin' ? t('超级管理员', 'Super admin') : user?.role === 'admin' ? t('管理员', 'Admin') : t('成员', 'Member')}</Tag>
           </Descriptions.Item>
           <Descriptions.Item label={t('余额', 'Balance')}>{money(user?.balance ?? 0)}</Descriptions.Item>
         </Descriptions>
