@@ -20,6 +20,7 @@ import (
 	"github.com/aumi314/lingshu/internal/relay/usage"
 	"github.com/aumi314/lingshu/internal/router"
 	"github.com/aumi314/lingshu/internal/store"
+	"github.com/shopspring/decimal"
 )
 
 const maxRequestBody = 32 << 20 // 32MB，够放带图片的长上下文
@@ -502,6 +503,25 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// ServeUsage 实现 GET /v1/usage：用 API key 查余额，给 Magpie 等工具的“余额查询”用（鉴权方式同对话请求）。
+// available 是这个 key 实际还能花的钱：账户余额与 key 剩余限额取小。金额是美元，按 JSON 数字输出，不经过 float。
+func (h *Handler) ServeUsage(w http.ResponseWriter, r *http.Request) {
+	owner, ok := h.authenticate(w, r, usage.Chat)
+	if !ok {
+		return
+	}
+	num := func(d decimal.Decimal) json.RawMessage { return json.RawMessage(d.String()) }
+	available := owner.Balance
+	key := map[string]any{"name": owner.KeyName, "group": owner.GroupName, "quota_used": num(owner.QuotaUsed), "quota_limit": nil, "quota_remaining": nil}
+	if owner.QuotaLimit != nil {
+		remaining := owner.QuotaLimit.Sub(owner.QuotaUsed)
+		key["quota_limit"], key["quota_remaining"] = num(*owner.QuotaLimit), num(remaining)
+		available = decimal.Min(available, remaining)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"object": "usage", "currency": "USD", "balance": num(owner.Balance), "available": num(available), "key": key})
 }
 
 // ServeModels 实现 GET /v1/models，列出 key 所在分组能用的模型（OpenAI 格式）。

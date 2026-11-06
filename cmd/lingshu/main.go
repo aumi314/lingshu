@@ -118,6 +118,7 @@ func serve() error {
 	mux.Handle("POST /v1/responses", h.Serve(usage.Responses))
 	mux.Handle("POST /v1/systemone", h.Serve(usage.SystemOne))
 	mux.HandleFunc("GET /v1/models", h.ServeModels)
+	mux.HandleFunc("GET /v1/usage", h.ServeUsage)
 	dist, _ := fs.Sub(web.Dist, "dist")
 	apiServer := &api.Server{Store: s, Relay: h, Web: dist, PublicURL: cfg.PublicURL}
 	apiServer.Register(mux)

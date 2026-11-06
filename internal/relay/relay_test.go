@@ -87,6 +87,7 @@ func newEnv(t *testing.T) *env {
 	mux.Handle("POST /v1/responses", h.Serve(usage.Responses))
 	mux.Handle("POST /v1/systemone", h.Serve(usage.SystemOne))
 	mux.HandleFunc("GET /v1/models", h.ServeModels)
+	mux.HandleFunc("GET /v1/usage", h.ServeUsage)
 	e.gateway = httptest.NewServer(mux)
 	t.Cleanup(e.gateway.Close)
 	return e
@@ -755,5 +756,36 @@ func TestValidateProxyURL(t *testing.T) {
 		if err := ValidateProxyURL(bad); err == nil {
 			t.Errorf("%q 应拒绝", bad)
 		}
+	}
+}
+
+// /v1/usage：用 key 查余额（Magpie 余额查询用），available = 余额与 key 剩余限额取小。
+func TestUsageReportsBalanceAndKeyQuota(t *testing.T) {
+	e := newEnv(t)
+	get := func(header, value string) (int, map[string]any) {
+		req, _ := http.NewRequest(http.MethodGet, e.gateway.URL+"/v1/usage", nil)
+		req.Header.Set(header, value)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var body map[string]any
+		json.NewDecoder(resp.Body).Decode(&body)
+		return resp.StatusCode, body
+	}
+	code, body := get("Authorization", "Bearer "+e.key)
+	key, _ := body["key"].(map[string]any)
+	if code != 200 || body["balance"] != 10.0 || body["available"] != 10.0 || body["currency"] != "USD" || key["quota_limit"] != nil || key["quota_remaining"] != nil {
+		t.Fatalf("不限额时 available 应等于余额: %d %+v", code, body)
+	}
+	e.exec(`UPDATE api_keys SET quota_limit = 3, quota_used = 1`)
+	code, body = get("x-api-key", e.key)
+	key, _ = body["key"].(map[string]any)
+	if code != 200 || body["balance"] != 10.0 || body["available"] != 2.0 || key["quota_remaining"] != 2.0 || key["quota_used"] != 1.0 {
+		t.Fatalf("限额更小时 available 应取 key 剩余: %d %+v", code, body)
+	}
+	if code, _ := get("Authorization", "Bearer sk-ls-wrong"); code != 401 {
+		t.Fatalf("无效 key 应 401: %d", code)
 	}
 }
