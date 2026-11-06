@@ -289,3 +289,5 @@ CI 与自动发布（2026-11-05 ✅ 已启用）：PR 和推送到 main 跑 Go �
 混元 Hy4 正式版（2026-11-05 ✅ 线上生效）：新增站内模型 `hy4`，价格按中国站刊例价 ¥6 / ¥18 / 缓存命中 ¥0.3 除以现行汇率 6.7，得 $0.895522 / $2.686567 / $0.044776，缓存写入 0，与 `hy4-preview` 同价。映射到 Hunyuan 渠道（渠道 11，Official API 分组），同名映射上游模型 `hy4`。经网关实测 chat 与 messages 两种协议都成功，上游模型为 hy4，26 输入 / 16 输出 token 扣费 $0.0000662686，与价格换算一致；验证用临时 key 已删除。`hy4-preview` 保留，上游仍标 online。无代码改动、无迁移、无发布。
 
 服务分组 Relay-GPT 下线（2026-11-05 ✅ 线上生效）：该分组已无渠道，第三方中转渠道与自用 key 均已迁到 `Third-party Relay`，随即删除分组。删除前把 lsh 的 key「dddd」从 `Relay-GPT` 迁到 `Third-party Relay`——`api_keys.group_id` 外键没有级联，key 仍指向已删分组会导致删除被拒。删后现存 5 个分组：default、Official API、Cloud Providers、Account Pool、Third-party Relay；该 key 倍率由 0.2 变为 1。历史请求日志的 `group_id` 按外键置空，金额、倍率、模型保留。无代码改动、无迁移、无发布。
+
+超级管理员（2026-11-06 ✅ 已发布 DMIT）：`287eb11` 含迁移 0024（删旧角色 CHECK 约束），被自动发布判为破坏性而暂停，经用户确认放行；发布前备份 `lingshu-deploy-20261106T043214Z-287eb11.dump`。核对：schema 0024，aumif（id 1）为超级管理员，另两个已停用的管理员不变，`/healthz` 正常、无 ERROR、发布后调用成功。若需回滚到旧版本，旧程序不认 `super_admin`，需先把 id 1 改回 `admin`。随后修正破坏性判断，只把删表、删列、`TRUNCATE`、`DELETE FROM` 算作破坏性（见 `docs/decisions.md`「CI 与自动发布」）。

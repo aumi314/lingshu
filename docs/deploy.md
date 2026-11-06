@@ -98,7 +98,7 @@ ssh -i ~/.ssh/dmit_lax_ed25519 -o IdentitiesOnly=yes root@136.175.178.126
 | 拉取部署 | `deploy/release/lingshu-dmit-deploy` | DMIT `/usr/local/bin/lingshu-deploy` |
 | 定时触发 | `deploy/release/lingshu-dmit-deploy.service`、`.timer` | `/etc/systemd/system/lingshu-deploy.service`、`lingshu-deploy.timer` |
 
-部署脚本每次：读清单 → 提交与 `/opt/lingshu/release.json` 相同就退出 → 待执行迁移含破坏性迁移则暂停 → 下载成品并核对清单哈希 → 单独备份 `/var/backups/lingshu/lingshu-deploy-<时间>-<提交>.dump`（保留 10 份，不占每日备份名额）并检查可读 → 保存 `prev-<提交>` → 原子替换、重启 → 30 秒内健康检查 → 写 `release.json`（`source` 为 `github-actions main-latest`）。健康检查失败自动换回旧版本，并记 `/var/lib/lingshu-deploy/failed-<提交>`，同一提交不再重试。
+部署脚本每次：读清单 → 提交与 `/opt/lingshu/release.json` 相同就退出 → 待执行迁移含破坏性迁移（删表、删列、`TRUNCATE`、`DELETE FROM`；删约束、索引等不算，规则在 `release.yml`）则暂停 → 下载成品并核对清单哈希 → 单独备份 `/var/backups/lingshu/lingshu-deploy-<时间>-<提交>.dump`（保留 10 份，不占每日备份名额）并检查可读 → 保存 `prev-<提交>` → 原子替换、重启 → 30 秒内健康检查 → 写 `release.json`（`source` 为 `github-actions main-latest`）。健康检查失败自动换回旧版本，并记 `/var/lib/lingshu-deploy/failed-<提交>`，同一提交不再重试。
 
 在 DMIT 上查看与干预：
 

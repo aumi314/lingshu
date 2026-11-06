@@ -67,11 +67,14 @@ jobs:
           python3 - <<'PY'
           import hashlib, json, os, pathlib, re, subprocess, datetime
           migrations = sorted(p.name for p in pathlib.Path('internal/store/migrations').glob('*.sql'))
-          # 去掉 SQL 注释后含 DROP 的迁移视为破坏性：回滚要恢复备份，必须有人确认
+          # 会丢数据的迁移视为破坏性：回滚要恢复备份，必须有人确认（去掉 SQL 注释后判断）。
+          # 删表、删列（Postgres 的 DROP 可省略 COLUMN，所以按排除法）、TRUNCATE、DELETE FROM 算；
+          # 删约束、索引、默认值、NOT NULL、触发器、视图、函数不丢数据，不算
+          harmless_drop = r'CONSTRAINT|INDEX|DEFAULT|NOT\s+NULL|TRIGGER|VIEW|FUNCTION|IDENTITY|EXPRESSION'
           def destructive(name):
               sql = pathlib.Path('internal/store/migrations', name).read_text()
               sql = re.sub(r'--[^\n]*', '', sql)
-              return re.search(r'\bDROP\b', sql, re.I) is not None
+              return re.search(rf'\bDROP\s+(?!(?:{harmless_drop})\b)|\bTRUNCATE\b|\bDELETE\s+FROM\b', sql, re.I) is not None
           manifest = {
               'commit': os.environ['SHA'],
               'sha256': hashlib.sha256(pathlib.Path('lingshu').read_bytes()).hexdigest(),
