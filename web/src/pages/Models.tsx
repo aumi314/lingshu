@@ -30,6 +30,10 @@ export default function Models() {
   const count = (id: number) => models.filter((m) => m.group_id === id).length
   const unit = `${currency === 'CNY' ? '¥' : '$'} / ${t('百万 tokens', '1M tokens')}`
   const price = (v: string) => (Number(v) === 0 ? <span className="muted">{t('免费', 'Free')}</span> : priceText(money, v))
+  const prices = (p: Pick<PricedModel, 'input_price' | 'output_price' | 'cache_read_price' | 'cache_write_price'>, k = 1) => {
+    const x = (v: string) => price(String(Number(v) * k))
+    return <>{t('输入', 'Input')} {x(p.input_price)} · {t('输出', 'Output')} {x(p.output_price)} · {t('缓存命中', 'Cache hit')} {x(p.cache_read_price)} · {t('缓存写入', 'Cache write')} {x(p.cache_write_price)}</>
+  }
 
   return (
     <div className="page">
@@ -71,20 +75,37 @@ export default function Models() {
         dataSource={models.filter((m) => m.group_id === groupID).sort(byVendor)}
         locale={{ emptyText: t('这个服务分组还没有可用的模型', 'No models available in this service group yet') }}
         expandable={{
-          rowExpandable: (m) => m.price_rules?.length > 0,
-          expandedRowRender: (m) => (
-            <div style={{ paddingLeft: 8 }}>
-              <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-                {t('满足下面的条件时改按这些价格计费（从上往下，第一条满足的生效）：', 'These prices apply when the condition matches (first match wins):')}
-              </Typography.Text>
-              {m.price_rules.map((r, i) => (
-                <div key={i} style={{ marginTop: 6 }}>
-                  <Tag>{ruleCondition(r, t)}</Tag>
-                  {t('输入', 'Input')} {price(r.input_price)} · {t('输出', 'Output')} {price(r.output_price)} · {t('缓存命中', 'Cache hit')} {price(r.cache_read_price)} · {t('缓存写入', 'Cache write')} {price(r.cache_write_price)}
-                </div>
-              ))}
-            </div>
-          ),
+          rowExpandable: (m) => m.price_rules?.length > 0 || m.fast_multiplier != null,
+          expandedRowRender: (m) => {
+            const fast = m.fast_multiplier == null ? 0 : Number(m.fast_multiplier)
+            return (
+              <div style={{ paddingLeft: 8 }}>
+                {m.price_rules.length > 0 && <>
+                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                    {t('满足下面的条件时改按这些价格计费（从上往下，第一条满足的生效）：', 'These prices apply when the condition matches (first match wins):')}
+                  </Typography.Text>
+                  {m.price_rules.map((r, i) => (
+                    <div key={i} style={{ marginTop: 6 }}>
+                      <Tag>{ruleCondition(r, t)}</Tag>
+                      {prices(r)}
+                    </div>
+                  ))}
+                </>}
+                {fast > 0 && <div style={{ marginTop: m.price_rules.length ? 12 : 0 }}>
+                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                    {t(`Fast：请求里写 service_tier 为 fast（或旧名 priority）时，按对应价格 ×${fast} 计费；上游降回标准速度时按标准价。`, `Fast: with service_tier set to fast (or priority), the matching price ×${fast} applies; standard price if the upstream downgrades it.`)}
+                  </Typography.Text>
+                  <div style={{ marginTop: 6 }}><Tag color="orange">Fast</Tag>{prices(m, fast)}</div>
+                  {m.price_rules.map((r, i) => (
+                    <div key={i} style={{ marginTop: 6 }}>
+                      <Tag color="orange">Fast · {ruleCondition(r, t)}</Tag>
+                      {prices(r, fast)}
+                    </div>
+                  ))}
+                </div>}
+              </div>
+            )
+          },
         }}
         columns={[
           {
@@ -97,6 +118,7 @@ export default function Models() {
                   <Typography.Text copyable className="mono">{v}</Typography.Text>
                 </span>
                 {m.price_rules?.length > 0 && <Tag color="purple" style={{ marginLeft: 8 }}>{t('阶梯价', 'Tiered')}</Tag>}
+                {m.fast_multiplier != null && <Tag color="orange" style={{ marginLeft: m.price_rules?.length ? 0 : 8 }}>Fast ×{Number(m.fast_multiplier)}</Tag>}
               </>
             ),
           },

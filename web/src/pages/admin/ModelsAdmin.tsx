@@ -40,9 +40,10 @@ export default function ModelsAdmin() {
     setInputCurrency('USD')
     form.setFieldsValue(
       m === 'new'
-        ? { name: '', input_price: 0, output_price: 0, cache_read_price: 0, cache_write_price: 0, price_rules: [] }
+        ? { name: '', input_price: 0, output_price: 0, cache_read_price: 0, cache_write_price: 0, price_rules: [], fast_multiplier: null }
         : {
             ...m,
+            fast_multiplier: m.fast_multiplier == null ? null : Number(m.fast_multiplier),
             ...Object.fromEntries(priceFields.map((f) => [f, Number(m[f])])),
             price_rules: (m.price_rules ?? []).map((r) => ({ ...r, days: r.days ?? '', ...Object.fromEntries(priceFields.map((f) => [f, Number(r[f])])) })),
           },
@@ -67,6 +68,7 @@ export default function ModelsAdmin() {
     const body = {
       ...v,
       ...Object.fromEntries(priceFields.map((f) => [f, toUSD(v[f] ?? 0)])),
+      fast_multiplier: v.fast_multiplier == null ? null : String(v.fast_multiplier),
       price_rules: ((v.price_rules ?? []) as RuleForm[]).map((r) => ({
         name: r.name ?? '',
         input_above: r.input_above ?? null,
@@ -144,6 +146,7 @@ export default function ModelsAdmin() {
                 <span className="muted">—</span>
               ),
           },
+          { title: 'Fast', dataIndex: 'fast_multiplier', render: (v: string | null) => (v == null ? <span className="muted">—</span> : <Tag color="orange">×{Number(v)}</Tag>) },
           {
             title: '',
             align: 'right',
@@ -184,6 +187,16 @@ export default function ModelsAdmin() {
               </Form.Item>
             ))}
           </Space>
+          <Form.Item
+            name="fast_multiplier"
+            label={t('Fast 倍率（GPT）', 'Fast multiplier (GPT)')}
+            extra={t(
+              '只对 OpenAI 协议（chat / responses）生效：请求里写 service_tier 为 fast 或 priority 时，在上面或命中规则的单价上再乘这个倍数（OpenAI 官方 Fast 是 2，长上下文同样 ×2），上游降回标准时按标准价。留空表示不开放：网关会去掉请求里的 Fast，按标准处理。Ultrafast 不开放。',
+              'OpenAI protocols only (chat / responses): when service_tier is fast or priority, the base or matched rule price is multiplied by this (OpenAI Fast is 2, long context too); standard price if the upstream downgrades. Empty = not offered: the gateway strips Fast and serves standard. Ultrafast is not offered.',
+            )}
+          >
+            <InputNumber min={0.01} max={100} step={1} placeholder={t('不开放', 'Off')} prefix="×" style={{ width: 160 }} />
+          </Form.Item>
 
           <Divider titlePlacement="start" style={{ marginTop: 0 }}>
             {t('价格规则（阶梯 / 分时段）', 'Price rules (tiers / time of day)')}

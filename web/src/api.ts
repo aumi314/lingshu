@@ -88,6 +88,7 @@ export type Model = {
   cache_read_price: string
   cache_write_price: string
   price_rules: PriceRule[]
+  fast_multiplier: string | null // GPT Fast 计费倍数（乘在规则选出的单价上），null 表示不开放
 }
 
 export type PricedModel = {
@@ -99,6 +100,7 @@ export type PricedModel = {
   cache_read_price: string
   cache_write_price: string
   price_rules: PriceRule[]
+  fast_multiplier: string | null
 }
 
 export type APIKey = {
@@ -145,6 +147,7 @@ export type LogEntry = {
   created_at: string
   client_ip: string // 访问者 IP，旧日志为空
   reasoning_effort: string // 客户端要求的推理强度，原样记录，旧日志为空
+  service_tier: '' | 'fast' | 'fast_downgraded' | 'unavailable' // GPT Fast 档位结果，'' 为标准
 }
 
 export type LogSummary = { requests: number; failed: number; input_tokens: number; cache_read_tokens: number; output_tokens: number; cost: string } // input_tokens 含缓存读写

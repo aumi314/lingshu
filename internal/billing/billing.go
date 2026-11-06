@@ -25,6 +25,11 @@ func Cost(u usage.Usage, p Prices, ratio decimal.Decimal) decimal.Decimal {
 	return sum.Div(million).Mul(ratio).Round(10)
 }
 
+// Scale 把各项单价乘同一个倍数，用于 GPT 的 Fast 档（价格规则选出单价后再乘，长上下文同样适用）。
+func (p Prices) Scale(k decimal.Decimal) Prices {
+	return Prices{Input: p.Input.Mul(k), Output: p.Output.Mul(k), CacheRead: p.CacheRead.Mul(k), CacheWrite: p.CacheWrite.Mul(k)}
+}
+
 // Rejection 是准入检查不通过的原因，Message 直接展示给用户。
 type Rejection struct {
 	Status  int

@@ -11,3 +11,12 @@ export function ruleCondition(r: PriceRule, t: (zh: string, en: string) => strin
   if (r.time_start) parts.push(t(`北京时间 ${r.time_start}–${r.time_end}`, `${r.time_start}–${r.time_end} Beijing time`))
   return parts.join(' · ')
 }
+
+// GPT Fast 档位结果的说明（调用日志用），标准请求返回空
+export function tierText(tier: string, t: (zh: string, en: string) => string) {
+  return ({
+    fast: 'Fast',
+    fast_downgraded: t('Fast 被上游降为标准，按标准价', 'Fast downgraded upstream; standard price'),
+    unavailable: t('模型未开放 Fast，已按标准处理', 'Fast not offered; served as standard'),
+  } as Record<string, string>)[tier] ?? ''
+}

@@ -18,6 +18,19 @@ type request struct {
 	previousResponseID string // responses 协议：接着哪次响应继续
 	effort             string // 客户端要求的推理强度，只用于记日志
 	maxOutput          int64  // 客户端写的最大输出 token 数，0 表示没写；用于预扣
+	premiumTier        string // 客户端要的 OpenAI 高速档位：fast（含旧名 priority）、ultrafast；空表示标准
+}
+
+// premiumTier 归一化 OpenAI 的 service_tier：priority 是 Fast 的旧名（2026-07 改名，两个都收）。
+// auto、default、flex 等不加价的档位原样转发、按标准计费，这里返回空。
+func premiumTier(tier string) string {
+	switch tier {
+	case "priority", "fast":
+		return "fast"
+	case "ultrafast":
+		return "ultrafast"
+	}
+	return ""
 }
 
 func parseRequest(body []byte) (*request, error) {
@@ -35,6 +48,9 @@ func parseRequest(body []byte) (*request, error) {
 		json.Unmarshal(raw, &req.previousResponseID)
 	}
 	req.effort = reasoningEffort(req.fields)
+	var tier string
+	json.Unmarshal(req.fields["service_tier"], &tier)
+	req.premiumTier = premiumTier(tier)
 	// chat 用 max_tokens 或 max_completion_tokens，messages 用 max_tokens，responses 用 max_output_tokens
 	for _, k := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens"} {
 		var n int64
@@ -73,14 +89,19 @@ func reasoningEffort(fields map[string]json.RawMessage) string {
 	return ""
 }
 
-// bodyFor 生成发给某个渠道的请求体：model 换成上游名；chat 流式请求补上 include_usage。
+// bodyFor 生成发给某个渠道的请求体：model 换成上游名；chat 流式请求补上 include_usage；
+// dropTier 时去掉 service_tier（模型没开放客户端要的高速档位，按标准处理）。
 // 返回是否替客户端加了 include_usage（加了的话，usage 块不转发给客户端）。
-func (req *request) bodyFor(proto usage.Protocol, upstreamModel string) (body []byte, injected bool) {
+func (req *request) bodyFor(proto usage.Protocol, upstreamModel string, dropTier bool) (body []byte, injected bool) {
 	fields := make(map[string]json.RawMessage, len(req.fields)+1)
 	for k, v := range req.fields {
 		fields[k] = v
 	}
 	changed := false
+	if dropTier {
+		delete(fields, "service_tier")
+		changed = true
+	}
 	if upstreamModel != req.model {
 		fields["model"], _ = json.Marshal(upstreamModel)
 		changed = true
