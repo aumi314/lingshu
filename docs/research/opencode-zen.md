@@ -217,3 +217,8 @@ Bun 捕获的 ALPN 仅提供 `http/1.1`；Go 允许 HTTP/2 协商但服务端实
 | R2F04-reuse-3 INVALID | full/five/auto/ok/reuse/128 | 429 | F (429) | — | — | — | — | HTTP/1.1 |
 | R2F05-old-session INVALID | full/five/auto/ok/old/128 | 429 | F (429) | — | — | — | — | HTTP/1.1 |
 | R2F06-D03-end INVALID | full/five/auto/ok/new/128 | 429 | F (429) | — | — | — | — | HTTP/1.1 |
+
+
+### 第二把 key 的复核（2026-11-08）
+
+用户提供第二把 OpenCode key 后，使用同一临时 runner 先发 D03 起始对照：个人 key、Bun ClientHello、`opencode/latest/2.2.5/cli`、真实格式 `x-opencode-session`、完整提示词、五个工具、`tool_choice: "auto"`、流式。该请求返回 HTTP 429 `FreeUsageLimitError`，没有 usage 或 `billing_source`。按批次规则未继续发送精简组合，因此第二把 key 没有产生有效的提示词、工具或协议结论，也没有将该结果解释为 key 类型差异。临时程序和远端文件已清理。
