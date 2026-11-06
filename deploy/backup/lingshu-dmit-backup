@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# 仅备份 DMIT 独立库；备份目录归 root，保留最近 14 份。
+# 仅备份 DMIT 独立库；备份目录归 root。
+# 分层保留（docs/deploy.md「备份、恢复与回滚」）：最近 14 天每天留一份，再往前 8 周每周一份，再往前 6 个月每月一份；
+# 同一天、同一周、同一月多次备份时留最新的那份。发布前备份（lingshu-deploy-*）由发布脚本另行保留 10 份，这里不碰。
 set -euo pipefail
 backup_dir=/var/backups/lingshu
 install -d -m 0700 "$backup_dir"
@@ -8,12 +10,24 @@ umask 077
 docker exec lingshu-postgres pg_dump -U lingshu -d lingshu -Fc >"$backup_file.part"
 mv "$backup_file.part" "$backup_file"
 sha256sum "$backup_file" >"$backup_file.sha256"
-# 只删除本脚本生成、超出保留数量的文件，不碰迁移归档。
-mapfile -t old_backups < <(find "$backup_dir" -maxdepth 1 -type f -name 'lingshu-????????T??????Z.dump' -printf '%f\n' | sort -r | tail -n +15)
-for old_backup in "${old_backups[@]}"; do
-  rm -- "$backup_dir/$old_backup"
-  if [[ -f "$backup_dir/$old_backup.sha256" ]]; then
-    rm -- "$backup_dir/$old_backup.sha256"
+
+# 只处理本脚本生成的文件（lingshu-<UTC 时间>.dump），从新到旧看；每个文件只要是某一层里某个周期最新的一份就留下
+now=$(date -u +%s)
+declare -A taken
+mapfile -t all < <(find "$backup_dir" -maxdepth 1 -type f -name 'lingshu-????????T??????Z.dump' -printf '%f\n' | sort -r)
+for f in "${all[@]}"; do
+  day=${f:8:8}
+  age=$(( (now - $(date -u -d "$day" +%s)) / 86400 ))
+  keep=0
+  for tier in "day:$day:14" "week:$(date -u -d "$day" +%G%V):56" "month:${day:0:6}:183"; do
+    IFS=: read -r kind period limit <<<"$tier"
+    if (( age <= limit )) && [[ -z "${taken[$kind$period]:-}" ]]; then
+      taken[$kind$period]=1
+      keep=1
+    fi
+  done
+  if (( keep == 0 )) && [[ "$backup_dir/$f" != "$backup_file" ]]; then # 刚生成的这份无论如何都留
+    rm -f -- "$backup_dir/$f" "$backup_dir/$f.sha256"
   fi
 done
 printf 'Backup complete: %s\n' "$backup_file"
