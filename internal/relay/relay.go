@@ -181,19 +181,25 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		maxOutput = cap
 	}
 	input := usage.EstimateRequest(body)
-	if reserve := billing.Reserve(input, maxOutput, ordered[0].Prices, ordered[0].PriceRules, owner.GroupRatio, c.start); reserve.IsPositive() {
-		reserved, available, err := h.Store.Reserve(r.Context(), owner.UserID, reserve)
+	reserve := billing.Reserve(input, maxOutput, ordered[0].Prices, ordered[0].PriceRules, owner.GroupRatio, c.start)
+	// 有历史时按“最近 20 次里最贵的一次 × 2”封顶：公式按原始请求体估输入、缓存按全价，
+	// 长上下文 + 高缓存命中时会高估几十倍（实测 $1.22 对实际 $0.02），把余额不多的正常用户拦住
+	if recent, n, err := h.Store.RecentMaxCost(r.Context(), owner.UserID, req.model); err == nil && n > 0 {
+		reserve = decimal.Min(reserve, recent.Mul(decimal.NewFromInt(2)))
+	}
+	if reserve.IsPositive() {
+		held, available, err := h.Store.Reserve(r.Context(), owner.UserID, reserve)
 		if err != nil {
 			c.reject(w, http.StatusInternalServerError, "冻结额度失败，请稍后重试")
 			slog.Error("预扣失败", "err", err)
 			return
 		}
-		if !reserved {
+		if !held.IsPositive() {
 			c.reject(w, http.StatusPaymentRequired, fmt.Sprintf("可用余额不够这次请求的最大可能费用：预估最多 $%s（输入约 %d token、最多输出 %d token），当前可用 $%s（已扣除进行中请求冻结的额度）。可以调低 max_tokens，或充值后再试",
 				reserve.StringFixed(4), input, maxOutput, available.StringFixed(4)))
 			return
 		}
-		c.log.Reserved = reserve
+		c.log.Reserved = held
 	}
 	h.attemptAll(w, r, c, req, ordered)
 }

@@ -40,7 +40,11 @@ func TestRedeemCodes(t *testing.T) {
 	results := make(chan int, 5)
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); code, _ := bob.do("POST", "/api/me/redeem", map[string]string{"code": codes[1].Code}, nil); results <- code }()
+		go func() {
+			defer wg.Done()
+			code, _ := bob.do("POST", "/api/me/redeem", map[string]string{"code": codes[1].Code}, nil)
+			results <- code
+		}()
 	}
 	wg.Wait()
 	close(results)
