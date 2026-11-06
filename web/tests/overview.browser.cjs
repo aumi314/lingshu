@@ -53,6 +53,8 @@ const fs = require('node:fs')
     assert.equal(params.get('responses'), 'https://gateway.example.com/v1')
     assert.equal(params.get('anthropic'), 'https://gateway.example.com')
     assert.equal(params.get('key'), null)
+    // Magpie 余额查询：用量接口和字段
+    await page.getByRole('tabpanel').getByText(/余额查询地址（GET）  https:\/\/gateway\.example\.com\/v1\/usage/).waitFor()
 
     // Claude Code：根地址、AUTH_TOKEN；Codex：带 /v1
     await page.getByRole('tab', { name: 'Claude Code' }).click()
