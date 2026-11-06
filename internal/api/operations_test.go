@@ -23,6 +23,7 @@ var operationExempt = map[string]string{
 	"POST /api/admin/payments/{provider}/test-order":               "未付款订单",
 	"POST /api/me/topups/{order}/refresh":                          "入账在 ApplyTopupEvent 里记，见 store.TestTopupCreditOperation",
 	"POST /api/payments/{provider}/{version}/{environment}/notify": "入账在 ApplyTopupEvent 里记，见 store.TestTopupCreditOperation",
+	"PUT /api/admin/groups/order":                                  "拖拽排序只影响显示顺序",
 	"PUT /api/admin/channels/order":                                "拖拽排序只影响列表显示",
 	"POST /api/admin/channels/fetch-models":                        "只读",
 	"POST /api/admin/channels/probe":                               "冒烟测试",

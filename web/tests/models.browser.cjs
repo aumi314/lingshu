@@ -1,0 +1,77 @@
+// 「模型与价格」与管理端定价页回归。使用安装了 playwright 的 Node 环境运行：node web/tests/models.browser.cjs。
+const { chromium } = require('playwright')
+const assert = require('node:assert/strict')
+const { spawn } = require('node:child_process')
+// 端口用 2 万段：本机 Windows 动态端口范围是 1024–15000，镜像网络下 51xx 会被随机占用
+const path = require('node:path')
+const fs = require('node:fs')
+
+;(async () => {
+  const server = spawn(process.execPath, [path.join(__dirname, '../node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '25186', '--strictPort'], { cwd: path.join(__dirname, '..'), stdio: 'ignore' })
+  const browser = await chromium.launch({ headless: true })
+  try {
+    for (let i = 0; i < 100; i++) {
+      try { if ((await fetch('http://127.0.0.1:25186')).ok) break } catch {}
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    const groups = [
+      { id: 1, name: 'Official API', ratio: '1', enabled: true, is_public: true, user_group_ids: [], description: '官方渠道，稳定' },
+      { id: 8, name: 'Third-party Relay', ratio: '0.5', enabled: true, is_public: true, user_group_ids: [], description: '' },
+    ]
+    const priced = (group_id, name) => ({ group_id, name, protocols: ['chat'], input_price: '1', output_price: '2', cache_read_price: '0', cache_write_price: '0', price_rules: [] })
+    // 故意打乱：期望按厂商（Anthropic → OpenAI → DeepSeek → 智谱 → 未识别）排列，同厂商内自然排序
+    const names = ['GLM-5.10', 'deepseek-v4.1-flash', 'gpt-6-sol', 'unknown-model', 'GLM-5.3', 'claude-sonnet-5-5']
+    const models = [...names.map((n) => priced(1, n)), priced(8, 'gpt-6-sol')]
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
+    await page.route('**/api/**', (route) => {
+      const p = new URL(route.request().url()).pathname
+      const json = (b) => route.fulfill({ json: b })
+      if (p === '/api/me') return json({ user: { id: 1, username: 'admin', role: 'admin', balance: '5', enabled: true, user_group_ids: [1], preferences: { theme: 'dark', language: 'zh' }, created_at: '2026-10-25' }, cny_per_usd: '6.7' })
+      if (p === '/api/me/models') return json({ groups, models })
+      if (p === '/api/admin/models') return json(names.map((n, i) => ({ id: i + 1, name: n, input_price: '1', output_price: '2', cache_read_price: '0', cache_write_price: '0', price_rules: [] })))
+      if (p === '/api/admin/groups') return json(groups)
+      if (p === '/api/admin/user-groups') return json([{ id: 1, name: 'default', is_default: true }])
+      return json([])
+    })
+    // 每行第一个等宽文本是模型名（调用入口标签也是等宽，排除）
+    const rowNames = () => page.locator('tbody tr').evaluateAll((rows) => rows.map((r) => r.querySelector('.mono')?.textContent?.trim()).filter(Boolean))
+    const expected = ['claude-sonnet-5-5', 'gpt-6-sol', 'deepseek-v4.1-flash', 'GLM-5.3', 'GLM-5.10', 'unknown-model']
+
+    // 成员页：分组前有标签；倍率只在 ≠1 时显示；带模型数；按厂商排列；选择记在网址上
+    await page.goto('http://127.0.0.1:25186/console/models')
+    await page.getByText('claude-sonnet-5-5', { exact: true }).waitFor()
+    await page.getByText('服务分组', { exact: true }).waitFor()
+    assert.equal(await page.getByText('×1', { exact: true }).count(), 0)
+    await page.getByText('×0.5', { exact: true }).waitFor()
+    assert.deepEqual(await rowNames(), expected)
+    await page.getByText(/官方渠道，稳定/).waitFor()
+    await page.locator('.ant-segmented-item').filter({ hasText: 'Third-party Relay' }).click()
+    await page.getByText(/价格已按倍率 ×0.5 算好/).waitFor()
+    assert.equal(new URL(page.url()).searchParams.get('group'), '8')
+    await page.reload()
+    await page.getByText(/价格已按倍率 ×0.5 算好/).waitFor()
+    assert.deepEqual(await rowNames(), ['gpt-6-sol'])
+
+    // 管理端定价页同样按厂商排列；服务分组可拖拽排序
+    await page.goto('http://127.0.0.1:25186/console/admin/pricing')
+    await page.getByText('claude-sonnet-5-5', { exact: true }).waitFor()
+    assert.deepEqual(await rowNames(), expected)
+    if (process.env.MODELS_SCREENSHOT_DIR) {
+      fs.mkdirSync(process.env.MODELS_SCREENSHOT_DIR, { recursive: true })
+      await page.screenshot({ path: path.join(process.env.MODELS_SCREENSHOT_DIR, 'pricing.png') })
+    }
+    await page.goto('http://127.0.0.1:25186/console/admin/pricing?tab=groups')
+    await page.getByText('Third-party Relay', { exact: true }).waitFor()
+    assert.equal(await page.locator('tbody tr').filter({ hasText: 'Official API' }).getByRole('button').first().getAttribute('title'), '拖动排序（成员看到的分组顺序也随之改变）')
+    if (process.env.MODELS_SCREENSHOT_DIR) {
+      await page.screenshot({ path: path.join(process.env.MODELS_SCREENSHOT_DIR, 'groups.png') })
+      await page.goto('http://127.0.0.1:25186/console/models')
+      await page.getByText('claude-sonnet-5-5', { exact: true }).waitFor()
+      await page.screenshot({ path: path.join(process.env.MODELS_SCREENSHOT_DIR, 'models.png') })
+    }
+    console.log('PASS: group selector label, ratio tag only when not 1, model counts, group in URL, vendor order on member and admin pages, group drag handle')
+  } finally {
+    await browser.close()
+    server.kill()
+  }
+})().catch((error) => { console.error(error); process.exitCode = 1 })

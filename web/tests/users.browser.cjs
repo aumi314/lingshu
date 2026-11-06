@@ -2,15 +2,16 @@
 const { chromium } = require('playwright')
 const assert = require('node:assert/strict')
 const { spawn } = require('node:child_process')
+// 端口用 2 万段：本机 Windows 动态端口范围是 1024–15000，镜像网络下 51xx 会被随机占用
 const path = require('node:path')
 
 ;(async () => {
-  const server = process.env.USERS_TEST_URL ? null : spawn(process.execPath, [path.join(__dirname, '../node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '5179', '--strictPort'], { cwd: path.join(__dirname, '..'), stdio: 'ignore' })
+  const server = process.env.USERS_TEST_URL ? null : spawn(process.execPath, [path.join(__dirname, '../node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '25179', '--strictPort'], { cwd: path.join(__dirname, '..'), stdio: 'ignore' })
   const browser = await chromium.launch({ headless: true })
   try {
     if (server) {
       for (let i = 0; i < 100; i++) {
-        try { if ((await fetch('http://127.0.0.1:5179')).ok) break } catch {}
+        try { if ((await fetch('http://127.0.0.1:25179')).ok) break } catch {}
         await new Promise((resolve) => setTimeout(resolve, 50))
       }
     }
@@ -58,10 +59,16 @@ const path = require('node:path')
       await dialog.getByRole('button', { name: /取\s*消/ }).click()
       await dialog.waitFor({ state: 'hidden' })
     }
-    await page.goto(process.env.USERS_TEST_URL || 'http://127.0.0.1:5179/console/admin/users')
+    await page.goto(process.env.USERS_TEST_URL || 'http://127.0.0.1:25179/console/admin/users')
 
     // 列表：用户分组管理不再占顶部按钮；能看出谁能用哪些服务分组、最近有没有在用
     await row(1).waitFor()
+    // 默认只看启用：停用的 user3 不显示，网址不带参数；切到全部后再做列表检查
+    assert.equal(await row(3).count(), 0)
+    assert.equal(new URL(page.url()).searchParams.get('status'), null)
+    await page.getByText('全部 3', { exact: true }).click()
+    await row(3).waitFor()
+    assert.equal(new URL(page.url()).searchParams.get('status'), 'all')
     assert.equal(await page.getByRole('button', { name: /用户分组管理/ }).count(), 0)
     assert.equal(await row(1).getByRole('combobox').count(), 0) // 角色不再在表格里直接改
     await row(1).getByText('管理员', { exact: true }).waitFor()
@@ -82,9 +89,10 @@ const path = require('node:path')
     assert.equal(await row(1).count(), 0)
     await page.getByText('仅看启用 2', { exact: true }).click()
     await waitFor(async () => (await row(3).count()) === 0)
+    assert.equal(new URL(page.url()).searchParams.get('status'), null)
     await page.getByText('全部 3', { exact: true }).click()
     await row(3).waitFor()
-    assert.equal(new URL(page.url()).searchParams.get('status'), null)
+    assert.equal(new URL(page.url()).searchParams.get('status'), 'all')
 
     // 编辑：角色在弹窗里改；选了用户分组，下方即时显示能用哪些服务分组
     await open(2)
@@ -164,7 +172,7 @@ const path = require('node:path')
     await row(2).getByRole('button', { name: 'Edit', exact: true }).click()
     await dialog.getByText('Account status', { exact: true }).waitFor()
     await dialog.getByRole('button', { name: 'Submit', exact: true }).waitFor()
-    console.log('PASS: status filter with counts and URL, service group access column, last call, note, role moved into dialog with self protection, access preview, cancel discards drafts, confirmation cancellation, failure preserves drafts, blank amount skips balance, mobile scroll and footer, English')
+    console.log('PASS: enabled-only by default, status filter with counts and URL, service group access column, last call, note, role moved into dialog with self protection, access preview, cancel discards drafts, confirmation cancellation, failure preserves drafts, blank amount skips balance, mobile scroll and footer, English')
   } finally {
     await browser.close()
     server?.kill()

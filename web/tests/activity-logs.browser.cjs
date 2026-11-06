@@ -2,15 +2,16 @@
 const { chromium } = require('playwright')
 const assert = require('node:assert/strict')
 const { spawn } = require('node:child_process')
+// 端口用 2 万段：本机 Windows 动态端口范围是 1024–15000，镜像网络下 51xx 会被随机占用
 const path = require('node:path')
 const fs = require('node:fs')
 
 ;(async () => {
-  const server = spawn(process.execPath, [path.join(__dirname, '../node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '5181', '--strictPort'], { cwd: path.join(__dirname, '..'), stdio: 'ignore' })
+  const server = spawn(process.execPath, [path.join(__dirname, '../node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '25181', '--strictPort'], { cwd: path.join(__dirname, '..'), stdio: 'ignore' })
   const browser = await chromium.launch({ headless: true })
   try {
     for (let i = 0; i < 100; i++) {
-      try { if ((await fetch('http://127.0.0.1:5181')).ok) break } catch {}
+      try { if ((await fetch('http://127.0.0.1:25181')).ok) break } catch {}
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
     for (const admin of [true, false]) {
@@ -49,7 +50,7 @@ const fs = require('node:fs')
         else return json(body)
       })
       const tab = (zh, english) => page.getByRole('tab', { name: text(zh, english), exact: true }).click()
-      const base = `http://127.0.0.1:5181/console/${admin ? 'admin/' : ''}logs`
+      const base = `http://127.0.0.1:25181/console/${admin ? 'admin/' : ''}logs`
 
       // 默认是调用日志：只请求调用，列里直接能看到分组、缓存率、首字和速度
       await page.goto(base)
