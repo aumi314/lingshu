@@ -245,17 +245,36 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 	})
 }
 
-// Reserve 在可用余额（余额 − 已冻结）足够时冻结 amount，返回是否成功和冻结前的可用余额。
-// 判断和冻结在一条 UPDATE 里完成，并发请求不会同时用掉同一笔钱。
-func (s *Store) Reserve(ctx context.Context, userID int64, amount decimal.Decimal) (bool, decimal.Decimal, error) {
-	var available string
-	err := s.Pool.QueryRow(ctx, `UPDATE users SET reserved = reserved + $2::numeric
-		WHERE id = $1 AND balance - reserved >= $2::numeric RETURNING (balance - reserved + $2::numeric)::text`, userID, amount.String()).Scan(&available)
+// Reserve 冻结额度，返回实际冻结的金额（0 表示拒绝）和冻结前的可用余额（余额 − 已冻结）。
+// 可用余额够就冻结 amount；不够但这个用户没有别的请求在进行、余额为正时，放行这一个请求并冻结剩下的全部可用余额
+// （单个请求最多小额透支，和原来“透支一次”一样；要防的是并发请求一起把余额扣穿）。
+// 判断和冻结在一条语句里完成，行锁保证并发请求不会同时用掉同一笔钱。
+func (s *Store) Reserve(ctx context.Context, userID int64, amount decimal.Decimal) (decimal.Decimal, decimal.Decimal, error) {
+	var held, available string
+	err := s.Pool.QueryRow(ctx, `
+		WITH u AS (SELECT balance - reserved AS avail, reserved FROM users WHERE id = $1 FOR UPDATE)
+		UPDATE users SET reserved = users.reserved + LEAST($2::numeric, u.avail)
+		FROM u WHERE users.id = $1 AND (u.avail >= $2::numeric OR (u.reserved = 0 AND u.avail > 0))
+		RETURNING LEAST($2::numeric, u.avail)::text, u.avail::text`, userID, amount.String()).Scan(&held, &available)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = s.Pool.QueryRow(ctx, `SELECT (balance - reserved)::text FROM users WHERE id = $1`, userID).Scan(&available)
-		return false, mustDecimal(available), err
+		return decimal.Zero, mustDecimal(available), err
 	}
-	return err == nil, mustDecimal(available), err
+	if err != nil {
+		return decimal.Zero, decimal.Zero, err
+	}
+	return mustDecimal(held), mustDecimal(available), nil
+}
+
+// RecentMaxCost 返回这个用户调用这个模型最近 20 次成功请求里最贵的一次花费，以及样本数。
+// 预扣用它校正公式估算：公式按原始请求体估输入、按全价算缓存，长上下文 + 高缓存命中时会高估几十倍。
+func (s *Store) RecentMaxCost(ctx context.Context, userID int64, model string) (decimal.Decimal, int, error) {
+	var maxCost string
+	var n int
+	err := s.Pool.QueryRow(ctx, `SELECT COALESCE(max(cost), 0)::text, count(*) FROM (
+		SELECT cost FROM request_logs WHERE user_id = $1 AND model = $2 AND status = 'success'
+		ORDER BY created_at DESC LIMIT 20) t`, userID, model).Scan(&maxCost, &n)
+	return mustDecimal(maxCost), n, err
 }
 
 // ResetReservations 启动时清零所有冻结：单进程部署，上次进程里进行中的请求都已结束。

@@ -529,48 +529,52 @@ func TestAdmissionRejections(t *testing.T) {
 	}
 }
 
-// 预扣（2026-11-06 决策，取代“余额为正即放行、允许透支一次”）：按最大可能费用冻结，可用余额不够就拒绝。
-func TestReserveRejectsWhenMaxCostExceedsAvailable(t *testing.T) {
+// 预扣（2026-11-06 决策）：单个请求即使预估超过可用余额也放行（透支一次、冻结剩下的全部可用余额）；
+// 有历史后按“最近最贵一次 × 2”封顶，避免公式高估把余额不多的正常用户拦住。
+func TestReserveSoloRequestAndHistoryCap(t *testing.T) {
 	e := newEnv(t)
 	e.exec(`UPDATE users SET balance = 0.001`)
-	var hits atomic.Int32
-	e.upstream = func(w http.ResponseWriter, r *http.Request) { hits.Add(1); okUpstream(w, r) }
-	// 没写 max_tokens：按默认 8192 输出预扣，约 $0.016，超过可用 $0.001
+	e.upstream = okUpstream
+	// 没有历史、预估约 $0.016 超过可用 $0.001，但没有别的请求在进行：放行，按实际 0.00182 结算
 	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != 402 || !strings.Contains(string(body), "最大可能费用") || !strings.Contains(string(body), "max_tokens") || hits.Load() != 0 {
-		t.Fatalf("应拒绝且不请求上游: %d %s hits=%d", resp.StatusCode, body, hits.Load())
-	}
-	if got := e.balance(); !got.Equal(decimal.RequireFromString("0.001")) {
-		t.Fatalf("被拒不应扣费: %s", got)
-	}
-	// 请求写的上限大于预扣上限时按预扣上限（8192）冻结，仍超过可用余额
-	resp = e.post("/v1/chat/completions", `{"model":"std-chat","max_tokens":64000}`, nil)
-	resp.Body.Close()
-	if resp.StatusCode != 402 {
-		t.Fatalf("按预扣上限 8192 估算仍超出可用余额，应拒绝: %d", resp.StatusCode)
-	}
-	e.exec(`UPDATE users SET balance = 0.02`)
-	resp = e.post("/v1/chat/completions", `{"model":"std-chat","max_tokens":64000}`, nil)
 	resp.Body.Close()
 	if resp.StatusCode != 200 {
-		t.Fatalf("写 6.4 万但按预扣上限 8192 冻结（约 $0.0164），余额 $0.02 应放行: %d", resp.StatusCode)
-	}
-	e.cost(resp.Header.Get("X-Lingshu-Request-Id"))
-	e.exec(`UPDATE users SET balance = 0.001`)
-	// 写小 max_tokens：预估变小就放行；结算按实际用量扣，实际超出预估时仍可能小额透支
-	resp = e.post("/v1/chat/completions", `{"model":"std-chat","max_tokens":100}`, nil)
-	resp.Body.Close()
-	if resp.StatusCode != 200 {
-		t.Fatalf("预估在可用余额内应放行: %d", resp.StatusCode)
+		t.Fatalf("单个请求应放行: %d", resp.StatusCode)
 	}
 	e.cost(resp.Header.Get("X-Lingshu-Request-Id"))
 	if got := e.balance(); !got.Equal(decimal.RequireFromString("-0.00082")) {
-		t.Errorf("结算后余额 = %s，期望按实际 0.00182 扣成 -0.00082", got)
+		t.Fatalf("透支一次后余额 = %s，期望 -0.00082", got)
 	}
 	if got := e.decimal(`SELECT reserved::text FROM users WHERE id = 1`); !got.IsZero() {
-		t.Errorf("结算后冻结应释放: %s", got)
+		t.Fatalf("结算后冻结应释放: %s", got)
+	}
+	resp = e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	if resp.StatusCode != 402 {
+		t.Fatalf("余额为负后应拒绝: %d", resp.StatusCode)
+	}
+	// 有历史（最贵 0.00182）后预扣按 0.00364 封顶：余额 $0.01 能同时放两个（按公式 0.0164 只能放一个）
+	e.exec(`UPDATE users SET balance = 0.01`)
+	gate := make(chan struct{})
+	var hits atomic.Int32
+	e.upstream = func(w http.ResponseWriter, r *http.Request) { hits.Add(1); <-gate; okUpstream(w, r) }
+	done := make(chan int, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+			resp.Body.Close()
+			done <- resp.StatusCode
+		}()
+	}
+	for i := 0; i < 300 && hits.Load() < 2; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := e.decimal(`SELECT reserved::text FROM users WHERE id = 1`); !got.Equal(decimal.RequireFromString("0.00728")) {
+		t.Fatalf("两个请求都应按历史封顶 0.00364 冻结，合计 0.00728: %s（上游收到 %d 个）", got, hits.Load())
+	}
+	close(gate)
+	if a, b := <-done, <-done; a != 200 || b != 200 {
+		t.Fatalf("两个请求都应成功: %d %d", a, b)
 	}
 }
 
