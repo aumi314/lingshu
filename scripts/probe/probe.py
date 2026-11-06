@@ -104,25 +104,46 @@ def probe_tokens(args):
 # ---- 单词指纹：几十个“随机说一个”的问题，每题多次，答案分布就是指纹 ----
 
 def normalize(text):
-    return re.sub(r"[^0-9a-z一-鿿]", "", text.lower())[:40]
+    """去掉空白和标点、转小写；保留各种文字（希腊字母、汉字等）。清洗后为空（比如只回了表情符号）就保留原样。"""
+    cleaned = re.sub(r"[\W_]", "", text.lower())
+    return (cleaned or text.strip())[:40]
+
+
+def has_cjk(text):
+    return re.search(r"[一-鿿]", text) is not None
 
 
 def probe_fingerprint(args):
+    """答案按题目文本记录（第 2 版起；第 1 版按序号记，对比时按第 1 版题目顺序换回文本）。
+    连续 10 次出错（多半是额度用完）就不再发剩下的请求。"""
     f = SUITE["fingerprint"]
-    jobs = [(i, p) for i, p in enumerate(f["prompts"]) for _ in range(f["samples"])]
+    prompts = f["prompts"][args.fingerprint_from:]
+    if args.fingerprint_limit:
+        prompts = prompts[: args.fingerprint_limit]
+    jobs = [p for p in prompts for _ in range(f["samples"])]
+    state = {"streak": 0, "stopped": False}
 
-    def one(job):
-        i, p = job
-        r = call(args, p + f["suffix"], effort=f["effort"])
-        return i, normalize(r.get("text", "")), r.get("error")
-    answers = {str(i): [] for i in range(len(f["prompts"]))}
+    def one(p):
+        if state["stopped"]:
+            return p, None, "已停止"
+        suffix = (" " + f["suffix_zh"]) if has_cjk(p) and f.get("suffix_zh") else f["suffix"]
+        r = call(args, p + suffix, effort=f["effort"])
+        if r.get("error"):
+            state["streak"] += 1
+            if state["streak"] >= 10:
+                state["stopped"] = True
+                print(f"连续出错，停止：{r['error'][:120]}", file=sys.stderr, flush=True)
+            return p, None, r["error"]
+        state["streak"] = 0
+        return p, normalize(r.get("text", "")), None
+    answers = {p: [] for p in prompts}
     errors = 0
-    for i, a, e in parallel(args, one, jobs):
+    for p, a, e in parallel(args, one, jobs):
         if e:
             errors += 1
         else:
-            answers[str(i)].append(a)
-    return {"samples": f["samples"], "errors": errors, "answers": answers}
+            answers[p].append(a)
+    return {"samples": f["samples"], "errors": errors, "stopped": state["stopped"], "answers": answers}
 
 
 # ---- 数学题：按种子生成，本地算标准答案；记正确率和推理 token（思考深度、稳定性） ----
@@ -400,15 +421,68 @@ def tvd(a, b):
     return 0.5 * sum(abs(a.count(k) / len(a) - b.count(k) / len(b)) for k in keys)
 
 
+V1_PROMPTS = SUITE["fingerprint"]["prompts"][:24]  # 第 1 版按序号记录答案，题目就是现在题库的前 24 题
+
+
+def fingerprint_answers(fp):
+    """统一成 {题目文本: [答案…]}。"""
+    return {(V1_PROMPTS[int(k)] if k.isdigit() else k): v for k, v in fp["answers"].items()}
+
+
 def fingerprint_distance(x, y):
+    """两份结果在共同题目上的平均总变差和众数一致比例；只算两边都至少有 3 个答案的题。"""
+    xa, ya = fingerprint_answers(x), fingerprint_answers(y)
     ds, top = [], []
-    for i in x["answers"]:
-        a, b = x["answers"][i], y["answers"].get(i, [])
+    for i in xa:
+        a, b = xa[i], ya.get(i, [])
+        if len(a) < 3 or len(b) < 3:
+            continue
         d = tvd(a, b)
         if d is not None:
             ds.append(d)
             top.append(max(set(a), key=a.count) == max(set(b), key=b.count))
     return statistics.mean(ds), sum(top) / len(top)
+
+
+def distributions(files, out):
+    """按题目汇总各型号（多轮合并）的答案分布，并标出每题在型号之间的区分度。
+
+    区分度 = 各型号两两之间总变差的平均值：越大，这道题越能分辨型号；接近 0 的题（全家族都答 mango）没有区分作用。
+    """
+    from collections import Counter, defaultdict
+    merged = defaultdict(lambda: defaultdict(list))
+    for f in files:
+        r = json.load(open(f))
+        if "fingerprint" not in r:
+            continue
+        for q, ans in fingerprint_answers(r["fingerprint"]).items():
+            merged[q][r["model"]].extend(ans)
+    result = []
+    for q in SUITE["fingerprint"]["prompts"]:
+        models = merged.get(q, {})
+        pairs = [tvd(a, b) for (_, a), (_, b) in combinations(models.items(), 2) if a and b]
+        # 自身波动：每个型号的答案一分为二，两半之间的总变差；型号之间也按同样的样本量（各取一半）比，才公平
+        halves = {m: (a[: len(a) // 2], a[len(a) // 2:]) for m, a in models.items() if len(a) >= 6}
+        self_noise = [tvd(h[0], h[1]) for h in halves.values()]
+        between = [tvd(x[0], y[1]) for (_, x), (_, y) in combinations(halves.items(), 2)]
+        score = statistics.mean(between) - statistics.mean(self_noise) if self_noise and between else None
+        result.append({
+            "prompt": q,
+            "separation": round(statistics.mean(pairs), 3) if pairs else None,
+            "self_noise": round(statistics.mean(self_noise), 3) if self_noise else None,
+            "score": round(score, 3) if score is not None else None,
+            "models": {m: {"samples": len(a), "counts": dict(Counter(a).most_common())} for m, a in sorted(models.items())},
+        })
+    doc = {"suite_version": SUITE["version"], "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "sources": sorted(os.path.basename(f) for f in files),
+           "note": ("单词指纹答案分布：每道题各型号（多轮合并）的答案计数。separation：型号两两总变差的平均值；self_noise：同一型号答案一分为二后两半的总变差（自身波动）；"
+                    "score：同样本量下型号之间的差距减去自身波动，越大越能分辨型号。高随机的题（随机颜色代码）separation 高但自身波动也高，score 不高。"),
+           "prompts": result}
+    json.dump(doc, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    ranked = sorted((x for x in result if x["score"] is not None), key=lambda x: -x["score"])
+    print(f"已写入 {out}：{len(result)} 题，能算区分度的 {len(ranked)} 题")
+    for x in ranked[:15]:
+        tops = "；".join(f"{m.split('/')[-1]}: " + "/".join(list(v['counts'])[:2]) for m, v in x["models"].items())
+        print(f"  区分 {x['score']:.2f}（自身波动 {x['self_noise']:.2f}） {x['prompt'][:40]:<42} {tops}")
 
 
 def compare(files):
@@ -465,12 +539,19 @@ def main():
     r.add_argument("--judge-base", default="")
     c = sub.add_parser("compare")
     c.add_argument("files", nargs="+")
+    ds = sub.add_parser("dist", help="把各型号的单词指纹答案汇总成分布文件")
+    ds.add_argument("--out", required=True)
+    ds.add_argument("files", nargs="+")
+    r.add_argument("--fingerprint-from", type=int, default=0, help="单词指纹从第 N 题开始（0 起算），用于只补跑新加的题")
+    r.add_argument("--fingerprint-limit", type=int, default=0, help="最多跑 N 道单词指纹题（0 表示不限）")
     lg = sub.add_parser("legs", help="单独测量鹈鹕 HTML 的腿部动画")
     lg.add_argument("--edge", required=True)
     lg.add_argument("files", nargs="+")
     args = p.parse_args()
     if args.cmd == "run":
         run(args)
+    elif args.cmd == "dist":
+        distributions(args.files, args.out)
     elif args.cmd == "legs":
         for f in args.files:
             r = measure_legs(args, f)
