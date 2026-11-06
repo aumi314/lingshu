@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/aumi314/lingshu/internal/payments"
+	"github.com/aumi314/lingshu/internal/store"
 	"github.com/shopspring/decimal"
 )
 
@@ -303,11 +304,31 @@ func (s *Server) listTopups(w http.ResponseWriter, r *http.Request) {
 	if size < 1 || size > 100 {
 		size = 20
 	}
-	userID := currentUser(r).ID
+	q := r.URL.Query()
+	f := store.TopupFilter{UserID: currentUser(r).ID, Status: q.Get("status")}
 	if strings.HasPrefix(r.URL.Path, "/api/admin/") {
-		userID = 0
+		f.UserID, _ = strconv.ParseInt(q.Get("user_id"), 10, 64) // 管理员看全部，可按用户筛
 	}
-	orders, total, err := s.Store.Topups(r.Context(), userID, page, size)
+	switch f.Status {
+	case "", "pending", "success", "failed", "expired":
+	default:
+		writeError(w, 400, "订单状态不正确")
+		return
+	}
+	for _, p := range []struct {
+		name string
+		dst  **time.Time
+	}{{"from", &f.From}, {"to", &f.To}} {
+		if v := q.Get(p.name); v != "" {
+			t, err := time.Parse(time.RFC3339, v)
+			if err != nil {
+				writeError(w, 400, "时间格式不对: "+v)
+				return
+			}
+			*p.dst = &t
+		}
+	}
+	orders, total, err := s.Store.Topups(r.Context(), f, page, size)
 	if err != nil {
 		writeStoreError(w, err)
 		return

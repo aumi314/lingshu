@@ -40,6 +40,7 @@ const fs = require('node:fs')
         const json = (body, status = 200) => route.fulfill({ json: body, status })
         if (url.pathname === '/api/me') return json({ user, cny_per_usd: '6.7' })
         if (url.pathname === '/api/admin/users') return json([user])
+        if (url.pathname === '/api/admin/topups') { queries.push(url.searchParams); return json({ items: [{ id: 'order-pending-fixture', user_id: 2, provider: 'epay', environment: 'prod', credit_usd: '2', amount: '13.40', currency: 'CNY', status: 'pending', tax: '0', total: '0', admin_test: false, created_at: common.created_at, completed_at: null }], total: 1 }) }
         if (!url.pathname.endsWith('/logs')) return json({})
         queries.push(url.searchParams)
         if (fail) return json({ error: 'fixture load error' }, 500)
@@ -95,6 +96,15 @@ const fs = require('node:fs')
       await page.waitForTimeout(100)
       assert.equal(queries.at(-1).get('target'), admin ? 'channel' : 'api_key')
 
+      // 充值订单：只有管理员有这个标签，可按状态筛
+      if (admin) {
+        await tab('充值订单', 'Top-up orders')
+        await page.getByText('order-pending-fixture', { exact: true }).waitFor()
+        await page.getByText('待付款', { exact: true }).waitFor()
+        assert.equal(new URL(page.url()).searchParams.get('tab'), 'orders')
+        await tab('操作日志', 'Operation logs')
+        await page.getByText(text('额度调整', 'Balance adjustment'), { exact: true }).waitFor()
+      } else assert.equal(await page.getByRole('tab', { name: 'Top-up orders' }).count(), 0)
       // 刷新保留标签
       await page.reload()
       await page.getByText(text('额度调整', 'Balance adjustment'), { exact: true }).waitFor()
