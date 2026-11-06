@@ -17,6 +17,7 @@ type request struct {
 	stream             bool
 	previousResponseID string // responses 协议：接着哪次响应继续
 	effort             string // 客户端要求的推理强度，只用于记日志
+	maxOutput          int64  // 客户端写的最大输出 token 数，0 表示没写；用于预扣
 }
 
 func parseRequest(body []byte) (*request, error) {
@@ -34,6 +35,13 @@ func parseRequest(body []byte) (*request, error) {
 		json.Unmarshal(raw, &req.previousResponseID)
 	}
 	req.effort = reasoningEffort(req.fields)
+	// chat 用 max_tokens 或 max_completion_tokens，messages 用 max_tokens，responses 用 max_output_tokens
+	for _, k := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens"} {
+		var n int64
+		if json.Unmarshal(req.fields[k], &n) == nil && n > req.maxOutput {
+			req.maxOutput = n
+		}
+	}
 	return req, nil
 }
 

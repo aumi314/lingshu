@@ -23,6 +23,7 @@ type KeyOwner struct {
 	GroupAllowed bool // 公开分组，或用户被授权了这个特殊分组
 	GroupRatio   decimal.Decimal
 	Balance      decimal.Decimal
+	Reserved     decimal.Decimal  // 进行中请求冻结的额度，可用余额 = Balance - Reserved
 	QuotaLimit   *decimal.Decimal // nil 表示不限额
 	QuotaUsed    decimal.Decimal
 }
@@ -30,7 +31,7 @@ type KeyOwner struct {
 // LookupKey 按 key 哈希查找，找不到返回 nil。
 func (s *Store) LookupKey(ctx context.Context, keyHash string) (*KeyOwner, error) {
 	var o KeyOwner
-	var ratio, balance, used string
+	var ratio, balance, reserved, used string
 	var limit *string
 	err := s.Pool.QueryRow(ctx, `
 		SELECT k.id, k.name, k.user_id, k.group_id, g.name, k.enabled, u.enabled,
@@ -39,20 +40,20 @@ func (s *Store) LookupKey(ctx context.Context, keyHash string) (*KeyOwner, error
 			       JOIN user_group_members ugm ON ugm.user_group_id = gug.user_group_id
 			       WHERE gug.group_id = g.id AND ugm.user_id = u.id
 		       )),
-		       g.ratio::text, u.balance::text, k.quota_limit::text, k.quota_used::text
+		       g.ratio::text, u.balance::text, u.reserved::text, k.quota_limit::text, k.quota_used::text
 		FROM api_keys k
 		JOIN users u ON u.id = k.user_id
 		JOIN groups g ON g.id = k.group_id
 		WHERE k.key_hash = $1`, keyHash,
 	).Scan(&o.KeyID, &o.KeyName, &o.UserID, &o.GroupID, &o.GroupName, &o.KeyEnabled, &o.UserEnabled, &o.GroupAllowed,
-		&ratio, &balance, &limit, &used)
+		&ratio, &balance, &reserved, &limit, &used)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	o.GroupRatio, o.Balance, o.QuotaUsed = mustDecimal(ratio), mustDecimal(balance), mustDecimal(used)
+	o.GroupRatio, o.Balance, o.Reserved, o.QuotaUsed = mustDecimal(ratio), mustDecimal(balance), mustDecimal(reserved), mustDecimal(used)
 	if limit != nil {
 		l := mustDecimal(*limit)
 		o.QuotaLimit = &l
@@ -198,6 +199,7 @@ type RequestLog struct {
 	FirstByteMS        int
 	TotalMS            int
 	UpstreamResponseID string
+	Reserved           decimal.Decimal // 放行时冻结的额度，结算时解冻（不写进日志表）
 }
 
 // SettleRequest 在一个事务里写日志、扣用户余额、加 key 的已用额度，并更新 key 最后使用时间。
@@ -230,8 +232,10 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 		); err != nil {
 			return fmt.Errorf("写请求日志: %w", err)
 		}
-		if l.Cost.IsPositive() {
-			if _, err := tx.Exec(ctx, `UPDATE users SET balance = balance - $1::numeric WHERE id = $2`, l.Cost.String(), l.UserID); err != nil {
+		if l.Cost.IsPositive() || l.Reserved.IsPositive() {
+			// 解冻放行时预扣的额度，按实际费用扣余额，多退少补
+			if _, err := tx.Exec(ctx, `UPDATE users SET balance = balance - $1::numeric, reserved = GREATEST(reserved - $3::numeric, 0) WHERE id = $2`,
+				l.Cost.String(), l.UserID, l.Reserved.String()); err != nil {
 				return fmt.Errorf("扣余额: %w", err)
 			}
 		}
@@ -239,6 +243,25 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 			l.Cost.String(), l.APIKeyID)
 		return err
 	})
+}
+
+// Reserve 在可用余额（余额 − 已冻结）足够时冻结 amount，返回是否成功和冻结前的可用余额。
+// 判断和冻结在一条 UPDATE 里完成，并发请求不会同时用掉同一笔钱。
+func (s *Store) Reserve(ctx context.Context, userID int64, amount decimal.Decimal) (bool, decimal.Decimal, error) {
+	var available string
+	err := s.Pool.QueryRow(ctx, `UPDATE users SET reserved = reserved + $2::numeric
+		WHERE id = $1 AND balance - reserved >= $2::numeric RETURNING (balance - reserved + $2::numeric)::text`, userID, amount.String()).Scan(&available)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = s.Pool.QueryRow(ctx, `SELECT (balance - reserved)::text FROM users WHERE id = $1`, userID).Scan(&available)
+		return false, mustDecimal(available), err
+	}
+	return err == nil, mustDecimal(available), err
+}
+
+// ResetReservations 启动时清零所有冻结：单进程部署，上次进程里进行中的请求都已结束。
+func (s *Store) ResetReservations(ctx context.Context) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE users SET reserved = 0 WHERE reserved <> 0`)
+	return err
 }
 
 // CreateAPIKey 保存新 key 的哈希；quota 为 nil 表示不限额。

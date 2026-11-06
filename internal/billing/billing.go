@@ -2,6 +2,8 @@
 package billing
 
 import (
+	"time"
+
 	"github.com/shopspring/decimal"
 
 	"github.com/aumi314/lingshu/internal/relay/usage"
@@ -38,4 +40,12 @@ func Admit(balance decimal.Decimal, quotaLimit *decimal.Decimal, quotaUsed decim
 		return &Rejection{Status: 402, Message: "这个 API key 的额度已用完（$" + quotaUsed.StringFixed(4) + " / $" + quotaLimit.StringFixed(4) + "），可以调高限额或换一个 key"}
 	}
 	return nil
+}
+
+// Reserve 是放行前要冻结的额度：按估算输入和最大输出、在当前时刻生效的价格算出最大可能费用。
+// 输入全部按未命中缓存算，偏保守；结算时按实际用量多退少补。
+func Reserve(inputTokens, maxOutputTokens int64, base Prices, rules []PriceRule, ratio decimal.Decimal, at time.Time) decimal.Decimal {
+	u := usage.Usage{Input: inputTokens, Output: maxOutputTokens}
+	prices, _ := Select(base, rules, u, at)
+	return Cost(u, prices, ratio)
 }

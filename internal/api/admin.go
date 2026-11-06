@@ -633,7 +633,13 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	limits, err := s.Store.CallLimits(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
+		"call_limits": limits,
 		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode, "api_base_url": apiBaseURL, "deployment_mode": deploymentMode,
 		"fx_mode": s.fxMode(r.Context()), "fx_status": s.fxStatus(r.Context()),
 	})
@@ -685,6 +691,9 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		APIBaseURL       *string          `json:"api_base_url"`
 		DeploymentMode   *string          `json:"deployment_mode"`
 		FXMode           *string          `json:"fx_mode"`
+		Concurrency      *int64           `json:"user_concurrency"`
+		RPM              *int64           `json:"user_rpm"`
+		ReserveOutput    *int64           `json:"reserve_output_tokens"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -692,6 +701,12 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	if in.CNYPerUSD != nil && !in.CNYPerUSD.IsPositive() {
 		writeError(w, http.StatusBadRequest, "汇率要大于 0")
 		return
+	}
+	for _, v := range []*int64{in.Concurrency, in.RPM, in.ReserveOutput} {
+		if v != nil && (*v < 0 || *v > 1_000_000) {
+			writeError(w, http.StatusBadRequest, "调用限制要填 0 到 1000000 之间的整数，0 表示不限")
+			return
+		}
 	}
 	if in.FXMode != nil && *in.FXMode != "manual" && *in.FXMode != "live" {
 		writeError(w, http.StatusBadRequest, "汇率模式只能是手动或实时")
@@ -727,6 +742,11 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.FXMode != nil {
 		kv = append(kv, [2]string{"fx_mode", *in.FXMode})
+	}
+	for k, v := range map[string]*int64{"user_concurrency": in.Concurrency, "user_rpm": in.RPM, "reserve_output_tokens": in.ReserveOutput} {
+		if v != nil {
+			kv = append(kv, [2]string{k, strconv.FormatInt(*v, 10)})
+		}
 	}
 	if in.CNYPerUSD != nil {
 		kv = append(kv, [2]string{"cny_per_usd", in.CNYPerUSD.Round(4).String()})
