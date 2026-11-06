@@ -1,6 +1,6 @@
 {
  "suite_version": 2,
- "generated_at": "2026-11-06T15:43:13-0800",
+ "generated_at": "2026-11-06T15:57:05-0800",
  "sources": [
   "codex_gpt-6-astra-r1.json",
   "codex_gpt-6-astra-r2.json",
@@ -1950,9 +1950,9 @@
   },
   {
    "prompt": "Name a random island.",
-   "separation": 0.722,
-   "self_noise": 0.25,
-   "score": 0.472,
+   "separation": 0.694,
+   "self_noise": 0.333,
+   "score": 0.278,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
@@ -1963,10 +1963,9 @@
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
-      "svalbard": 3,
-      "islaholbox": 1,
-      "madeira": 1,
-      "saba": 1
+      "svalbard": 4,
+      "saba": 1,
+      "saomiguelisland": 1
      }
     },
     "codex/gpt-6.1-sol": {
@@ -1979,9 +1978,10 @@
      "samples": 6,
      "counts": {
       "socotra": 2,
-      "somiguel": 2,
-      "madagascar": 1,
-      "lombok": 1
+      "borneo": 1,
+      "saba": 1,
+      "madeira": 1,
+      "sardinia": 1
      }
     }
    }
@@ -2203,9 +2203,9 @@
   },
   {
    "prompt": "Name a random Japanese city.",
-   "separation": 0.167,
-   "self_noise": 0.083,
-   "score": 0.083,
+   "separation": 0.0,
+   "self_noise": 0.0,
+   "score": 0.0,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
@@ -2216,9 +2216,7 @@
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
-      "kanazawa": 4,
-      "matsue": 1,
-      "matsuyama": 1
+      "kanazawa": 6
      }
     },
     "codex/gpt-6.1-sol": {
@@ -2972,37 +2970,36 @@
   },
   {
    "prompt": "Name a random cheese.",
-   "separation": 0.667,
-   "self_noise": 0.333,
-   "score": 0.389,
+   "separation": 0.806,
+   "self_noise": 0.167,
+   "score": 0.667,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
      "counts": {
       "manchego": 5,
-      "comté": 1
+      "comte": 1
      }
     },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
       "gouda": 5,
-      "comt": 1
+      "taleggio": 1
      }
     },
     "codex/gpt-6.1-sol": {
      "samples": 6,
      "counts": {
-      "manchego": 5,
-      "comt": 1
+      "manchego": 4,
+      "comte": 2
      }
     },
     "codex/gpt-6.1-terra": {
      "samples": 6,
      "counts": {
-      "gouda": 4,
-      "comt": 1,
-      "taleggio": 1
+      "gruyere": 4,
+      "gouda": 2
      }
     }
    }
@@ -3080,23 +3077,24 @@
   },
   {
    "prompt": "Name a random dessert.",
-   "separation": 0.222,
+   "separation": 0.306,
    "self_noise": 0.25,
-   "score": -0.139,
+   "score": 0.028,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
      "counts": {
       "tiramisu": 5,
-      "crèmebrûlée": 1
+      "cremebrulee": 1
      }
     },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
-      "tiramisu": 4,
-      "pistachiobaklava": 1,
-      "lemontart": 1
+      "tiramisu": 3,
+      "baklava": 1,
+      "pistachiokulfi": 1,
+      "pistachiobaklava": 1
      }
     },
     "codex/gpt-6.1-sol": {
@@ -3191,9 +3189,9 @@
   },
   {
    "prompt": "Name a random soup.",
-   "separation": 0.25,
-   "self_noise": 0.25,
-   "score": -0.083,
+   "separation": 0.417,
+   "self_noise": 0.167,
+   "score": 0.222,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
@@ -3204,10 +3202,11 @@
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
-      "minestrone": 3,
-      "tomatobisque": 1,
-      "tomyum": 1,
-      "lentilsoup": 1
+      "tomatosoup": 2,
+      "mulligatawnysoup": 1,
+      "minestrone": 1,
+      "lentilsoup": 1,
+      "mulligatawny": 1
      }
     },
     "codex/gpt-6.1-sol": {
@@ -3295,9 +3294,9 @@
   },
   {
    "prompt": "Name a random coffee drink.",
-   "separation": 0.333,
-   "self_noise": 0.083,
-   "score": 0.25,
+   "separation": 0.306,
+   "self_noise": 0.167,
+   "score": 0.056,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
@@ -3308,9 +3307,8 @@
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
-      "flatwhite": 3,
-      "cortado": 2,
-      "cappuccino": 1
+      "cortado": 3,
+      "flatwhite": 3
      }
     },
     "codex/gpt-6.1-sol": {
@@ -3322,7 +3320,8 @@
     "codex/gpt-6.1-terra": {
      "samples": 6,
      "counts": {
-      "cortado": 6
+      "cortado": 5,
+      "cappuccino": 1
      }
     }
    }
@@ -4124,9 +4123,9 @@
   },
   {
    "prompt": "Name a random painter.",
-   "separation": 0.722,
-   "self_noise": 0.167,
-   "score": 0.611,
+   "separation": 0.694,
+   "self_noise": 0.333,
+   "score": 0.444,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
@@ -4146,15 +4145,15 @@
     "codex/gpt-6.1-sol": {
      "samples": 6,
      "counts": {
-      "berthemorisot": 3,
-      "artemisiagentileschi": 2,
-      "leonoracarrington": 1
+      "artemisiagentileschi": 3,
+      "berthemorisot": 3
      }
     },
     "codex/gpt-6.1-terra": {
      "samples": 6,
      "counts": {
-      "hilmaafklint": 6
+      "hilmaafklint": 4,
+      "remediosvaro": 2
      }
     }
    }
@@ -4162,8 +4161,8 @@
   {
    "prompt": "Name a random composer.",
    "separation": 0.639,
-   "self_noise": 0.583,
-   "score": -0.028,
+   "self_noise": 0.667,
+   "score": -0.111,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
@@ -4171,41 +4170,42 @@
       "florenceprice": 1,
       "liliboulanger": 1,
       "claraschumann": 1,
-      "antoníndvořák": 1,
-      "bélabartók": 1,
-      "gabrielfauré": 1
+      "antonindvorak": 1,
+      "belabartok": 1,
+      "gabrielfaure": 1
      }
     },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
-      "claraschumann": 3,
-      "claudedebussy": 2,
-      "florenceprice": 1
+      "claraschumann": 5,
+      "louisefarrenc": 1
      }
     },
     "codex/gpt-6.1-sol": {
      "samples": 6,
      "counts": {
-      "claraschumann": 4,
-      "bohuslavmartin": 1,
-      "claudedebussy": 1
+      "claraschumann": 2,
+      "bohuslavmartinu": 1,
+      "belabartok": 1,
+      "claudedebussy": 1,
+      "liliboulanger": 1
      }
     },
     "codex/gpt-6.1-terra": {
      "samples": 6,
      "counts": {
-      "claudedebussy": 5,
-      "claraschumann": 1
+      "claraschumann": 3,
+      "claudedebussy": 3
      }
     }
    }
   },
   {
    "prompt": "Name a random novelist.",
-   "separation": 0.556,
-   "self_noise": 0.167,
-   "score": 0.444,
+   "separation": 0.611,
+   "self_noise": 0.333,
+   "score": 0.333,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
@@ -4217,60 +4217,62 @@
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
-      "ursulakleguin": 5,
-      "octaviabutler": 1
+      "ursulakleguin": 4,
+      "octaviabutler": 1,
+      "nkjemisin": 1
      }
     },
     "codex/gpt-6.1-sol": {
      "samples": 6,
      "counts": {
       "kazuoishiguro": 3,
-      "ursulakleguin": 2,
+      "ursulakleguin": 1,
+      "octaviaebutler": 1,
       "octaviabutler": 1
      }
     },
     "codex/gpt-6.1-terra": {
      "samples": 6,
      "counts": {
-      "tonimorrison": 4,
-      "ursulakleguin": 2
+      "ursulakleguin": 3,
+      "tonimorrison": 3
      }
     }
    }
   },
   {
    "prompt": "Name a random poet.",
-   "separation": 0.889,
-   "self_noise": 0.417,
-   "score": 0.528,
+   "separation": 0.5,
+   "self_noise": 0.25,
+   "score": 0.361,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
      "counts": {
-      "wisławaszymborska": 6
+      "wislawaszymborska": 6
      }
     },
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
       "elizabethbishop": 2,
-      "wsmerwin": 1,
+      "matsuobasho": 2,
       "maryoliver": 1,
-      "adalimn": 1,
-      "matsuobash": 1
+      "wislawaszymborska": 1
      }
     },
     "codex/gpt-6.1-sol": {
      "samples": 6,
      "counts": {
-      "wisawaszymborska": 4,
-      "wislawaszymborska": 2
+      "wislawaszymborska": 6
      }
     },
     "codex/gpt-6.1-terra": {
      "samples": 6,
      "counts": {
-      "wisawaszymborska": 6
+      "wislawaszymborska": 4,
+      "maryoliver": 1,
+      "adalimon": 1
      }
     }
    }
@@ -4565,9 +4567,9 @@
   },
   {
    "prompt": "Name a random Norse god.",
-   "separation": 0.611,
-   "self_noise": 0.167,
-   "score": 0.444,
+   "separation": 0.5,
+   "self_noise": 0.333,
+   "score": 0.0,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
@@ -4579,22 +4581,21 @@
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
-      "tr": 5,
-      "tyr": 1
+      "tyr": 6
      }
     },
     "codex/gpt-6.1-sol": {
      "samples": 6,
      "counts": {
-      "heimdall": 6
+      "tyr": 4,
+      "heimdall": 2
      }
     },
     "codex/gpt-6.1-terra": {
      "samples": 6,
      "counts": {
-      "heimdall": 2,
-      "tr": 2,
-      "tyr": 2
+      "tyr": 5,
+      "freyr": 1
      }
     }
    }
@@ -5633,9 +5634,9 @@
   },
   {
    "prompt": "Name a random French word.",
-   "separation": 0.5,
-   "self_noise": 0.083,
-   "score": 0.417,
+   "separation": 0.556,
+   "self_noise": 0.25,
+   "score": 0.361,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
@@ -5646,9 +5647,10 @@
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
-      "merveillement": 3,
-      "phmre": 2,
-      "blouissant": 1
+      "emerveillement": 2,
+      "eblouissant": 2,
+      "ephemere": 1,
+      "ecureuil": 1
      }
     },
     "codex/gpt-6.1-sol": {
@@ -5660,7 +5662,8 @@
     "codex/gpt-6.1-terra": {
      "samples": 6,
      "counts": {
-      "papillon": 6
+      "papillon": 5,
+      "pamplemousse": 1
      }
     }
    }
@@ -5668,8 +5671,8 @@
   {
    "prompt": "Name a random Spanish word.",
    "separation": 0.5,
-   "self_noise": 0.0,
-   "score": 0.5,
+   "self_noise": 0.167,
+   "score": 0.333,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
@@ -5680,7 +5683,9 @@
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
-      "sobremesa": 6
+      "sobremesa": 4,
+      "ventana": 1,
+      "brujula": 1
      }
     },
     "codex/gpt-6.1-sol": {
@@ -5699,9 +5704,9 @@
   },
   {
    "prompt": "Name a random German word.",
-   "separation": 0.75,
-   "self_noise": 0.5,
-   "score": 0.278,
+   "separation": 0.861,
+   "self_noise": 0.25,
+   "score": 0.583,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
@@ -5714,34 +5719,33 @@
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
-      "fernweh": 3,
-      "wolkenkratzer": 2,
-      "wolkenbruch": 1
+      "wolkenbruch": 4,
+      "wolkenkratzer": 2
      }
     },
     "codex/gpt-6.1-sol": {
      "samples": 6,
      "counts": {
-      "schmetterling": 3,
-      "waldeinsamkeit": 1,
-      "fernweh": 1,
-      "wolkenkratzer": 1
+      "wanderlust": 2,
+      "schmetterling": 2,
+      "waldlichtung": 1,
+      "fernweh": 1
      }
     },
     "codex/gpt-6.1-terra": {
      "samples": 6,
      "counts": {
-      "schmetterling": 5,
-      "waldeinsamkeit": 1
+      "schmetterling": 4,
+      "waldeinsamkeit": 2
      }
     }
    }
   },
   {
    "prompt": "Name a random Japanese word.",
-   "separation": 0.5,
+   "separation": 0.0,
    "self_noise": 0.0,
-   "score": 0.5,
+   "score": 0.0,
    "models": {
     "codex/gpt-6-astra": {
      "samples": 6,
@@ -5752,19 +5756,19 @@
     "codex/gpt-6-luna": {
      "samples": 6,
      "counts": {
-      "木漏日": 6
+      "木漏れ日": 6
      }
     },
     "codex/gpt-6.1-sol": {
      "samples": 6,
      "counts": {
-      "木漏日": 6
+      "木漏れ日": 6
      }
     },
     "codex/gpt-6.1-terra": {
      "samples": 6,
      "counts": {
-      "木漏日": 6
+      "木漏れ日": 6
      }
     }
    }

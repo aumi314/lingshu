@@ -216,12 +216,12 @@
     "uruguay"
    ],
    "Name a random island.": [
+    "saba",
     "svalbard",
-    "islaholbox",
     "svalbard",
-    "madeira",
+    "sãomiguelisland",
     "svalbard",
-    "saba"
+    "svalbard"
    ],
    "Name a random mountain.": [
     "mountelbrus",
@@ -272,10 +272,10 @@
     "boiseidaho"
    ],
    "Name a random Japanese city.": [
-    "matsue",
     "kanazawa",
     "kanazawa",
-    "matsuyama",
+    "kanazawa",
+    "kanazawa",
     "kanazawa",
     "kanazawa"
    ],
@@ -440,8 +440,8 @@
     "balllightning"
    ],
    "Name a random cheese.": [
-    "comt",
     "gouda",
+    "taleggio",
     "gouda",
     "gouda",
     "gouda",
@@ -464,12 +464,12 @@
     "tarragon"
    ],
    "Name a random dessert.": [
+    "baklava",
+    "pistachiokulfi",
     "tiramisu",
     "tiramisu",
     "tiramisu",
-    "pistachiobaklava",
-    "lemontart",
-    "tiramisu"
+    "pistachiobaklava"
    ],
    "Name a random pasta shape.": [
     "fusilli",
@@ -488,12 +488,12 @@
     "ciabatta"
    ],
    "Name a random soup.": [
+    "tomatosoup",
+    "mulligatawnysoup",
     "minestrone",
-    "minestrone",
-    "minestrone",
-    "tomatobisque",
-    "tomyum",
-    "lentilsoup"
+    "lentilsoup",
+    "mulligatawny",
+    "tomatosoup"
    ],
    "Name a random cocktail.": [
     "apaperplane",
@@ -513,11 +513,11 @@
    ],
    "Name a random coffee drink.": [
     "cortado",
-    "cappuccino",
-    "flatwhite",
     "flatwhite",
     "cortado",
-    "flatwhite"
+    "flatwhite",
+    "flatwhite",
+    "cortado"
    ],
    "Name a random pizza topping.": [
     "pineapple",
@@ -697,35 +697,35 @@
    ],
    "Name a random painter.": [
     "hilmaafklint",
-    "artemisiagentileschi",
     "hilmaafklint",
     "hilmaafklint",
     "artemisiagentileschi",
-    "hilmaafklint"
+    "hilmaafklint",
+    "artemisiagentileschi"
    ],
    "Name a random composer.": [
-    "claudedebussy",
     "claraschumann",
-    "florenceprice",
-    "claudedebussy",
+    "claraschumann",
+    "claraschumann",
+    "louisefarrenc",
     "claraschumann",
     "claraschumann"
    ],
    "Name a random novelist.": [
-    "ursulakleguin",
-    "ursulakleguin",
-    "ursulakleguin",
-    "ursulakleguin",
     "octaviabutler",
+    "ursulakleguin",
+    "ursulakleguin",
+    "nkjemisin",
+    "ursulakleguin",
     "ursulakleguin"
    ],
    "Name a random poet.": [
-    "wsmerwin",
-    "elizabethbishop",
-    "elizabethbishop",
     "maryoliver",
-    "adalimn",
-    "matsuobash"
+    "elizabethbishop",
+    "matsuobashō",
+    "elizabethbishop",
+    "wislawaszymborska",
+    "matsuobashō"
    ],
    "Name a random philosopher.": [
     "simonedebeauvoir",
@@ -792,12 +792,12 @@
     "hermes"
    ],
    "Name a random Norse god.": [
-    "tr",
+    "týr",
+    "týr",
     "tyr",
-    "tr",
-    "tr",
-    "tr",
-    "tr"
+    "týr",
+    "tyr",
+    "týr"
    ],
    "Name a random zodiac sign.": [
     "sagittarius",
@@ -1032,36 +1032,36 @@
     "serenity"
    ],
    "Name a random French word.": [
-    "merveillement",
-    "phmre",
-    "merveillement",
-    "phmre",
-    "blouissant",
-    "merveillement"
+    "émerveillement",
+    "éblouissant",
+    "émerveillement",
+    "éphémère",
+    "éblouissant",
+    "écureuil"
    ],
    "Name a random Spanish word.": [
     "sobremesa",
     "sobremesa",
     "sobremesa",
     "sobremesa",
-    "sobremesa",
-    "sobremesa"
+    "ventana",
+    "brújula"
    ],
    "Name a random German word.": [
-    "fernweh",
-    "wolkenkratzer",
+    "wolkenbruch",
+    "wolkenbruch",
     "wolkenkratzer",
     "wolkenbruch",
-    "fernweh",
-    "fernweh"
+    "wolkenbruch",
+    "wolkenkratzer"
    ],
    "Name a random Japanese word.": [
-    "木漏日",
-    "木漏日",
-    "木漏日",
-    "木漏日",
-    "木漏日",
-    "木漏日"
+    "木漏れ日",
+    "木漏れ日",
+    "木漏れ日",
+    "木漏れ日",
+    "木漏れ日",
+    "木漏れ日"
    ],
    "Name a random palindrome.": [
     "civic",
@@ -1376,7 +1376,7 @@
     "锅贴"
    ]
   },
-  "finished_at": "2026-11-06T15:36:23-0800",
-  "elapsed_seconds": 2.6
+  "finished_at": "2026-11-06T15:56:42-0800",
+  "elapsed_seconds": 20.7
  }
 }
