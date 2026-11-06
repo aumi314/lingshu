@@ -117,6 +117,9 @@ func (s *Server) readPaymentConfig(w http.ResponseWriter, r *http.Request) (paym
 		}
 		c.Values[k] = strings.TrimSpace(v)
 	}
+	if c.Currency == "CNY" {
+		c.UnitPrice = s.Store.CNYPerUSD(r.Context()) // 跟随系统汇率，不单独配置
+	}
 	if err := c.Validate(); err != nil {
 		writeError(w, 400, err.Error())
 		return c, false

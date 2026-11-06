@@ -22,13 +22,7 @@ func (s *Store) PaymentConfig(ctx context.Context, provider string) (payments.Co
 	var enabled bool
 	err := s.Pool.QueryRow(ctx, `SELECT v.id,v.config,v.secrets,p.enabled FROM payment_services p JOIN payment_config_versions v ON v.id=p.version_id WHERE p.provider=$1`, provider).Scan(&id, &data, &secrets, &enabled)
 	if errors.Is(err, pgx.ErrNoRows) {
-		rate := decimal.RequireFromString("6.7")
-		if v, e := s.Setting(ctx, "cny_per_usd"); e == nil {
-			if d, e := decimal.NewFromString(v); e == nil {
-				rate = d
-			}
-		}
-		return payments.DefaultConfig(provider, rate), nil
+		return payments.DefaultConfig(provider, s.CNYPerUSD(ctx)), nil
 	}
 	if err != nil {
 		return payments.Config{}, err
@@ -36,6 +30,10 @@ func (s *Store) PaymentConfig(ctx context.Context, provider string) (payments.Co
 	c, err := decodePaymentConfig(data, secrets)
 	c.VersionID = id
 	c.Enabled = enabled
+	// 收人民币的服务按系统汇率报价，和用户看到的人民币金额一致（2026-11-06 决策）
+	if c.Currency == "CNY" {
+		c.UnitPrice = s.CNYPerUSD(ctx)
+	}
 	return c, err
 }
 

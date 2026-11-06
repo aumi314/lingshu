@@ -122,6 +122,7 @@ func serve() error {
 	dist, _ := fs.Sub(web.Dist, "dist")
 	apiServer := &api.Server{Store: s, Relay: h, Web: dist, PublicURL: cfg.PublicURL}
 	apiServer.Register(mux)
+	go apiServer.RunFX(ctx)
 
 	// 先占住端口再报"已启动"，端口被占用时直接报错退出
 	ln, err := net.Listen("tcp", cfg.Listen)

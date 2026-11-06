@@ -568,6 +568,13 @@ func (s *Store) SetSettings(ctx context.Context, kv [][2]string) error {
 	})
 }
 
+// SetStatusSetting 保存运行状态类设置（如实时汇率的拉取状态），不记操作日志。
+func (s *Store) SetStatusSetting(ctx context.Context, key, value string) error {
+	_, err := s.Pool.Exec(ctx, `INSERT INTO settings (key, value) VALUES ($1, $2)
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value)
+	return err
+}
+
 // CNYPerUSD 是系统设置的汇率，没设置或格式不对时用默认值。
 func (s *Store) CNYPerUSD(ctx context.Context) decimal.Decimal {
 	v, err := s.Setting(ctx, "cny_per_usd")

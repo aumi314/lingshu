@@ -88,7 +88,8 @@ var (
 		SELECT jsonb_build_object('prefix', code_prefix,
 		       'status', CASE WHEN used_at IS NOT NULL THEN 'used' WHEN revoked_at IS NOT NULL THEN 'revoked' ELSE 'active' END)
 		FROM registration_codes WHERE id = $1`, nil}
-	settingsEntity = entity{"settings", "", `SELECT COALESCE(jsonb_object_agg(key, value), '{}') FROM settings WHERE $1::bigint = 0`, nil}
+	// fx_status 是实时汇率的拉取状态（时间、错误），每小时都会变，不进操作日志
+	settingsEntity = entity{"settings", "", `SELECT COALESCE(jsonb_object_agg(key, value), '{}') FROM settings WHERE $1::bigint = 0 AND key <> 'fx_status'`, nil}
 )
 
 func takeSnapshot(ctx context.Context, tx pgx.Tx, e entity, id int64) (snapshot, error) {
