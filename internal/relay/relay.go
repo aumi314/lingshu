@@ -113,7 +113,9 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 	c.log.ClientIP = auth.ClientIP(r)
 	defer h.finish(r.Context(), c)
 
+	readStart := time.Now()
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
+	c.log.ReadMS = int(time.Since(readStart).Milliseconds())
 	if err != nil {
 		c.reject(w, http.StatusRequestEntityTooLarge, "请求体太大或读取失败: "+err.Error())
 		return
@@ -351,6 +353,7 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 		timeout = h.StreamHeaderTimeout
 	}
 	timer := time.AfterFunc(timeout, cancel)
+	c.log.UpstreamStartMS = max(int(time.Since(c.start).Milliseconds()), 1) // 换渠道时以最后一次为准
 	resp, err := h.clientFor(route.ProxyURL).Do(upReq)
 	timedOut := !timer.Stop()
 	if err == nil && timedOut {

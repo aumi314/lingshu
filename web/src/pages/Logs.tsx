@@ -12,9 +12,13 @@ type Tab = 'calls' | 'operations' | 'orders' // 充值订单只给管理员
 type Filter = { range: [Dayjs, Dayjs]; model?: string; status?: string; user_id?: number; target?: string }
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`
+const secs2 = (ms: number) => `${(ms / 1000).toFixed(2)}s`
 const protocolLabel: Record<string, string> = { chat: 'Chat', messages: 'Messages', responses: 'Responses', systemone: 'System One' }
 // 缓存命中率 = 缓存读 ÷（输入 + 缓存读 + 缓存写），向下取整，避免没全中却显示 100%
 const cacheRate = (read: number, total: number) => total > 0 ? `${Math.floor((read * 100) / total)}%` : '—'
+
+// 首字从发给上游算起（和上游自身的响应速度对应），不含读体和网关处理；旧日志没有发出时刻，按旧口径从进入网关算
+const firstToken = (r: LogEntry) => r.first_byte_ms - (r.upstream_start_ms || 0)
 
 // 输出速度 = 可见输出 ÷ 首字之后的传输时间。推理 token 在首字前的等待里生成、测不到时间，不算进分子。
 // 上游攒好整段一次发出时（传输不足 1 秒）测不出生成速度，可见输出太少时也不稳定，都不给。
@@ -186,11 +190,12 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
             title: t('首字 · 速度', 'First token · speed'),
             render: (_, r) => {
               const tps = outputTPS(r)
-              const first = r.stream && r.first_byte_ms > 0 && r.status !== 'upstream_error' && r.status !== 'rejected' ? seconds(r.first_byte_ms) : '—'
+              const first = r.stream && r.first_byte_ms > 0 && r.status !== 'upstream_error' && r.status !== 'rejected' ? seconds(firstToken(r)) : '—'
               return (
                 <div className="nowrap">
                   <div>{first}{tps !== null && ` · ${tps} tok/s`}</div>
-                  <div className="muted">{t('总耗时', 'Total')} {seconds(r.total_ms)}</div>
+                  {/* 读体超过 0.5 秒才提示：多半是用户上行慢、上下文大 */}
+                  <div className="muted">{t('总耗时', 'Total')} {seconds(r.total_ms)}{(r.read_ms ?? 0) >= 500 && ` · ${t('读体', 'upload')} ${seconds(r.read_ms!)}`}</div>
                 </div>
               )
             },
@@ -347,7 +352,13 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
             <Descriptions.Item label={t('输出（含推理）', 'Output (incl. reasoning)')}>
               {detail.output_tokens.toLocaleString()}（{t('推理', 'reasoning')} {detail.reasoning_tokens.toLocaleString()}）
             </Descriptions.Item>
-            <Descriptions.Item label={t('首字 / 总耗时', 'First byte / total')}>{detail.first_byte_ms} ms / {detail.total_ms} ms</Descriptions.Item>
+            {detail.upstream_start_ms ? <>
+              <Descriptions.Item label={t('读体', 'Request upload')}>{secs2(detail.read_ms ?? 0)}<span className="muted">{t('（接收客户端请求体）', ' (receiving the request body)')}</span></Descriptions.Item>
+              <Descriptions.Item label={t('网关处理', 'Gateway')}>{secs2(detail.upstream_start_ms - (detail.read_ms ?? 0))}<span className="muted">{t('（鉴权、选渠道、预扣、换渠道重试）', ' (auth, routing, hold, retries)')}</span></Descriptions.Item>
+              {detail.first_byte_ms > 0 && <Descriptions.Item label={t('首字', 'First token')}>{secs2(firstToken(detail))}<span className="muted">{t('（发给上游后）', ' (after sending upstream)')}</span></Descriptions.Item>}
+              <Descriptions.Item label={t('转发', 'Upstream')}>{secs2(detail.total_ms - detail.upstream_start_ms)}<span className="muted">{t('（发给上游到传完）', ' (send to finish)')}</span></Descriptions.Item>
+              <Descriptions.Item label={t('总耗时', 'Total')}>{secs2(detail.total_ms)}</Descriptions.Item>
+            </> : <Descriptions.Item label={t('首字 / 总耗时', 'First byte / total')}>{detail.first_byte_ms} ms / {detail.total_ms} ms</Descriptions.Item>}
             <Descriptions.Item label={t('计价', 'Pricing')}>
               {detail.price_rule ? <Tag color="purple">{detail.price_rule}</Tag> : t('基础价', 'Base price')}
               {detail.service_tier === 'fast' && <Tag color="orange">{t('Fast 价', 'Fast price')}</Tag>}

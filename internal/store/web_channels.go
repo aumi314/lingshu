@@ -293,7 +293,9 @@ type LogEntry struct {
 	CreatedAt        time.Time       `json:"created_at"`
 	ClientIP         string          `json:"client_ip"`
 	ReasoningEffort  string          `json:"reasoning_effort"`
-	ServiceTier      string          `json:"service_tier"` // '' 标准、fast、fast_downgraded、unavailable
+	ServiceTier      string          `json:"service_tier"`      // '' 标准、fast、fast_downgraded、unavailable
+	ReadMS           int             `json:"read_ms"`           // 读请求体用时，旧日志为 0
+	UpstreamStartMS  int             `json:"upstream_start_ms"` // 发出最终上游请求的时刻（从进入网关算），旧日志为 0
 }
 
 type LogSummary struct {
@@ -365,7 +367,8 @@ func (s *Store) ListLogs(ctx context.Context, f LogFilter) ([]LogEntry, LogSumma
 		       l.upstream_model, COALESCE(NULLIF(l.channel_name, ''), c.name, ''), l.stream, l.status, l.http_status, l.error,
 		       l.input_tokens, l.cache_read_tokens, l.cache_write_tokens, l.output_tokens, l.reasoning_tokens,
 		       l.usage_estimated, l.group_ratio::text, l.cost::text, l.attempts, l.first_byte_ms, l.total_ms, l.created_at,
-		       l.price_rule, l.input_price::text, l.output_price::text, l.client_ip, l.reasoning_effort, l.service_tier
+		       l.price_rule, l.input_price::text, l.output_price::text, l.client_ip, l.reasoning_effort, l.service_tier,
+		       l.read_ms, l.upstream_start_ms
 		FROM request_logs l
 		JOIN users u ON u.id = l.user_id
 		LEFT JOIN api_keys k ON k.id = l.api_key_id
@@ -382,7 +385,8 @@ func (s *Store) ListLogs(ctx context.Context, f LogFilter) ([]LogEntry, LogSumma
 			&e.UpstreamModel, &e.ChannelName, &e.Stream, &e.Status, &e.HTTPStatus, &e.Error,
 			&e.InputTokens, &e.CacheReadTokens, &e.CacheWriteTokens, &e.OutputTokens, &e.ReasoningTokens,
 			&e.UsageEstimated, &ratio, &cost, &e.Attempts, &e.FirstByteMS, &e.TotalMS, &e.CreatedAt,
-			&e.PriceRule, &inPrice, &outPrice, &e.ClientIP, &e.ReasoningEffort, &e.ServiceTier)
+			&e.PriceRule, &inPrice, &outPrice, &e.ClientIP, &e.ReasoningEffort, &e.ServiceTier,
+			&e.ReadMS, &e.UpstreamStartMS)
 		e.GroupRatio, e.Cost = mustDecimal(ratio), mustDecimal(cost)
 		e.InputPrice, e.OutputPrice = mustDecimal(inPrice), mustDecimal(outPrice)
 		return e, err
