@@ -33,9 +33,12 @@ type Tracker struct {
 	proto      Protocol
 	fields     map[string]int64
 	ResponseID string // responses 协议的响应 id，用于 previous_response_id 粘渠道
-	Terminal   bool   // 是否看到了正常结束的标志
-	Failed     bool   // 上游在流里报告了失败
-	estOutput  int64  // 已收到的生成内容粗估的 token 数，上游没给 usage 时兜底
+	// ServiceTier 是 OpenAI 响应里实际处理用的档位（chat / responses 的 service_tier），取最后出现的值；
+	// Fast 请求被上游降回标准时是 "default"，此时按标准价计费
+	ServiceTier string
+	Terminal    bool  // 是否看到了正常结束的标志
+	Failed      bool  // 上游在流里报告了失败
+	estOutput   int64 // 已收到的生成内容粗估的 token 数，上游没给 usage 时兜底
 }
 
 // EstimatedOutput 返回按已收到内容粗估的输出 token 数。
@@ -126,16 +129,25 @@ func (t *Tracker) observeUsage(u *rawUsage) {
 	}
 }
 
+// observeTier 只记 OpenAI 协议的档位；messages 的 service_tier 是 Anthropic 的另一套含义，不看。
+func (t *Tracker) observeTier(tier string) {
+	if tier != "" && (t.proto == Chat || t.proto == Responses) {
+		t.ServiceTier = tier
+	}
+}
+
 // ObserveBody 处理非流式响应的完整 JSON。
 func (t *Tracker) ObserveBody(body []byte) {
 	var v struct {
-		ID    string    `json:"id"`
-		Usage *rawUsage `json:"usage"`
+		ID          string    `json:"id"`
+		Usage       *rawUsage `json:"usage"`
+		ServiceTier string    `json:"service_tier"`
 	}
 	if json.Unmarshal(body, &v) != nil {
 		return
 	}
 	t.observeUsage(v.Usage)
+	t.observeTier(v.ServiceTier)
 	t.estOutput = estimateOutput(body)
 	if t.proto == SystemOne {
 		var decision struct {
@@ -161,14 +173,16 @@ func (t *Tracker) ObserveEvent(data []byte) {
 		return
 	}
 	var v struct {
-		Type    string    `json:"type"`
-		Usage   *rawUsage `json:"usage"`
-		Message *struct {
+		Type        string    `json:"type"`
+		Usage       *rawUsage `json:"usage"`
+		ServiceTier string    `json:"service_tier"`
+		Message     *struct {
 			Usage *rawUsage `json:"usage"`
 		} `json:"message"`
 		Response *struct {
-			ID    string    `json:"id"`
-			Usage *rawUsage `json:"usage"`
+			ID          string    `json:"id"`
+			Usage       *rawUsage `json:"usage"`
+			ServiceTier string    `json:"service_tier"`
 		} `json:"response"`
 	}
 	if json.Unmarshal(data, &v) != nil {
@@ -181,6 +195,7 @@ func (t *Tracker) ObserveEvent(data []byte) {
 	switch t.proto {
 	case Chat:
 		t.observeUsage(v.Usage)
+		t.observeTier(v.ServiceTier)
 	case Messages:
 		if v.Message != nil {
 			t.observeUsage(v.Message.Usage)
@@ -198,6 +213,7 @@ func (t *Tracker) ObserveEvent(data []byte) {
 				t.ResponseID = v.Response.ID
 			}
 			t.observeUsage(v.Response.Usage)
+			t.observeTier(v.Response.ServiceTier)
 		}
 		switch v.Type {
 		case "response.completed", "response.incomplete":

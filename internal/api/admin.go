@@ -423,6 +423,10 @@ func (s *Server) saveModel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if k := m.FastMultiplier; k != nil && (!k.IsPositive() || k.GreaterThan(decimal.NewFromInt(100))) {
+		writeError(w, http.StatusBadRequest, "Fast 倍率要大于 0、不超过 100；不开放 Fast 就留空")
+		return
+	}
 	rules, err := billing.Normalize(m.PriceRules)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())

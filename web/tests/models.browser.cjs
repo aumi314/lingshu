@@ -21,14 +21,17 @@ const fs = require('node:fs')
     const priced = (group_id, name) => ({ group_id, name, protocols: ['chat'], input_price: '1', output_price: '2', cache_read_price: '0', cache_write_price: '0', price_rules: [] })
     // 故意打乱：期望按厂商（Anthropic → OpenAI → DeepSeek → 智谱 → 未识别）排列，同厂商内自然排序
     const names = ['GLM-5.10', 'deepseek-v4.1-flash', 'gpt-6-sol', 'unknown-model', 'GLM-5.3', 'claude-sonnet-5-5']
-    const models = [...names.map((n) => priced(1, n)), priced(8, 'gpt-6-sol')]
+    const longRule = { name: '长上下文', input_above: 272000, input_price: '4', output_price: '15', cache_read_price: '0.4', cache_write_price: '0' }
+    const models = [...names.map((n) => priced(1, n)), { ...priced(8, 'gpt-6-sol'), price_rules: [longRule], fast_multiplier: '2' }]
+    let savedModel = null
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
     await page.route('**/api/**', (route) => {
       const p = new URL(route.request().url()).pathname
       const json = (b) => route.fulfill({ json: b })
       if (p === '/api/me') return json({ user: { id: 1, username: 'admin', role: 'admin', balance: '5', enabled: true, user_group_ids: [1], preferences: { theme: 'dark', language: 'zh' }, created_at: '2026-10-25' }, cny_per_usd: '6.7' })
       if (p === '/api/me/models') return json({ groups, models })
-      if (p === '/api/admin/models') return json(names.map((n, i) => ({ id: i + 1, name: n, input_price: '1', output_price: '2', cache_read_price: '0', cache_write_price: '0', price_rules: [] })))
+      if (p.startsWith('/api/admin/models/') && route.request().method() === 'PUT') { savedModel = route.request().postDataJSON(); return json(savedModel) }
+      if (p === '/api/admin/models') return json(names.map((n, i) => ({ id: i + 1, name: n, input_price: '1', output_price: '2', cache_read_price: '0', cache_write_price: '0', price_rules: [], fast_multiplier: n === 'gpt-6-sol' ? '2.0000' : null })))
       if (p === '/api/admin/groups') return json(groups)
       if (p === '/api/admin/user-groups') return json([{ id: 1, name: 'default', is_default: true }])
       return json([])
@@ -51,11 +54,26 @@ const fs = require('node:fs')
     await page.reload()
     await page.getByText(/价格已按倍率 ×0.5 算好/).waitFor()
     assert.deepEqual(await rowNames(), ['gpt-6-sol'])
+    // GPT Fast：模型名旁标倍率；展开后列出 Fast 价，长上下文规则价同样 ×2
+    await page.getByText('Fast ×2', { exact: true }).waitFor()
+    await page.locator('.ant-table-row-expand-icon').first().click()
+    const fastLong = page.locator('div').filter({ has: page.getByText(/^Fast · 输入超过 272,000 tokens$/) }).last()
+    assert.match(await fastLong.innerText(), /输入 \$8 · 输出 \$30/)
 
     // 管理端定价页同样按厂商排列；服务分组可拖拽排序
     await page.goto('http://127.0.0.1:25186/console/admin/pricing')
     await page.getByText('claude-sonnet-5-5', { exact: true }).waitFor()
     assert.deepEqual(await rowNames(), expected)
+    // 管理端：Fast 列显示倍率；清空倍率保存后提交 null（不开放）
+    const gptRow = page.locator('tbody tr').filter({ hasText: 'gpt-6-sol' })
+    await gptRow.getByText('×2', { exact: true }).waitFor()
+    await gptRow.getByRole('button', { name: '编辑' }).click()
+    const fastInput = page.locator('#fast_multiplier')
+    assert.equal(await fastInput.inputValue(), '2')
+    await fastInput.fill('')
+    await page.getByRole('dialog').getByRole('button', { name: /保\s*存/ }).click()
+    for (let i = 0; i < 100 && !savedModel; i++) await page.waitForTimeout(30)
+    assert.equal(savedModel.fast_multiplier, null)
     if (process.env.MODELS_SCREENSHOT_DIR) {
       fs.mkdirSync(process.env.MODELS_SCREENSHOT_DIR, { recursive: true })
       await page.screenshot({ path: path.join(process.env.MODELS_SCREENSHOT_DIR, 'pricing.png') })
@@ -69,7 +87,7 @@ const fs = require('node:fs')
       await page.getByText('claude-sonnet-5-5', { exact: true }).waitFor()
       await page.screenshot({ path: path.join(process.env.MODELS_SCREENSHOT_DIR, 'models.png') })
     }
-    console.log('PASS: group selector label, ratio tag only when not 1, model counts, group in URL, vendor order on member and admin pages, group drag handle')
+    console.log('PASS: group selector label, ratio tag only when not 1, model counts, group in URL, vendor order on member and admin pages, GPT Fast prices incl. long context, admin Fast multiplier cleared to null, group drag handle')
   } finally {
     await browser.close()
     server.kill()

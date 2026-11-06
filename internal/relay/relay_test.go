@@ -911,3 +911,69 @@ func TestUsageReportsBalanceAndKeyQuota(t *testing.T) {
 		t.Fatalf("无效 key 应 401: %d", code)
 	}
 }
+
+// GPT 的 Fast：模型没开放就去掉档位按标准；开放了在规则价（长上下文）上再乘倍率；被上游降级按标准；只看 OpenAI 协议。
+func TestGPTFastTier(t *testing.T) {
+	e := newEnv(t)
+	var gotTier atomic.Value // 上游收到的 service_tier，没有时为 "-"
+	respTier := "priority"   // 上游在响应里报告的实际档位
+	e.upstream = func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		tier, ok := body["service_tier"].(string)
+		if !ok {
+			tier = "-"
+		}
+		gotTier.Store(tier)
+		if strings.HasSuffix(r.URL.Path, "/responses") {
+			sse(w, `{"type":"response.created","response":{"id":"resp_f","service_tier":"priority"}}`,
+				fmt.Sprintf(`{"type":"response.completed","response":{"id":"resp_f","service_tier":%q,"usage":{"input_tokens":1000,"output_tokens":500,"input_tokens_details":{"cached_tokens":200}}}}`, respTier))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"service_tier":%q,"choices":[{"message":{"content":"hi"}}],"usage":{"prompt_tokens":1000,"completion_tokens":500,"prompt_tokens_details":{"cached_tokens":200}}}`, respTier)
+	}
+	call := func(path, body string) (cost decimal.Decimal, tier, upstreamTier string) {
+		t.Helper()
+		resp := e.post(path, body, nil)
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		id := resp.Header.Get("X-Lingshu-Request-Id")
+		cost, _ = e.cost(id)
+		e.store.Pool.QueryRow(context.Background(), `SELECT service_tier FROM request_logs WHERE request_id = $1`, id).Scan(&tier)
+		return cost, tier, gotTier.Load().(string)
+	}
+	std, long := decimal.RequireFromString("0.00182"), decimal.RequireFromString("0.00364")
+
+	// 没开放 Fast：去掉档位，按标准价
+	if c, tier, up := call("/v1/chat/completions", `{"model":"std-chat","service_tier":"priority"}`); !c.Equal(std) || tier != "unavailable" || up != "-" {
+		t.Fatalf("未开放：cost %s tier %q 上游档位 %q", c, tier, up)
+	}
+
+	// 开放 ×2，并且命中长上下文规则（总输入 1000 > 999）：规则价 0.00364 × 2
+	e.exec(`UPDATE models SET fast_multiplier = 2, price_rules = '[{"name":"长上下文","input_above":999,"input_price":"2","output_price":"4","cache_read_price":"0.2","cache_write_price":"0"}]' WHERE name = 'std-chat'`)
+	if c, tier, up := call("/v1/chat/completions", `{"model":"std-chat","service_tier":"fast"}`); !c.Equal(long.Mul(decimal.NewFromInt(2))) || tier != "fast" || up != "fast" {
+		t.Fatalf("Fast + 长上下文：cost %s tier %q 上游档位 %q", c, tier, up)
+	}
+	var inPrice string
+	e.store.Pool.QueryRow(context.Background(), `SELECT input_price::text FROM request_logs ORDER BY id DESC LIMIT 1`).Scan(&inPrice)
+	if !decimal.RequireFromString(inPrice).Equal(decimal.NewFromInt(4)) {
+		t.Errorf("日志应记 Fast 后的生效单价 4，实际 %s", inPrice)
+	}
+	// responses 流式：以 response.completed 里的档位为准
+	if c, tier, _ := call("/v1/responses", `{"model":"std-chat","stream":true,"service_tier":"priority","input":"hi"}`); !c.Equal(long.Mul(decimal.NewFromInt(2))) || tier != "fast" {
+		t.Fatalf("responses Fast：cost %s tier %q", c, tier)
+	}
+	// 上游降回标准：按标准（规则）价
+	respTier = "default"
+	if c, tier, _ := call("/v1/responses", `{"model":"std-chat","stream":true,"service_tier":"priority","input":"hi"}`); !c.Equal(long) || tier != "fast_downgraded" {
+		t.Fatalf("降级：cost %s tier %q", c, tier)
+	}
+	// 没要 Fast 的请求不加价；Ultrafast 不开放，去掉档位
+	if c, tier, up := call("/v1/chat/completions", `{"model":"std-chat"}`); !c.Equal(long) || tier != "" || up != "-" {
+		t.Fatalf("标准请求：cost %s tier %q 上游档位 %q", c, tier, up)
+	}
+	if c, tier, up := call("/v1/chat/completions", `{"model":"std-chat","service_tier":"ultrafast"}`); !c.Equal(long) || tier != "unavailable" || up != "-" {
+		t.Fatalf("Ultrafast：cost %s tier %q 上游档位 %q", c, tier, up)
+	}
+}

@@ -450,19 +450,22 @@ type Model struct {
 	CacheReadPrice  decimal.Decimal     `json:"cache_read_price"`
 	CacheWritePrice decimal.Decimal     `json:"cache_write_price"`
 	PriceRules      []billing.PriceRule `json:"price_rules"`
+	FastMultiplier  *decimal.Decimal    `json:"fast_multiplier"` // GPT Fast 计费倍数，nil 表示不开放
 }
 
 func (s *Store) ListModels(ctx context.Context) ([]Model, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT id, name, input_price::text, output_price::text, cache_read_price::text,
-		cache_write_price::text, price_rules FROM models ORDER BY name`)
+		cache_write_price::text, price_rules, fast_multiplier::text FROM models ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Model, error) {
 		var m Model
 		var in, out, cr, cw string
-		err := r.Scan(&m.ID, &m.Name, &in, &out, &cr, &cw, &m.PriceRules)
+		var fast *string
+		err := r.Scan(&m.ID, &m.Name, &in, &out, &cr, &cw, &m.PriceRules, &fast)
 		m.InputPrice, m.OutputPrice, m.CacheReadPrice, m.CacheWritePrice = mustDecimal(in), mustDecimal(out), mustDecimal(cr), mustDecimal(cw)
+		m.FastMultiplier = optDecimal(fast)
 		return m, err
 	})
 }
@@ -471,16 +474,16 @@ func (s *Store) SaveModel(ctx context.Context, m *Model) error {
 	if m.PriceRules == nil {
 		m.PriceRules = []billing.PriceRule{}
 	}
-	args := []any{m.Name, m.InputPrice.String(), m.OutputPrice.String(), m.CacheReadPrice.String(), m.CacheWritePrice.String(), m.PriceRules}
+	args := []any{m.Name, m.InputPrice.String(), m.OutputPrice.String(), m.CacheReadPrice.String(), m.CacheWritePrice.String(), m.PriceRules, decimalArg(m.FastMultiplier)}
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		return track(ctx, tx, modelEntity, &m.ID, 0, func() error {
 			if m.ID == 0 {
-				err := tx.QueryRow(ctx, `INSERT INTO models (name, input_price, output_price, cache_read_price, cache_write_price, price_rules)
-					VALUES ($1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6) RETURNING id`, args...).Scan(&m.ID)
+				err := tx.QueryRow(ctx, `INSERT INTO models (name, input_price, output_price, cache_read_price, cache_write_price, price_rules, fast_multiplier)
+					VALUES ($1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6, $7::numeric) RETURNING id`, args...).Scan(&m.ID)
 				return translate(err)
 			}
 			return execOne(ctx, tx, `UPDATE models SET name = $2, input_price = $3::numeric, output_price = $4::numeric,
-				cache_read_price = $5::numeric, cache_write_price = $6::numeric, price_rules = $7 WHERE id = $1`, append([]any{m.ID}, args...)...)
+				cache_read_price = $5::numeric, cache_write_price = $6::numeric, price_rules = $7, fast_multiplier = $8::numeric WHERE id = $1`, append([]any{m.ID}, args...)...)
 		})
 	})
 }
@@ -503,6 +506,8 @@ type PricedModel struct {
 	CacheRead  decimal.Decimal     `json:"cache_read_price"`
 	CacheWrite decimal.Decimal     `json:"cache_write_price"`
 	PriceRules []billing.PriceRule `json:"price_rules"` // 价格同样已乘倍率
+	// FastMultiplier：开放 GPT Fast 时的计费倍数（乘在上面任一单价上，含规则价），nil 表示不开放
+	FastMultiplier *decimal.Decimal `json:"fast_multiplier"`
 }
 
 // PricedModels 返回这些分组下可用的模型和协议，价格是分组倍率之后的实际单价。
@@ -516,7 +521,7 @@ func (s *Store) PricedModels(ctx context.Context, groupIDs []int64) ([]PricedMod
 		           CASE WHEN bool_or(c.base_url_systemone <> '') THEN 'systemone' END], NULL),
 		       (m.input_price * g.ratio)::text, (m.output_price * g.ratio)::text,
 		       (m.cache_read_price * g.ratio)::text, (m.cache_write_price * g.ratio)::text,
-		       m.price_rules, g.ratio::text
+		       m.price_rules, g.ratio::text, m.fast_multiplier::text
 		FROM models m
 		JOIN channel_models cm ON cm.model_id = m.id
 		JOIN channels c ON c.id = cm.channel_id AND c.enabled
@@ -531,7 +536,9 @@ func (s *Store) PricedModels(ctx context.Context, groupIDs []int64) ([]PricedMod
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (PricedModel, error) {
 		var p PricedModel
 		var in, out, cr, cw, ratio string
-		err := r.Scan(&p.GroupID, &p.Name, &p.Protocols, &in, &out, &cr, &cw, &p.PriceRules, &ratio)
+		var fast *string
+		err := r.Scan(&p.GroupID, &p.Name, &p.Protocols, &in, &out, &cr, &cw, &p.PriceRules, &ratio, &fast)
+		p.FastMultiplier = optDecimal(fast)
 		p.Input, p.Output, p.CacheRead, p.CacheWrite = mustDecimal(in), mustDecimal(out), mustDecimal(cr), mustDecimal(cw)
 		if err == nil {
 			k := mustDecimal(ratio)

@@ -76,6 +76,8 @@ type Route struct {
 	UpstreamModel string
 	Prices        billing.Prices
 	PriceRules    []billing.PriceRule
+	// FastMultiplier 是模型开放 GPT Fast 时的计费倍数，nil 表示不开放
+	FastMultiplier *decimal.Decimal
 }
 
 // 协议到渠道地址列的映射；列名只来自这里，不拼接外部输入。
@@ -94,7 +96,8 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 	}
 	rows, err := s.Pool.Query(ctx, fmt.Sprintf(`
 		SELECT c.id, c.name, c.%[1]s, c.api_key, c.proxy_url, COALESCE(NULLIF(cm.upstream_name, ''), m.name),
-		       m.input_price::text, m.output_price::text, m.cache_read_price::text, m.cache_write_price::text, m.price_rules
+		       m.input_price::text, m.output_price::text, m.cache_read_price::text, m.cache_write_price::text, m.price_rules,
+		       m.fast_multiplier::text
 		FROM models m
 		JOIN channel_models cm ON cm.model_id = m.id
 		JOIN channels c ON c.id = cm.channel_id
@@ -107,10 +110,12 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Route, error) {
 		var rt Route
 		var in, out, cr, cw string
+		var fast *string
 		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.BaseURL, &rt.APIKey, &rt.ProxyURL, &rt.UpstreamModel, &in, &out, &cr, &cw,
-			&rt.PriceRules); err != nil {
+			&rt.PriceRules, &fast); err != nil {
 			return rt, err
 		}
+		rt.FastMultiplier = optDecimal(fast)
 		rt.Prices = billing.Prices{Input: mustDecimal(in), Output: mustDecimal(out), CacheRead: mustDecimal(cr), CacheWrite: mustDecimal(cw)}
 		return rt, nil
 	})
@@ -176,6 +181,7 @@ type RequestLog struct {
 	GroupName          string
 	ClientIP           string
 	ReasoningEffort    string
+	ServiceTier        string // 档位结果：'' 标准、fast、fast_downgraded、unavailable（见迁移 0025）
 	Protocol           string
 	Model              string
 	UpstreamModel      string
@@ -220,15 +226,17 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 				stream, status, http_status, error,
 				input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, reasoning_tokens, usage_estimated,
 				input_price, output_price, cache_read_price, cache_write_price, group_ratio, cost,
-				attempts, first_byte_ms, total_ms, upstream_response_id, channel_name, key_name, price_rule, group_name, client_ip, reasoning_effort
+				attempts, first_byte_ms, total_ms, upstream_response_id, channel_name, key_name, price_rule, group_name, client_ip, reasoning_effort,
+				service_tier
 			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34)`,
+			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35)`,
 			l.RequestID, l.UserID, l.APIKeyID, l.GroupID, l.Protocol, l.Model, l.UpstreamModel, channelID,
 			l.Stream, l.Status, l.HTTPStatus, l.Error,
 			l.InputTokens, l.CacheReadTokens, l.CacheWriteTokens, l.OutputTokens, l.ReasoningTokens, l.UsageEstimated,
 			l.Prices.Input.String(), l.Prices.Output.String(), l.Prices.CacheRead.String(), l.Prices.CacheWrite.String(),
 			ratio.String(), l.Cost.String(),
 			l.Attempts, l.FirstByteMS, l.TotalMS, l.UpstreamResponseID, l.ChannelName, l.KeyName, l.PriceRule, l.GroupName, l.ClientIP, l.ReasoningEffort,
+			l.ServiceTier,
 		); err != nil {
 			return fmt.Errorf("写请求日志: %w", err)
 		}

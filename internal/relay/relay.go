@@ -89,6 +89,9 @@ type call struct {
 
 	basePrices billing.Prices // 模型基础价，结算时按价格规则换成实际单价
 	rules      []billing.PriceRule
+
+	fastMultiplier decimal.Decimal // 原样转发了 GPT Fast 请求时的计费倍数，0 表示标准请求
+	dropTier       bool            // 模型没开放客户端要的高速档位：转发前去掉 service_tier
 }
 
 func (h *Handler) Serve(proto usage.Protocol) http.HandlerFunc {
@@ -172,6 +175,17 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 	}
 	c.log.GroupRatio = owner.GroupRatio
 
+	// GPT 的 Fast（docs/decisions.md「GPT Fast 计费」）：只看 OpenAI 协议的 service_tier。
+	// 模型开放了 Fast 就原样转发、按倍率计费；没开放（或要的是 Ultrafast）就去掉档位，按标准处理，不让上游按高价收费而我们按标准价扣
+	if req.premiumTier != "" && (c.proto == usage.Chat || c.proto == usage.Responses) {
+		if m := ordered[0].FastMultiplier; req.premiumTier == "fast" && m != nil {
+			c.fastMultiplier = *m
+		} else {
+			c.dropTier = true
+			c.log.ServiceTier = "unavailable"
+		}
+	}
+
 	// 预扣：按最大可能费用冻结额度，可用余额不够就拒绝；结算时解冻并按实际扣费（finish → SettleRequest）
 	// 输出按“请求写的上限”和“预扣上限”取小：Claude Code 等常写 3–6 万，实际回复多为几千，
 	// 全额冻结会让余额不多的用户几乎无法并发；超过预扣上限的部分在结算时按实际扣（有界的小额透支）。
@@ -186,6 +200,9 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 	// 长上下文 + 高缓存命中时会高估几十倍（实测 $1.22 对实际 $0.02），把余额不多的正常用户拦住
 	if recent, n, err := h.Store.RecentMaxCost(r.Context(), owner.UserID, req.model); err == nil && n > 0 {
 		reserve = decimal.Min(reserve, recent.Mul(decimal.NewFromInt(2)))
+	}
+	if c.fastMultiplier.IsPositive() {
+		reserve = reserve.Mul(c.fastMultiplier) // 历史多是标准请求，封顶后再乘，Fast 请求的冻结额同样够
 	}
 	if reserve.IsPositive() {
 		held, available, err := h.Store.Reserve(r.Context(), owner.UserID, reserve)
@@ -314,7 +331,7 @@ func (c *call) useRoute(route store.Route, attempt int) {
 
 // attempt 向一个渠道发请求。返回 nil 表示响应已经交给客户端（或用户已断开），否则返回可重试的失败。
 func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route store.Route, req *request) *failure {
-	body, injected := req.bodyFor(c.proto, route.UpstreamModel)
+	body, injected := req.bodyFor(c.proto, route.UpstreamModel, c.dropTier)
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel() // 返回时（包括客户端断开）立刻取消上游请求
 
@@ -491,6 +508,16 @@ func (h *Handler) finish(reqCtx context.Context, c *call) {
 	// 价格规则（阶梯、分时段）：按实际用量和请求开始时间选出单价，日志记的是生效的单价和规则名
 	if c.log.ChannelID != 0 {
 		c.log.Prices, c.log.PriceRule = billing.Select(c.basePrices, c.rules, u, c.start)
+		// Fast 在规则选出的单价（含长上下文价）上再乘倍率。以响应里的实际档位为准：被上游降回标准（default）按标准价；
+		// 响应没写档位（有的中转会去掉）按请求的档位算
+		if c.fastMultiplier.IsPositive() {
+			if t := c.tracker.ServiceTier; t == "" || premiumTier(t) == "fast" {
+				c.log.Prices = c.log.Prices.Scale(c.fastMultiplier)
+				c.log.ServiceTier = "fast"
+			} else {
+				c.log.ServiceTier = "fast_downgraded"
+			}
+		}
 	}
 	if c.log.Status == "success" || c.log.Status == "client_cancelled" {
 		c.log.Cost = billing.Cost(u, c.log.Prices, c.log.GroupRatio)

@@ -71,7 +71,8 @@ var (
 	userGroupEntity = entity{"user_group", "name", `SELECT jsonb_build_object('name', name) FROM user_groups WHERE id = $1`, nil}
 	modelEntity     = entity{"model", "name", `
 		SELECT jsonb_build_object('name', name, 'input_price', input_price::text, 'output_price', output_price::text,
-		       'cache_read_price', cache_read_price::text, 'cache_write_price', cache_write_price::text, 'price_rules', price_rules)
+		       'cache_read_price', cache_read_price::text, 'cache_write_price', cache_write_price::text, 'price_rules', price_rules,
+		       'fast_multiplier', fast_multiplier::text)
 		FROM models WHERE id = $1`, nil}
 	// 代理地址里可能带账号密码，快照前遮掉
 	channelEntity = entity{"channel", "name", `

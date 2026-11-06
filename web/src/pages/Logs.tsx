@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 import { get, type LogEntry, type ActivityLogsResponse, type OperationLogsResponse, type RequestActivity, type User } from '../api'
 import { priceText, tokens, useApp } from '../app'
 import { paymentNames, type OrderList, type Topup } from '../payment'
+import { tierText } from '../pricing'
 import OperationLogTable, { targetLabel, targetTypes } from './OperationLogs'
 
 type Tab = 'calls' | 'operations' | 'orders' // 充值订单只给管理员
@@ -149,7 +150,8 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
             render: (_, r) => (
               <div className="nowrap">
                 <span className="mono">{r.model}</span>
-                <div className="muted">{[protocolLabel[r.protocol] ?? r.protocol, r.stream ? t('流式', 'stream') : t('非流式', 'non-stream'), r.reasoning_effort].filter(Boolean).join(' · ')}</div>
+                {r.service_tier === 'fast' && <Tag color="orange" style={{ marginLeft: 6 }}>Fast</Tag>}
+                <div className="muted">{[protocolLabel[r.protocol] ?? r.protocol, r.stream ? t('流式', 'stream') : t('非流式', 'non-stream'), r.reasoning_effort, r.service_tier !== 'fast' && tierText(r.service_tier, t)].filter(Boolean).join(' · ')}</div>
               </div>
             ),
           },
@@ -326,6 +328,7 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
             <Descriptions.Item label={t('服务分组 / 倍率', 'Service group / ratio')}>{detail.group_name} ×{Number(detail.group_ratio)}</Descriptions.Item>
             <Descriptions.Item label={t('协议', 'Protocol')}>{detail.protocol}{detail.stream ? t('（流式）', ' (stream)') : ''}</Descriptions.Item>
             <Descriptions.Item label={t('推理强度', 'Reasoning effort')}>{detail.reasoning_effort || '—'}</Descriptions.Item>
+            {detail.service_tier && <Descriptions.Item label={t('速度档位', 'Speed tier')}>{tierText(detail.service_tier, t)}</Descriptions.Item>}
             <Descriptions.Item label={t('模型', 'Model')}>{detail.model}</Descriptions.Item>
             {admin && <Descriptions.Item label={t('渠道 / 上游模型', 'Channel / upstream model')}>{detail.channel_name || '-'} / {detail.upstream_model || '-'}</Descriptions.Item>}
             {admin && <Descriptions.Item label={t('尝试次数', 'Attempts')}>{detail.attempts}</Descriptions.Item>}
@@ -347,6 +350,7 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
             <Descriptions.Item label={t('首字 / 总耗时', 'First byte / total')}>{detail.first_byte_ms} ms / {detail.total_ms} ms</Descriptions.Item>
             <Descriptions.Item label={t('计价', 'Pricing')}>
               {detail.price_rule ? <Tag color="purple">{detail.price_rule}</Tag> : t('基础价', 'Base price')}
+              {detail.service_tier === 'fast' && <Tag color="orange">{t('Fast 价', 'Fast price')}</Tag>}
               <span className="muted" style={{ marginLeft: 8 }}>
                 {t('输入', 'in')} {priceText(money, detail.input_price)} · {t('输出', 'out')} {priceText(money, detail.output_price)}
               </span>
