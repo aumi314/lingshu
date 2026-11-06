@@ -70,6 +70,7 @@ func mustDecimal(s string) decimal.Decimal {
 type Route struct {
 	ChannelID     int64
 	ChannelName   string
+	Template      string
 	BaseURL       string
 	APIKey        string
 	ProxyURL      string // 空表示直连
@@ -95,7 +96,7 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 		return nil, fmt.Errorf("未知协议 %q", protocol)
 	}
 	rows, err := s.Pool.Query(ctx, fmt.Sprintf(`
-		SELECT c.id, c.name, c.%[1]s, c.api_key, c.proxy_url, COALESCE(NULLIF(cm.upstream_name, ''), m.name),
+		SELECT c.id, c.name, c.template, c.%[1]s, c.api_key, c.proxy_url, COALESCE(NULLIF(cm.upstream_name, ''), m.name),
 		       m.input_price::text, m.output_price::text, m.cache_read_price::text, m.cache_write_price::text, m.price_rules,
 		       m.fast_multiplier::text
 		FROM models m
@@ -111,7 +112,7 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 		var rt Route
 		var in, out, cr, cw string
 		var fast *string
-		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.BaseURL, &rt.APIKey, &rt.ProxyURL, &rt.UpstreamModel, &in, &out, &cr, &cw,
+		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.Template, &rt.BaseURL, &rt.APIKey, &rt.ProxyURL, &rt.UpstreamModel, &in, &out, &cr, &cw,
 			&rt.PriceRules, &fast); err != nil {
 			return rt, err
 		}

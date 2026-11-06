@@ -308,3 +308,5 @@ GPT Fast 计费（2026-11-06 ✅ 已发布 DMIT）：模型加「Fast 倍率」�
 充值并入操作日志（2026-11-06）：日志只留调用日志、操作日志两个标签；发起在线充值记“发起充值”，订单状态实时关联（迁移 0027 补记已有订单）；去掉 `GET /api/admin/topups`。顺带修了按“兑换码”筛选操作日志报 400 的问题：接口白名单漏了 `redeem_code`。测试：`TestTopupOrdersInOperationLog` 取代原订单筛选测试；`activity-logs.browser.cjs` 改为检查只有两个标签、发起充值的实时状态和旧链接。规则见 `docs/decisions.md`「充值订单与兑换码」。
 
 渠道连接状态（2026-11-06）：渠道列表去掉模型列，加“连接状态”（最近 24 小时成功率与次数、首字和速度中位数、缓存命中率、冷却中）；调用日志新增 `failed_channel_ids`（迁移 0028），换渠道成功的请求也把前面失败的渠道计入失败。测试：`TestChannelStatsCountFailover`（换渠道、断流、原样 400、用户断开、首字 / 速度 / 缓存口径）；新增 `web/tests/channels.browser.cjs` 并加入 CI。口径见 `docs/decisions.md`「渠道连接状态」。下一步：渠道质量与智商。
+
+OpenCode Zen 原生渠道（PR 交付，未部署）：内置 `opencode-zen` 模板和独立 Go TLS 客户端，直连官方 Chat 入口，不依赖外置适配层。免费模型按模板补充编码上下文、工具声明和会话，非流式客户端收到完整 Chat JSON，沿用原有路由、计费和日志。测试覆盖参数与工具保留、用量、截断、工具误调用、取消、代理和证书校验；独立测试库 `make test`、`go vet`、程序构建、前端类型检查与构建通过。最终代码从 DMIT 临时验证程序直连 `deepseek-v4.1-flash-free` 的流式、非流式及冒烟测试均 HTTP 200，完整 usage 已读取；临时程序已清理，无线上配置改动。接入与维护范围见 [OpenCode Zen](research/opencode-zen.md)。
