@@ -246,6 +246,10 @@ NVIDIA 模板（2026-11-07）：新增 `nvidia` 模板（只有 Chat，`https://
 - 检测 12，kinght claude0.8 · claude-opus-5-5 完整档 67 分：协议规范通过（11 个响应全部符合官方格式）；大海捞针（约 10 万 token）上游流中报 “Upstream access forbidden”，渠道不支持长上下文；推理两次 0/2、系统提示“只回某词”两次都没守住，没有官方样本，暂记需关注。
 - 本地 Codex 0.160（Responses 协议，`model_auto_compact_token_limit=2000`）经灵枢触发两次自动压缩均成功：压缩请求走 `/v1/responses`、带 `remote_compaction_v2`，不调 `/responses/compact`，灵枢透传即可。Codex 启动时会请求 `gpt-5.6-luna`、`gpt-5.6-terra`，站内没有这两个模型，返回 404，不影响主流程。
 
+### 按质量调整 GPT 路由（2026-11-07）
+
+Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 都在优先级 0，同档随机，约三分之一请求落到咔咔。检测结论：ai8 两次 92、93 分（真 sol，但每个请求多注入约 1.4 万 token）；kinght 93、83、79 分（号池混用，部分会话像 luna / terra）；咔咔两次像 luna。经管理接口改为 ai8 优先级 10、咔咔停用（操作日志 76、77），kinght 保留 0 档兜底；改前后逐字段对比只有这两处变化。停用后 gpt-6-sol 只剩 kinght（14 天 2 次调用），其余 GPT 模型都有 ai8。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 改为自动发布前的手动发布记录
