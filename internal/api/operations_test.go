@@ -27,6 +27,7 @@ var operationExempt = map[string]string{
 	"PUT /api/admin/channels/order":                                "拖拽排序只影响列表显示",
 	"POST /api/admin/channels/fetch-models":                        "只读",
 	"POST /api/admin/channels/probe":                               "冒烟测试",
+	"POST /api/admin/probes":                                       "模型检测，结果存在检测记录（probe_runs）里",
 	"POST /api/admin/channels/{id}/balance":                        "余额查询",
 	"POST /api/admin/payments/{provider}/probe":                    "支付探测",
 	"POST /api/admin/payments/waffo_pancake/catalog":               "只读外部目录",

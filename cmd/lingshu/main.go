@@ -107,6 +107,10 @@ func serve() error {
 	if err := s.ResetReservations(ctx); err != nil {
 		return err
 	}
+	// 检测在内存里跑，重启后不会继续：上次没跑完的标成失败
+	if err := s.FailStaleProbeRuns(ctx); err != nil {
+		return err
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
