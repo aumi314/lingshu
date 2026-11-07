@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Alert, App, Button, Card, Col, Collapse, Empty, Form, Progress, Row, Segmented, Select, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
+import { Alert, App, Button, Card, Col, Collapse, Empty, Form, Modal, Progress, Row, Select, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
 import { CheckCircleFilled, CloseCircleFilled, ExclamationCircleFilled, InfoCircleFilled, LoadingOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { get, post, type Channel } from '../../api'
@@ -35,9 +35,8 @@ export default function Probes() {
   const [runs, setRuns] = useState<Run[]>([])
   const [selected, setSelected] = useState<Run | null>(null)
   const [starting, setStarting] = useState(false)
-  const [form] = Form.useForm<{ channel_id?: number; model?: string; baseline?: string; preset: 'quick' | 'full' }>()
+  const [form] = Form.useForm<{ channel_id?: number; model?: string }>()
   const channelID = Form.useWatch('channel_id', form)
-  const model = Form.useWatch('model', form)
 
   const statusText: Record<Status, string> = { pass: t('通过', 'Pass'), warn: t('需关注', 'Check'), fail: t('不通过', 'Fail'), info: t('参考', 'Info') }
 
@@ -67,16 +66,13 @@ export default function Probes() {
 
   const chatChannels = channels.filter((c) => c.base_url_chat && c.models.length > 0)
   const models = chatChannels.find((c) => c.id === channelID)?.models ?? []
-  // 对照型号默认和站内模型同名
-  useEffect(() => {
-    if (model && baselines.includes(model)) form.setFieldValue('baseline', model)
-  }, [model, baselines, form])
 
   const start = async () => {
     const v = await form.validateFields()
     setStarting(true)
     try {
-      const r = await post<{ id: number }>('/api/admin/probes', v)
+      // 只选渠道和模型：对照型号就是站内模型名（没有官方样本的模型选不了），默认快速档
+      const r = await post<{ id: number }>('/api/admin/probes', { channel_id: v.channel_id, model: v.model })
       message.success(t('检测已开始，后台运行，关掉页面也会跑完', 'Started; it keeps running in the background'))
       await loadRuns()
       await open(r.id)
@@ -92,33 +88,40 @@ export default function Probes() {
       <Typography.Title level={3} className="page-title">{t('模型检测', 'Model check')}</Typography.Title>
       <Typography.Paragraph type="secondary">
         {t(
-          '向渠道直接发一组检测题，和官方样本对比，看上游有没有换模型、降推理强度、注入内容。检测请求伪装成常见客户端、每次随机抽题，不走路由、不进调用日志、不扣用户余额；花费按站内价估算，由渠道承担。',
+          '选渠道和模型，向渠道直接发一组检测题，和同名官方型号的样本对比，看上游有没有换模型、降推理强度、注入内容。检测请求伪装成常见客户端、每次随机抽题，不走路由、不进调用日志、不扣用户余额；花费按站内价估算，由渠道承担。',
           'Sends a set of probe questions straight to the channel and compares the answers with official baselines. Probe requests bypass routing, are not logged as calls and are not charged to users.',
         )}
       </Typography.Paragraph>
 
       <Card style={{ marginBottom: 16 }}>
-        <Form form={form} layout="inline" initialValues={{ preset: 'quick' }} style={{ rowGap: 12 }}>
+        <Form form={form} layout="inline" style={{ rowGap: 12 }}>
           <Form.Item name="channel_id" label={t('渠道', 'Channel')} rules={[{ required: true, message: t('选择渠道', 'Pick a channel') }]}>
             <Select style={{ width: 220 }} showSearch optionFilterProp="label" onChange={() => form.setFieldValue('model', undefined)}
               options={chatChannels.map((c) => ({ value: c.id, label: c.name + (c.enabled ? '' : t('（已停用）', ' (disabled)')) }))} />
           </Form.Item>
           <Form.Item name="model" label={t('模型', 'Model')} rules={[{ required: true, message: t('选择模型', 'Pick a model') }]}>
-            <Select style={{ width: 220 }} showSearch disabled={!channelID}
-              options={models.map((m) => ({ value: m.model_name, label: m.upstream_name && m.upstream_name !== m.model_name ? `${m.model_name} ← ${m.upstream_name}` : m.model_name }))} />
-          </Form.Item>
-          <Form.Item name="baseline" label={<Tooltip title={t('和哪个官方型号比：渠道声称它是什么', 'Which official model the channel claims to be')}>{t('对照型号', 'Compare with')}</Tooltip>} rules={[{ required: true, message: t('选择对照型号', 'Pick a baseline') }]}>
-            <Select style={{ width: 180 }} options={baselines.map((m) => ({ value: m, label: m }))} />
-          </Form.Item>
-          <Form.Item name="preset">
-            <Segmented options={[{ value: 'quick', label: t('快速', 'Quick') }, { value: 'full', label: t('完整', 'Full') }]} />
+            <Select style={{ width: 280 }} showSearch disabled={!channelID}
+              options={models.map((m) => ({
+                value: m.model_name,
+                disabled: !baselines.includes(m.model_name), // 没有同名官方样本，无从对比
+                label: (m.upstream_name && m.upstream_name !== m.model_name ? `${m.model_name} ← ${m.upstream_name}` : m.model_name) + (baselines.includes(m.model_name) ? '' : t('（暂无官方样本）', ' (no baseline)')),
+              }))} />
           </Form.Item>
           <Button type="primary" loading={starting} onClick={start}>{t('开始检测', 'Start')}</Button>
         </Form>
         {baselines.length === 0 && <Alert style={{ marginTop: 12 }} type="warning" showIcon title={t('没有官方样本，无法检测', 'No baselines available')} />}
       </Card>
 
-      {selected && <Result run={selected} statusIcon={statusIcon} statusText={statusText} />}
+      <Modal
+        open={!!selected}
+        width={1180}
+        title={selected ? t(`检测结果 · ${selected.channel_name} · ${selected.model}`, `Result · ${selected.channel_name} · ${selected.model}`) : ''}
+        onCancel={() => setSelected(null)}
+        footer={<Button onClick={() => setSelected(null)}>{t('关闭', 'Close')}</Button>}
+        destroyOnHidden
+      >
+        {selected && <Result run={selected} statusIcon={statusIcon} statusText={statusText} />}
+      </Modal>
 
       <Card title={t('检测记录', 'History')} size="small">
         <Table<Run>
@@ -134,7 +137,6 @@ export default function Probes() {
             { title: t('时间', 'Time'), dataIndex: 'created_at', render: (v: string) => <span className="nowrap">{dayjs(v).format('MM-DD HH:mm')}</span> },
             { title: t('渠道', 'Channel'), dataIndex: 'channel_name' },
             { title: t('模型', 'Model'), render: (_, r) => <span className="mono">{r.model}</span> },
-            { title: t('对照', 'Baseline'), dataIndex: 'baseline', render: (v: string) => <span className="mono">{v}</span> },
             { title: t('得分', 'Score'), render: (_, r) => r.status === 'running' ? <RunningTag run={r} /> : r.status === 'failed' ? <Tag color="red">{t('失败', 'Failed')}</Tag> : <b>{r.score}%</b> },
             { title: t('结论', 'Verdict'), dataIndex: 'verdict', render: (v: string) => <span style={{ whiteSpace: 'normal' }}>{v || '—'}</span> },
             { title: t('花费', 'Cost'), dataIndex: 'cost', align: 'right', render: (v: string) => money(v, 4) },
@@ -159,16 +161,17 @@ function Result({ run, statusIcon, statusText }: { run: Run; statusIcon: Record<
   if (run.status === 'running') {
     const [done, total] = run.progress ?? [0, 0]
     return (
-      <Card style={{ marginBottom: 16 }}>
+      <div>
         <Space direction="vertical" style={{ width: '100%' }}>
           <Typography.Text>{t(`正在检测 ${run.channel_name} 的 ${run.model}（对照 ${run.baseline}）…`, `Checking ${run.model} on ${run.channel_name}…`)}</Typography.Text>
           <Progress percent={total ? Math.floor((done * 100) / total) : 0} status="active" format={() => `${done} / ${total || '?'}`} />
+          <Typography.Text type="secondary">{t('检测在后台运行，关掉这个窗口也会继续，跑完在检测记录里点开查看。', 'Runs in the background; you can close this window.')}</Typography.Text>
         </Space>
-      </Card>
+      </div>
     )
   }
   if (run.status === 'failed' || !r) {
-    return <Alert style={{ marginBottom: 16 }} type="error" showIcon title={t('检测失败', 'Check failed')} description={run.verdict} />
+    return <Alert type="error" showIcon title={t('检测失败', 'Check failed')} description={run.verdict} />
   }
   const color = r.score >= 85 ? '#52c41a' : r.score >= 60 ? '#faad14' : '#ff4d4f'
   const m = r.metrics
@@ -198,7 +201,7 @@ function Result({ run, statusIcon, statusText }: { run: Run; statusIcon: Record<
     </div>
   )
   return (
-    <Card style={{ marginBottom: 16 }}>
+    <div>
       <Row gutter={[24, 16]}>
         <Col xs={24} md={6} style={{ textAlign: 'center' }}>
           <Progress type="circle" percent={r.score} strokeColor={color} size={150} format={(p) => <span style={{ fontSize: 34, fontWeight: 600 }}>{p}%</span>} />
@@ -256,7 +259,7 @@ function Result({ run, statusIcon, statusText }: { run: Run; statusIcon: Record<
           ),
         }]}
       />
-    </Card>
+    </div>
   )
 }
 
