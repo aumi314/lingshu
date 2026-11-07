@@ -62,3 +62,21 @@
 
 - 官方 Claude 对照组从哪来：Claude 订阅账号（经 Magpie 之类本机网关）还是 Anthropic API key，需要用户提供。没有它，只能做第三节第一部分。
 - 签名回传验证的实测结果。
+
+## 五、官方对照（2026-11-07，OpenRouter 锁定 Anthropic）
+
+OpenRouter 上 claude-opus-5.5 的服务方是 Anthropic、AWS Bedrock、Google Vertex、Azure、Claude Platform on AWS，都是官方部署，上下文 100 万 token。请求体加 `"provider": {"only": ["anthropic"], "allow_fallbacks": false}` 可锁定 Anthropic。它把响应改成自己的格式，只能对照模型行为（答案、推理量、指令），不能对照协议格式。**花费高（Opus 输出 $20 / 百万 token），用前先跟用户说明预计花费。**
+
+用检测 12 原样的推理题和指令题重放（各 1 次，经 Chat 接口、`reasoning.effort: high`）：
+
+| 题 | 官方 Opus 5.5 | kinght claude0.8 |
+|---|---|---|
+| 递推难题（答案 74） | 74，推理 10878 token | 590，推理 356 |
+| 子集计数（答案 501） | 501，推理 2792 | 490，推理 2193 |
+| 系统提示“只回 vvv” | vvv | 2+3 = 5 |
+| 系统提示要求的结尾标记 | 有 | 有 |
+
+官方两道难题都对、守住系统提示；kinght 都错，递推题推理量约为官方的 1/30，系统提示没守住，再加上拒绝约 10 万 token 的请求（检测 12）。判断：kinght 的 Opus 被降了推理强度或不是满血模型。每题只 1 次，样本不够改判定规则（推理答错仍记“需关注”），先记录；有更多官方样本后再把推理和指令层级的判定收紧。
+
+更正：Opus 5.5 上下文是 100 万 token，检测 10（20 万）和检测 12（10 万）的大海捞针失败都是 kinght 拒绝长请求，不是超出模型上限。
+
