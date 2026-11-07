@@ -61,3 +61,26 @@
 - **Juice**：官方 Codex（本机 Magpie `codex/*`）28 次全部拒答（astra 低 / 中 / 高 / 超高四档各 4 次，再按 hvoy 原样参数 astra、sol 各 high 6 次）。经灵枢转发的 8 次里，渠道 24「咔咔-gpt0.18」3 次全部回答 48，kinght、ai8 和官方一样拒答。所以“回答了 Juice”本身就说明上游不是官方 Codex 环境，可以作为一项检测；值和推理强度是否对应还没测到（官方拿不到数）。官方 API 环境（OpenAI Platform）是否拒答待验证。
 - 同一次检测里咔咔的一个 high 推理强度请求推理 token 为 0（日志 4346），疑似推理强度被降。
 - 输入 token 基准（一个字母 `a` 的请求）：kinght 约 4200–4500（和官方 Codex 相近），ai8 约 18200（多注入约 1.4 万 token），咔咔在 4400、5800、18200 三档之间变化，符合此前“号池混用多个上游”的结论。
+
+## hvoy 测 Claude（2026-11-07，claude-opus-5-5 两次）
+
+两次都路由到渠道「kinght claude0.8」，结果正常。每次 5 个请求，全部走 `/v1/messages`，伪装成 Claude Code：`User-Agent: claude-cli/…`、`x-app: cli`、Claude Code 的 beta 头，系统提示只有计费头和一句“You are Claude Code…”，`metadata.user_id` 里的 device / account / session 每次随机；`thinking: adaptive`、`output_config.effort: xhigh`、`tools: []`。
+
+| 检测项 | 做法 |
+|---|---|
+| 知识时效 | 4 道 2025 年 8–10 月的新闻题；格式示例 `1|Alaska` 又是其中一题的答案 |
+| PDF 读取 | 附一个 base64 PDF（内容 “Hvoy AI report total <随机数>”），要求只返回文字：看中转是否支持 document 块原样转发 |
+| 乘法 JSON | 两位数乘法，按固定 JSON 格式返回 |
+| 尖括号校验串 | 让模型原样输出 `<随机串>`：看中转是否过滤或改写像 XML 标签的内容 |
+| 自报知识截止 | 只回 `YYYY-MM`，两次都答 `2025-01` |
+
+输入 token 很小（65–956），kinght 这条 Claude 渠道没有注入提示词。灵枢的模型检测目前只有 GPT 的官方样本，Claude 还不能检测；PDF 原样转发、尖括号原样输出这两项是协议层的检查，不需要官方样本，接 Claude 时可以先做。
+
+## 鹈鹕与推理强度（2026-11-07）
+
+用户在本机 Codex（Agent，目录约定“不运行验证”）用 gpt-6-astra、推理强度拉满，按检测题原版提示词生成一份，主观评价各方面正常；`legs.js` 测量为真实蹬踏（各节长度不变，脚到踏板距离变化 ≤ 2.2 像素）。
+
+再按检测脚本的单次调用方式，官方 astra（本机 Magpie）xhigh 生成 3 份：结构评判 3 份全过；腿部 1 份真实蹬踏（推理 token 5523，三份里最多），2 份伸缩（各节长度变化 50–60%），但脚都踩在踏板上（距离变化 ≤ 8.5 像素）。medium 下官方 10 份没有一份真实蹬踏，且有“没踩板”。
+
+结论：推理强度越高越可能蹬对，但 xhigh 单次也只有约三分之一，单份鹈鹕不能作为推理强度是否被降的判据。完整档里鹈鹕只展示结构评判和腿部测量，作参考、不计分；要量化得多份统计，xhigh 每份约 9–12k 输出 token、3–5 分钟，成本高。样本存 `references/pelican/`（不进 git）。
+
