@@ -21,7 +21,7 @@
 - **临时调管理接口**：在 `sessions` 插一条记录（`token_hash` 为随机 token 的 SHA-256，`user_id = 1`，过期时间设短），请求带 Cookie `lingshu_session=<token>`，用完立即删除并确认删掉。
 - **本地测试库**：`LINGSHU_TEST_DATABASE_URL='postgres://lingshu:lingshu_dev@127.0.0.1:55432/lingshu_test?sslmode=disable' go test -p 1 ./...`（`make db-up` 起容器；测试会重建该库的 public schema）。
 - **打真实上游的实测**：`go test` 加 `-count=1`，否则命中缓存、重放旧结果。
-- **官方对照组**：本机 Magpie 网关 `http://127.0.0.1:3425/v1`，key `magpie`；`codex/*` 走用户自己的官方账号，用于模型检测的官方样本。
+- **官方对照组**：本机 Magpie 网关 `http://127.0.0.1:3425/v1`，key `magpie`；`codex/*` 走用户自己的官方账号，用于模型检测的官方样本。Claude 暂无免费对照：渠道 18（Anthropic 官方 API）余额不足；渠道 12（OpenRouter）锁定 `provider.only: ["anthropic"]` 可对照模型行为，但贵，用前先报预计花费。
 
 ## 连接、安装和隔离
 
