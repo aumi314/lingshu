@@ -118,7 +118,7 @@
 - 改协议处理或计费逻辑，必须带测试；测试样本优先用真实抓到的上游数据。
 - 常用命令：`make db-up`（起本地 Postgres 容器）、`make dev`、`make test`、`make build`。
 - 完成一项工作后：`docs/plan.md`「当前状态」只改一句话，验收细节和发布证据追加到 `docs/history.md`；产生新决策时更新 `docs/decisions.md` 对应模块，被取代的旧决策移到 `history.md`。不要在 plan / decisions 里写流水账。
-- `references/` 只读，用来参考，不改、不引用其代码。
+- `references/` 只读，用来参考，不改、不引用其代码。整个目录不进 git（仓库公开）；`references/hvoy/` 存 hvoy 检测站的抓包（提取脚本和请求明细），只用来了解检测维度，不当作我们的题库。
 
 ## 运维约定（线上数据）
 - 项目维护环境为本机 WSL 与 DMIT 洛杉矶服务器，线上入口为 `https://gateway.piqode.com`。源码与构建在 WSL，部署、备份和恢复步骤以 `docs/deploy.md` 为准。

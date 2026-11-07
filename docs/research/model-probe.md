@@ -36,3 +36,7 @@
 - 对照组：OpenAI Platform 渠道（官方 API）的站内 gpt-6-luna 实际映射到上游 gpt-5.6-luna，检测给出“和各官方型号都不太像”，结论正确；映射已由用户改正。官方 API 环境基准请求只有 11 个输入 token（Codex 号池约 4200）。
 - 工具调用在官方 API 上报 400：OpenAI 部分型号在 chat 接口上不允许工具调用带推理强度。工具调用题改为 `reasoning_effort: none`，上游不支持时去掉推理强度重试。
 - 推理强度 low / high 的比较改为只作参考、不计分：官方校准（lattice_hard，各 3 次）sol 的 high / low 推理 token 比为 1.19、1.07、1.37，astra 为 1.41、1.21、1.00，按“high 不到 low 的 1.15 倍就算没生效”会误报官方。要判断推理强度被偷降，需要两档差距更大的题，另行研究。
+
+## 参考 hvoy 的检测项（2026-11-07）
+
+用灵枢自己的 key 让 hvoy 检测，在 Caddy → 灵枢这一段抓包，提取出它发的请求（资料在 `references/hvoy/`，不进 git）。它测的方面和我们大体重合：知识时效、推理计算、结构化输出、指令层级、分词指纹。另有一项“推理预算探针（Juice）”，让模型说出自己的推理预算，实测 astra 回答“I can’t disclose hidden system information.”，拿不到数，不采用。
