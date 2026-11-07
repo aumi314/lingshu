@@ -124,3 +124,24 @@ func TestProbeMessagesStreamError(t *testing.T) {
 		t.Errorf("流中报错应记成请求失败: %+v", c)
 	}
 }
+
+// 上游回了 200、开了流，却一个字不回就断开（2026-11-07 kinght 实际发生）：两种检测请求都记成失败。
+func TestProbeHungStreamIsError(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		if strings.HasSuffix(r.URL.Path, "/messages") {
+			io.WriteString(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_01x\",\"model\":\"m\",\"usage\":{\"input_tokens\":5}}}\n\n")
+			return
+		}
+		io.WriteString(w, "data: {\"id\":\"chatcmpl-1\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"}}]}\n\n")
+	}))
+	defer up.Close()
+	h := &Handler{Client: up.Client()}
+	ch := &store.Channel{BaseURLChat: up.URL, BaseURLMessages: up.URL, APIKey: "k"}
+	if c := h.ProbeChat(context.Background(), ch, "m", "s", probe.Request{Prompt: "hi"}); !strings.Contains(c.Error, "没有正常结束") {
+		t.Errorf("Chat 断流应记成失败: %+v", c)
+	}
+	if c := h.ProbeMessages(context.Background(), ch, "m", "s", probe.Request{Prompt: "hi"}); !strings.Contains(c.Error, "没有正常结束") {
+		t.Errorf("Messages 断流应记成失败: %+v", c)
+	}
+}

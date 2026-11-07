@@ -16,7 +16,7 @@ var needleAt = []float64{0.1, 0.5, 0.9}
 
 // needle 生成大海捞针请求；编号和句子每次随机（脚本版用固定种子，题面不同，口径相同）。
 // tokensPerSentence 按分词器定：同一段随机英文句子，GPT 约 11 个 token 一句，Claude 约 24 个（2026-11-07 实测 9.2 万对 20.1 万），
-// 句子数 = 目标 token 数 / tokensPerSentence，两家都落在约 10 万 token，不超过 Claude 的上下文上限。
+// 句子数 = 目标 token 数 / tokensPerSentence，两家都落在约 10 万 token，口径一致。
 func (p *plan) needle(effort string, tokensPerSentence int) Request {
 	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	p.needleCodes = nil

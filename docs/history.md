@@ -250,6 +250,10 @@ NVIDIA 模板（2026-11-07）：新增 `nvidia` 模板（只有 Chat，`https://
 
 Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 都在优先级 0，同档随机，约三分之一请求落到咔咔。检测结论：ai8 两次 92、93 分（真 sol，但每个请求多注入约 1.4 万 token）；kinght 93、83、79 分（号池混用，部分会话像 luna / terra）；咔咔两次像 luna。经管理接口改为 ai8 优先级 10、咔咔停用（操作日志 76、77），kinght 保留 0 档兜底；改前后逐字段对比只有这两处变化。停用后 gpt-6-sol 只剩 kinght（14 天 2 次调用），其余 GPT 模型都有 ai8。随后用户把 kinght gpt-0.16、kinght claude0.8 也停用：GPT 只走 ai8（没有兜底渠道），gpt-6-sol 没有可用渠道；Third-party Relay 分组不再提供 Claude，Official API（Anthropic Platform 余额不足）和 Account Pool（kirisame 号池无可用账号）也暂时不可用。
 
+### 检测里的断流记成失败（2026-11-07）
+
+用户在 kinght gpt-0.16 上跑完整档，进度长时间显示 0%：536 个请求里 38 个流一个字没回、约 2 分钟后断开，占住 6 个并发位，整次检测用了约 11 分钟（93 分），不是卡死。但这些空流原先被当成正常回答，空答案算进了单词指纹。改为：Chat / Messages 检测请求的流既没有结束标记也没有结束原因时记成失败；检测记录列表的进度从取整百分比改为“已完成 / 总数”。新增 `TestProbeHungStreamIsError`。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 改为自动发布前的手动发布记录

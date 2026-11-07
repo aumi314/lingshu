@@ -77,6 +77,7 @@ const path = require('node:path')
     // 结果在弹窗里：先显示进度，再显示报告
     const dialog = page.getByRole('dialog')
     await dialog.getByText('30 / 60', { exact: true }).waitFor()
+    await page.locator('tbody tr').filter({ hasText: 'relay-fixture' }).getByText('30 / 60', { exact: true }).waitFor() // 列表里也显示已完成 / 总数
     await page.getByText('基本达标，1 项需要关注', { exact: true }).first().waitFor({ timeout: 10000 })
     await page.getByText('88%', { exact: true }).first().waitFor()
     await page.getByText('单词指纹', { exact: true }).waitFor()
@@ -94,7 +95,7 @@ const path = require('node:path')
     await dialog.waitFor({ state: 'hidden' })
     await page.locator('tbody tr').filter({ hasText: 'relay-fixture' }).first().click()
     await page.getByRole('dialog').getByText('88%', { exact: true }).first().waitFor()
-    console.log('PASS: channel without any probe URL hidden, Claude protocol check only on channels with a Messages URL, only channel and model chosen, models without baseline disabled, result in a modal with close and reopen from history, progress then report, items and request quality, metrics, fingerprint distances, invisible characters shown in request details')
+    console.log('PASS: progress shown as done / total in the list, channel without any probe URL hidden, Claude protocol check only on channels with a Messages URL, only channel and model chosen, models without baseline disabled, result in a modal with close and reopen from history, progress then report, items and request quality, metrics, fingerprint distances, invisible characters shown in request details')
   } finally {
     await browser.close()
     server.kill()

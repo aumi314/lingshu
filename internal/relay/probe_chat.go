@@ -178,6 +178,11 @@ func (h *Handler) probeChatOnce(ctx context.Context, ch *store.Channel, upstream
 	if ctx.Err() != nil && c.Error == "" && !c.Done {
 		c.Error = "超时或被取消"
 	}
+	// 流既没有 [DONE] 也没有结束原因：上游中途断开（2026-11-07 kinght 有 38 / 535 个流一个字没回、约 2 分钟后断开）。
+	// 记成失败，空回答不能算进单词指纹
+	if c.Error == "" && !c.Done && c.FinishReason == "" {
+		c.Error = "流没有正常结束（没有结束标记）"
+	}
 	return c
 }
 

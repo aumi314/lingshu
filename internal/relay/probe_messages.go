@@ -218,5 +218,8 @@ func (h *Handler) ProbeMessages(ctx context.Context, ch *store.Channel, upstream
 	if ctx.Err() != nil && c.Error == "" && !c.Done {
 		c.Error = "超时或被取消"
 	}
+	if c.Error == "" && !c.Done && c.FinishReason == "" { // 同 ProbeChat：上游中途断开记成失败
+		c.Error = "流没有正常结束（没有 message_stop）"
+	}
 	return c
 }
