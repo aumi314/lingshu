@@ -322,3 +322,5 @@ OpenCode Zen 验收与上线（2026-11-07）：合并 main，用三把新 key �
 模型检测 · 实测与改进（2026-11-07）：线上检测 咔咔 的 gpt-6.1-sol，第一次最像 luna、复测像 sol，基准输入不同，确认号池里有上游拿 luna 冒充 sol（用户自行处理该渠道）；对照组发现 OpenAI Platform 的 gpt-6-luna 映射到 gpt-5.6-luna（用户已改）。改进：一次检测用 4 个会话编号并分会话评判、报告上游混用；工具调用题用 `none` 推理强度；推理强度两档比较改为参考（官方校准见 `docs/decisions.md`）。新增 `TestRunCatchesMixedPool`。
 
 NVIDIA 模板（2026-11-07）：新增 `nvidia` 模板（只有 Chat，`https://integrate.api.nvidia.com/v1`，可拉取模型列表）；NVIDIA、OpenCode Zen 加上渠道图标（lobehub-icons 1.95.1）。
+
+模型检测加回档位（2026-11-07）：发起检测可选快速（指纹 40 题 × 4 次）或完整（区分度 ≥ 0.3 的指纹题全上 × 6 次），检测记录加“档位”列；浏览器测试改为选完整档。

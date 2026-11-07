@@ -59,9 +59,10 @@ const path = require('node:path')
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option-disabled').filter({ hasText: 'claude-x（暂无官方样本）' }).waitFor()
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: 'gpt-6.1-sol' }).click()
     await page.waitForTimeout(100)
+    await page.getByText('完整', { exact: true }).click()
     await page.getByRole('button', { name: /开始检测/ }).click()
     for (let i = 0; i < 100 && !posted; i++) await page.waitForTimeout(30)
-    assert.deepEqual(posted, { channel_id: 24, model: 'gpt-6.1-sol' })
+    assert.deepEqual(posted, { channel_id: 24, model: 'gpt-6.1-sol', preset: 'full' })
 
     // 结果在弹窗里：先显示进度，再显示报告
     const dialog = page.getByRole('dialog')
