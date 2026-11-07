@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/aumi314/lingshu/internal/payments"
@@ -24,8 +25,9 @@ type Server struct {
 	Payments  *payments.Gateway
 	FXURL     string // 实时汇率接口，测试时替换；空表示 fx.URL
 
-	guard       *loginGuard
-	redeemGuard *redeemGuard
+	guard         *loginGuard
+	redeemGuard   *redeemGuard
+	probeProgress sync.Map // 进行中的检测：id → [已完成, 总请求数]
 }
 
 func (s *Server) Register(mux *http.ServeMux) {
@@ -96,6 +98,10 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/channels/fetch-models", s.admin(s.fetchModels))
 	mux.HandleFunc("POST /api/admin/channels/probe", s.admin(s.probeChannel))
 	mux.HandleFunc("POST /api/admin/channels/{id}/balance", s.admin(s.queryChannelBalance))
+	mux.HandleFunc("GET /api/admin/probe-baselines", s.admin(s.listProbeBaselines))
+	mux.HandleFunc("GET /api/admin/probes", s.admin(s.listProbes))
+	mux.HandleFunc("POST /api/admin/probes", s.admin(s.startProbe))
+	mux.HandleFunc("GET /api/admin/probes/{id}", s.admin(s.getProbe))
 
 	mux.HandleFunc("GET /api/admin/logs", s.admin(s.adminLogs))
 	mux.HandleFunc("GET /api/admin/settings", s.admin(s.getSettings))

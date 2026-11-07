@@ -219,7 +219,40 @@
       "随便说一个词语。",
       "随便说一种小吃。"
     ],
-    "suffix_zh": "只回答答案本身，不要别的。"
+    "suffix_zh": "只回答答案本身，不要别的。",
+    "pair_sets": [
+      {
+        "models": [
+          "gpt-6.1-sol",
+          "gpt-6-astra"
+        ],
+        "note": "sol 是 astra 的量化版，整体指纹相近；这 21 题在独立验证（第 4 轮）里合起来每题 3 个答案即可 100% 区分",
+        "samples": 3,
+        "prompts": [
+          "Name a random vegetable.",
+          "Pick a random English first name.",
+          "Pick a random three-digit number.",
+          "Pick a random Greek letter.",
+          "Name a random Asian country.",
+          "Name a random national park.",
+          "Name a random mammal.",
+          "Name a random dog breed.",
+          "Name a random pasta shape.",
+          "Name a random nut.",
+          "Name a random vehicle.",
+          "Name a random shoe type.",
+          "Name a random painter.",
+          "Name a random philosopher.",
+          "Name a random inventor.",
+          "Name a random dance style.",
+          "Name a random mythological creature.",
+          "Name a random chess piece.",
+          "Name a random German word.",
+          "Name a random knot.",
+          "随便说一个节气。"
+        ]
+      }
+    ]
   },
   "math": {
     "effort": "medium",

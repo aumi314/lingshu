@@ -8,7 +8,7 @@
 
 `deepseek-v4.1-flash-free` 使用独立站内模型名，可在定价页把四项单价设为零；创建模板不自动调整任何价格或现有渠道。其他模型需先冒烟测试，模型列表中的存在不保证该模型支持 Chat 协议。
 
-2026-11-07 当前状态：下文保留历史有效批次的成功结果；后续原生请求返回 429，免费层接入保持待验收。`iceman-free` 只有官方 OpenCode 2.2.6 CLI 的单次成功，尚未取得灵枢原生通路的成功结果。模板说明同步展示待验收状态；本次只修复响应兼容性并交付 PR。
+2026-11-07 验收：用户新给的三把个人 key（每把一个渠道）按本分支组合（uTLS Bun ClientHello、编码上下文、五个占位工具、真实格式会话、上游流式）本机直连全部 200、`billing_source=free`、零费用；上游 `/models` 列出的 10 个免费模型（beam、flint-40b、mimo-v2.6-flash、nemotron-3.5-super-vl、nemotron-3.5-lightning、deepseek-v4.1-flash、glm-5.3-flash、crouton-alpha、iceman、inkling-2-small，均带 `-free`）逐个通过。此前的 429 是原 key 的免费额度被限流，不是请求组合失效。下文保留历史实验。
 
 ## 请求与响应
 

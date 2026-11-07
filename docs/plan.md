@@ -39,13 +39,14 @@ lingshu/
 │   ├── relay/              # 四个协议的透传：改写请求、转发；聊天协议支持流式
 │   │   └── usage/          # 各协议 usage 解析和统一口径
 │   ├── router/             # 选渠道、重试、渠道冷却
+│   ├── probe/              # 模型检测：检测题和官方样本（data/，编译进程序）、出题、评判
 │   ├── billing/            # 算钱、结算、准入检查
 │   ├── payments/           # 五种支付适配、报价、官方验签和查单
 │   ├── auth/               # 登录会话、API key 校验
 │   └── api/                # /api 下的管理端、用户端接口
 ├── web/                    # React 前端
 ├── scripts/                # 冒烟测试等脚本（读 .env）
-│   └── probe/              # 模型检测：检测题 suite.json、脚本 probe.py、腿部测量 legs.js、官方样本 baselines/
+│   └── probe/              # 模型检测本机脚本 probe.py、鹈鹕腿部测量 legs.js（检测题和官方样本在 internal/probe/data/）
 ├── deploy/                 # DMIT 的 systemd、Caddy、PostgreSQL 容器和备份配置
 └── docs/
 ```
@@ -312,4 +313,10 @@ GPT Fast 计费（2026-11-06 ✅ 已发布 DMIT）：模型加「Fast 倍率」�
 
 OpenCode Zen 原生渠道（Draft PR #21，未部署，免费层待验收）：内置 `opencode-zen` 模板和独立 Go TLS 客户端，直连官方 Chat 入口。免费模型按模板补充编码上下文、工具声明和会话，非流式客户端收到完整 Chat JSON，沿用原有路由、计费和日志。历史 `deepseek-v4.1-flash-free` 原生流式、非流式及冒烟测试曾返回 200；2026-11-07 后续调用返回 429。`iceman-free` 的官方 CLI 单次成功与灵枢原生验证分开记录。此次修复真实工具 `readmore` 被分片前缀 `read` 误判的问题，覆盖两种响应模式、占位调用报错与不扣费，以及 429/Retry-After 透传；独立测试库 `make test`、`go vet`、程序构建通过。未修改生产配置。接入与维护范围见 [OpenCode Zen](research/opencode-zen.md)。
 
-模型检测 · 试验阶段（2026-11-06）：本机脚本 `scripts/probe/probe.py` 按 `scripts/probe/suite.json`（第 1 版）检测分词指纹、单词指纹、数学题、大海捞针、鹈鹕（结构检查表和腿部测量 `legs.js`）。用用户的官方账号（本机 Magpie `codex/*`）给 gpt-6.1-sol、gpt-6-astra、gpt-6.1-terra、gpt-6-luna 建了两轮样本（`scripts/probe/baselines/`；第二轮未跑大海捞针，astra 第二轮的鹈鹕因额度中断）。单词指纹和最难的数学题都能把 terra、luna 和 sol、astra 分开，sol 和 astra 分不开；可疑阈值 0.40。中转 咔咔 的 sol、astra 未见掺水。题库已扩到 195 题（第 2 版），sol、terra、luna 跑完新题，答案分布在 `fingerprint-distributions.json`。待办：astra 跑新题、补跑希腊字母和表情符号两题、推理强度对鹈鹕腿的影响（high / xhigh）、灵枢「检测」页面。口径见 `docs/decisions.md`「模型检测」。
+OpenCode Zen 验收与上线（2026-11-07）：合并 main，用三把新 key 实测 10 个免费模型全部免费通过；之前的 429 是旧 key 被限流。上线后每把 key 建一个渠道。
+
+模型检测 · 试验阶段（2026-11-06）：本机脚本 `scripts/probe/probe.py` 按 `internal/probe/data/suite.json`（第 1 版）检测分词指纹、单词指纹、数学题、大海捞针、鹈鹕（结构检查表和腿部测量 `legs.js`）。用用户的官方账号（本机 Magpie `codex/*`）给 gpt-6.1-sol、gpt-6-astra、gpt-6.1-terra、gpt-6-luna 建了两轮样本（`internal/probe/data/baselines/`；第二轮未跑大海捞针，astra 第二轮的鹈鹕因额度中断）。单词指纹和最难的数学题都能把 terra、luna 和 sol、astra 分开，sol 和 astra 分不开；可疑阈值 0.40。中转 咔咔 的 sol、astra 未见掺水。题库已扩到 195 题（第 2 版），四个型号都跑完新题（含补跑的希腊字母、表情符号两题），答案分布在 `fingerprint-distributions.json`。待办：推理强度对鹈鹕腿的影响（high / xhigh）。口径见 `docs/decisions.md`「模型检测」。
+
+模型检测页面 · 第一版（2026-11-07）：管理端新增「模型检测」，选渠道和模型发起检测，后台运行，逐项给出结论和请求质量观察（迁移 0029 `probe_runs`；`internal/probe`、`relay.ProbeChat`、`/api/admin/probes`）。检测题和官方样本从 `scripts/probe/` 挪到 `internal/probe/data/`，编译进程序，本机脚本读同一份。测试：`internal/probe` 单元测试（和脚本算法对齐、模拟上游识别真 sol / terra 冒充 / astra 冒充）、`TestProbeRun`（发起到入库、请求伪装、工具调用分片拼接、不写调用日志、重启标失败）、`web/tests/probes.browser.cjs`。待办：知识时效题库和样本；上线后在 咔咔 上实测，确认注入的提示词不会让指纹误判。
+
+模型检测 · 实测与改进（2026-11-07）：线上检测 咔咔 的 gpt-6.1-sol，第一次最像 luna、复测像 sol，基准输入不同，确认号池里有上游拿 luna 冒充 sol（用户自行处理该渠道）；对照组发现 OpenAI Platform 的 gpt-6-luna 映射到 gpt-5.6-luna（用户已改）。改进：一次检测用 4 个会话编号并分会话评判、报告上游混用；工具调用题用 `none` 推理强度；推理强度两档比较改为参考（官方校准见 `docs/decisions.md`）。新增 `TestRunCatchesMixedPool`。

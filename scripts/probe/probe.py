@@ -2,7 +2,7 @@
 """模型检测（试验版）：按 suite.json 的检测题检测一个 OpenAI 兼容地址上的模型，结果写成 JSON，和官方样本对比。
 
   运行：python3 scripts/probe/probe.py run --base http://127.0.0.1:3425/v1 --key magpie --model codex/gpt-6.1-sol \\
-          --round 1 --out scripts/probe/baselines [--only tokens,fingerprint,math,needle,pelican] \\
+          --round 1 --out internal/probe/data/baselines [--only tokens,fingerprint,math,needle,pelican] \\
           [--pelican-dir 目录 --edge msedge.exe 路径 --judge-model codex/gpt-6.1-sol]
   对比：python3 scripts/probe/probe.py compare 结果1.json 结果2.json ...
 
@@ -25,7 +25,9 @@ import urllib.request
 from itertools import combinations
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SUITE = json.load(open(os.path.join(HERE, "suite.json"), encoding="utf-8"))
+# 检测题和官方样本放在 internal/probe/data/，灵枢把它们编译进程序；本脚本读同一份
+DATA = os.path.join(HERE, "..", "..", "internal", "probe", "data")
+SUITE = json.load(open(os.path.join(DATA, "suite.json"), encoding="utf-8"))
 
 
 # ---- 请求 ----
@@ -117,10 +119,14 @@ def probe_fingerprint(args):
     """答案按题目文本记录（第 2 版起；第 1 版按序号记，对比时按第 1 版题目顺序换回文本）。
     连续 10 次出错（多半是额度用完）就不再发剩下的请求。"""
     f = SUITE["fingerprint"]
-    prompts = f["prompts"][args.fingerprint_from:]
-    if args.fingerprint_limit:
-        prompts = prompts[: args.fingerprint_limit]
-    jobs = [p for p in prompts for _ in range(f["samples"])]
+    if args.fingerprint_prompts:
+        prompts = [f["prompts"][int(i)] for i in args.fingerprint_prompts.split(",")]
+    else:
+        prompts = f["prompts"][args.fingerprint_from:]
+        if args.fingerprint_limit:
+            prompts = prompts[: args.fingerprint_limit]
+    samples = args.fingerprint_samples or f["samples"]
+    jobs = [p for p in prompts for _ in range(samples)]
     state = {"streak": 0, "stopped": False}
 
     def one(p):
@@ -143,7 +149,7 @@ def probe_fingerprint(args):
             errors += 1
         else:
             answers[p].append(a)
-    return {"samples": f["samples"], "errors": errors, "stopped": state["stopped"], "answers": answers}
+    return {"samples": samples, "errors": errors, "stopped": state["stopped"], "answers": answers}
 
 
 # ---- 数学题：按种子生成，本地算标准答案；记正确率和推理 token（思考深度、稳定性） ----
@@ -404,7 +410,14 @@ def run(args):
     for name in args.only.split(","):
         start = time.time()
         print(f"[{args.model} 第 {args.round} 轮] {name} …", file=sys.stderr, flush=True)
-        out[name] = PROBES[name](args)
+        result = PROBES[name](args)
+        # 只补跑部分单词指纹题时，合并进这一轮已有的答案（新跑的题替换旧答案），不覆盖整份
+        if name == "fingerprint" and "fingerprint" in out and (args.fingerprint_from or args.fingerprint_limit or args.fingerprint_prompts):
+            merged = fingerprint_answers(out["fingerprint"])
+            merged.update(result["answers"])
+            result["answers"] = merged
+            result["errors"] += out["fingerprint"].get("errors", 0)
+        out[name] = result
         out[name]["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         out[name]["elapsed_seconds"] = round(time.time() - start, 1)
         json.dump(out, open(path, "w"), ensure_ascii=False, indent=1)
@@ -424,9 +437,26 @@ def tvd(a, b):
 V1_PROMPTS = SUITE["fingerprint"]["prompts"][:24]  # 第 1 版按序号记录答案，题目就是现在题库的前 24 题
 
 
+LATIN_EXTRA = {"ł": "l", "ø": "o", "đ": "d", "ß": "ss", "æ": "ae", "œ": "oe", "þ": "th", "ð": "d"}
+
+
+def fold(answer):
+    """比对用：去掉拉丁字母上的重音（týr→tyr、comté→comte、ł→l），假名和汉字不动。原始答案照存。"""
+    import unicodedata
+    out = []
+    for ch in answer:
+        if ch in LATIN_EXTRA:
+            out.append(LATIN_EXTRA[ch])
+            continue
+        if ord(ch) < 0x250:  # 拉丁字母及其扩展
+            ch = "".join(c for c in unicodedata.normalize("NFKD", ch) if not unicodedata.combining(c))
+        out.append(ch)
+    return "".join(out)
+
+
 def fingerprint_answers(fp):
-    """统一成 {题目文本: [答案…]}。"""
-    return {(V1_PROMPTS[int(k)] if k.isdigit() else k): v for k, v in fp["answers"].items()}
+    """统一成 {题目文本: [答案…]}，答案按 fold 归一后用于比对。"""
+    return {(V1_PROMPTS[int(k)] if k.isdigit() else k): [fold(a) for a in v] for k, v in fp["answers"].items()}
 
 
 def fingerprint_distance(x, y):
@@ -544,6 +574,8 @@ def main():
     ds.add_argument("files", nargs="+")
     r.add_argument("--fingerprint-from", type=int, default=0, help="单词指纹从第 N 题开始（0 起算），用于只补跑新加的题")
     r.add_argument("--fingerprint-limit", type=int, default=0, help="最多跑 N 道单词指纹题（0 表示不限）")
+    r.add_argument("--fingerprint-samples", type=int, default=0, help="每道单词指纹题问几次（0 表示用题库里的设定）")
+    r.add_argument("--fingerprint-prompts", default="", help="只跑这些序号的单词指纹题（逗号分隔，0 起算），结果合并进这一轮")
     lg = sub.add_parser("legs", help="单独测量鹈鹕 HTML 的腿部动画")
     lg.add_argument("--edge", required=True)
     lg.add_argument("files", nargs="+")

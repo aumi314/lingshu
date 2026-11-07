@@ -21,6 +21,7 @@ import Settings from './pages/Settings'
 import Users from './pages/admin/Users'
 import Pricing from './pages/admin/Pricing'
 import Channels from './pages/admin/Channels'
+import Probes from './pages/admin/Probes'
 import System from './pages/admin/System'
 import './style.css'
 
@@ -86,6 +87,7 @@ function Root() {
                     <Route path="groups" element={<Navigate to="/console/admin/pricing?tab=groups" replace />} />
                     <Route path="models" element={<Navigate to="/console/admin/pricing" replace />} />
                     <Route path="channels" element={<Channels />} />
+                    <Route path="probes" element={<Probes />} />
                     <Route path="logs" element={<Logs admin />} />
                     <Route path="system" element={<System />} />
                   </Route>
