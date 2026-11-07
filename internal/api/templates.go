@@ -49,6 +49,8 @@ var channelTemplates = []ChannelTemplate{
 		Note: "三种协议都支持；代理地址可按部署环境调整，留空直连。模型名带厂商前缀，如 anthropic/claude-opus-5.5"},
 	{ID: "opencode-zen", Name: "OpenCode Zen", BaseURLChat: "https://opencode.ai/inference/openai/v1", HasModelList: true,
 		Note: "OpenCode Zen 原生直连，只启用 Chat 协议；支持拉取模型列表。免费模型会补充编码上下文和缺少的核心工具定义，上游始终流式，客户端可选流式或非流式。2026-11-07 已验收 10 个免费模型；上游 429 和 Retry-After 原样返回。价格由管理员在定价页配置"},
+	{ID: "nvidia", Name: "NVIDIA", BaseURLChat: "https://integrate.api.nvidia.com/v1", HasModelList: true,
+		Note: "NVIDIA build.nvidia.com 的 OpenAI 兼容接口，只支持 Chat；key 以 nvapi- 开头。模型名带厂商前缀，如 deepseek-ai/deepseek-v4，建议映射成站内名"},
 	{ID: "openai-platform", Name: "OpenAI Platform", BaseURLChat: "https://api.openai.com/v1", BaseURLResponses: "https://api.openai.com/v1",
 		HasModelList: true, Note: "OpenAI 官方 Platform API；支持 Chat Completions 和 Responses，不提供 Anthropic Messages 协议"},
 	{ID: "anthropic-platform", Name: "Anthropic Platform", BaseURLMessages: "https://api.anthropic.com",

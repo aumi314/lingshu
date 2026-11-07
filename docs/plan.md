@@ -320,3 +320,5 @@ OpenCode Zen 验收与上线（2026-11-07）：合并 main，用三把新 key �
 模型检测页面 · 第一版（2026-11-07）：管理端新增「模型检测」，选渠道和模型发起检测，后台运行，逐项给出结论和请求质量观察（迁移 0029 `probe_runs`；`internal/probe`、`relay.ProbeChat`、`/api/admin/probes`）。检测题和官方样本从 `scripts/probe/` 挪到 `internal/probe/data/`，编译进程序，本机脚本读同一份。测试：`internal/probe` 单元测试（和脚本算法对齐、模拟上游识别真 sol / terra 冒充 / astra 冒充）、`TestProbeRun`（发起到入库、请求伪装、工具调用分片拼接、不写调用日志、重启标失败）、`web/tests/probes.browser.cjs`。待办：知识时效题库和样本；上线后在 咔咔 上实测，确认注入的提示词不会让指纹误判。
 
 模型检测 · 实测与改进（2026-11-07）：线上检测 咔咔 的 gpt-6.1-sol，第一次最像 luna、复测像 sol，基准输入不同，确认号池里有上游拿 luna 冒充 sol（用户自行处理该渠道）；对照组发现 OpenAI Platform 的 gpt-6-luna 映射到 gpt-5.6-luna（用户已改）。改进：一次检测用 4 个会话编号并分会话评判、报告上游混用；工具调用题用 `none` 推理强度；推理强度两档比较改为参考（官方校准见 `docs/decisions.md`）。新增 `TestRunCatchesMixedPool`。
+
+NVIDIA 模板（2026-11-07）：新增 `nvidia` 模板（只有 Chat，`https://integrate.api.nvidia.com/v1`，可拉取模型列表）；NVIDIA、OpenCode Zen 加上渠道图标（lobehub-icons 1.95.1）。

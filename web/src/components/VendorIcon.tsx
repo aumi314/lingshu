@@ -14,6 +14,8 @@ import openai from '../assets/logos/openai.svg?raw'
 import gemini from '../assets/logos/gemini.svg?raw'
 import grok from '../assets/logos/grok.svg?raw'
 import meta from '../assets/logos/meta.svg?raw'
+import nvidia from '../assets/logos/nvidia-color.svg?raw'
+import opencode from '../assets/logos/opencode.svg?raw'
 import nace from '../assets/logos/nace.svg?raw'
 import typesafe from '../assets/logos/typesafe.png'
 import { AnthropicFilled } from '@ant-design/icons'
@@ -34,6 +36,8 @@ const icons: Record<string, string> = {
   xai: grok,
   meta,
   nace,
+  nvidia,
+  'opencode-zen': opencode,
 }
 
 export default function VendorIcon({ template, size = 18 }: { template?: string; size?: number }) {
