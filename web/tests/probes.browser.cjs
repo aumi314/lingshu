@@ -13,7 +13,7 @@ const path = require('node:path')
       try { if ((await fetch('http://127.0.0.1:25191')).ok) break } catch {}
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
-    const channel = { id: 24, name: 'relay-fixture', template: 'standard', api_key_masked: 'sk-…', priority: 0, enabled: true, base_url_chat: 'https://up.example/v1', base_url_messages: '', base_url_responses: '', base_url_systemone: '', proxy_url: '', group_ids: [1], models: [{ model_id: 1, model_name: 'gpt-6.1-sol', upstream_name: '' }], balance: [], balance_checked_at: null, balance_error: '', stats: null }
+    const channel = { id: 24, name: 'relay-fixture', template: 'standard', api_key_masked: 'sk-…', priority: 0, enabled: true, base_url_chat: 'https://up.example/v1', base_url_messages: '', base_url_responses: '', base_url_systemone: '', proxy_url: '', group_ids: [1], models: [{ model_id: 1, model_name: 'gpt-6.1-sol', upstream_name: '' }, { model_id: 2, model_name: 'claude-x', upstream_name: '' }], balance: [], balance_checked_at: null, balance_error: '', stats: null }
     const noResp = { ...channel, id: 25, name: 'messages-only', base_url_chat: '' } // 没有 Chat 地址的渠道不能检测，不出现在下拉里
     const base = { id: 7, created_at: '2026-11-07T08:43:00Z', finished_at: null, created_by: 'admin', channel_id: 24, channel_name: 'relay-fixture', model: 'gpt-6.1-sol', upstream_model: 'gpt-6.1-sol', baseline: 'gpt-6.1-sol', preset: 'quick', score: null, verdict: '', cost: '0' }
     const report = {
@@ -51,19 +51,21 @@ const path = require('node:path')
     await page.goto('http://127.0.0.1:25191/console/admin/probes')
     await page.getByText('检测记录', { exact: true }).waitFor()
 
-    // 选渠道 → 模型 → 对照型号自动填同名
+    // 只选渠道和模型：没有官方样本的模型是灰的
     await page.locator('#channel_id').click()
     assert.equal(await page.locator('.ant-select-dropdown:visible').getByText('messages-only').count(), 0)
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: 'relay-fixture' }).click()
     await page.locator('#model').click()
+    assert.equal(await page.locator('.ant-select-dropdown:visible .ant-select-item-option-disabled').filter({ hasText: 'claude-x（暂无官方样本）' }).count(), 1)
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: 'gpt-6.1-sol' }).click()
     await page.waitForTimeout(100)
     await page.getByRole('button', { name: /开始检测/ }).click()
     for (let i = 0; i < 100 && !posted; i++) await page.waitForTimeout(30)
-    assert.deepEqual(posted, { channel_id: 24, model: 'gpt-6.1-sol', baseline: 'gpt-6.1-sol', preset: 'quick' })
+    assert.deepEqual(posted, { channel_id: 24, model: 'gpt-6.1-sol' })
 
-    // 先显示进度，再显示报告
-    await page.getByText('30 / 60', { exact: true }).waitFor()
+    // 结果在弹窗里：先显示进度，再显示报告
+    const dialog = page.getByRole('dialog')
+    await dialog.getByText('30 / 60', { exact: true }).waitFor()
     await page.getByText('基本达标，1 项需要关注', { exact: true }).first().waitFor({ timeout: 10000 })
     await page.getByText('88%', { exact: true }).first().waitFor()
     await page.getByText('单词指纹', { exact: true }).waitFor()
@@ -76,7 +78,12 @@ const path = require('node:path')
     // 请求明细：零宽字符显示出来
     await page.getByText(/请求明细/).click()
     await page.getByText('⟨零宽⟩kiwi', { exact: true }).waitFor()
-    console.log('PASS: channel without chat URL hidden, baseline defaults to model, start posts settings, progress then report, items and request quality, metrics, fingerprint distances, invisible characters shown in request details')
+    // 关闭弹窗回到列表；点检测记录再次打开
+    await dialog.getByRole('button', { name: /关\s*闭/ }).click()
+    await dialog.waitFor({ state: 'hidden' })
+    await page.locator('tbody tr').filter({ hasText: 'relay-fixture' }).first().click()
+    await page.getByRole('dialog').getByText('88%', { exact: true }).first().waitFor()
+    console.log('PASS: channel without chat URL hidden, only channel and model chosen, models without baseline disabled, result in a modal with close and reopen from history, progress then report, items and request quality, metrics, fingerprint distances, invisible characters shown in request details')
   } finally {
     await browser.close()
     server.kill()
