@@ -32,7 +32,7 @@ export default function Probes() {
   const { message } = App.useApp()
   const [channels, setChannels] = useState<Channel[]>([])
   const [baselines, setBaselines] = useState<string[]>([])
-  const [protocolModels, setProtocolModels] = useState<string[]>([]) // 没有官方样本、只做协议层检测的型号（Claude，走 Messages）
+  const [protocolModels, setProtocolModels] = useState<string[]>([]) // 走 Messages 协议检测的型号（Claude）；没有官方样本时只做协议层检测
   const [runs, setRuns] = useState<Run[]>([])
   const [selected, setSelected] = useState<Run | null>(null)
   const [starting, setStarting] = useState(false)
@@ -70,7 +70,10 @@ export default function Probes() {
   const channel = probeChannels.find((c) => c.id === channelID)
   const models = channel?.models ?? []
   const modelNote = (name: string) => {
-    if (protocolModels.includes(name)) return channel?.base_url_messages ? { ok: true, note: t('（协议检测）', ' (protocol check)') } : { ok: false, note: t('（渠道没有 Messages 地址）', ' (no Messages URL)') }
+    if (protocolModels.includes(name)) {
+      if (!channel?.base_url_messages) return { ok: false, note: t('（渠道没有 Messages 地址）', ' (no Messages URL)') }
+      return { ok: true, note: baselines.includes(name) ? '' : t('（协议检测）', ' (protocol check)') }
+    }
     if (baselines.includes(name)) return channel?.base_url_chat ? { ok: true, note: '' } : { ok: false, note: t('（渠道没有 Chat 地址）', ' (no Chat URL)') }
     return { ok: false, note: t('（暂无官方样本）', ' (no baseline)') }
   }
@@ -96,7 +99,7 @@ export default function Probes() {
       <Typography.Title level={3} className="page-title">{t('模型检测', 'Model check')}</Typography.Title>
       <Typography.Paragraph type="secondary">
         {t(
-          '选渠道和模型，向渠道直接发一组检测题，和同名官方型号的样本对比，看上游有没有换模型、降推理强度、注入内容。Claude 暂无官方样本，先做协议层检测（格式、推理是否发生、工具、文档）。检测请求伪装成常见客户端、每次随机出题，不走路由、不进调用日志、不扣用户余额；花费按站内价估算，由渠道承担。',
+          '选渠道和模型，向渠道直接发一组检测题，和同名官方型号的样本对比，看上游有没有换模型、降推理强度、注入内容。Claude 走 Messages 协议，另外检查协议格式、thinking、文档。检测请求伪装成常见客户端、每次随机出题，不走路由、不进调用日志、不扣用户余额；花费按站内价估算，由渠道承担。',
           'Sends a set of probe questions straight to the channel and compares the answers with official baselines. Probe requests bypass routing, are not logged as calls and are not charged to users.',
         )}
       </Typography.Paragraph>
@@ -137,7 +140,7 @@ export default function Probes() {
         footer={<Button onClick={() => setSelected(null)}>{t('关闭', 'Close')}</Button>}
         destroyOnHidden
       >
-        {selected && <Result run={selected} protocol={protocolModels.includes(selected.baseline)} statusIcon={statusIcon} statusText={statusText} />}
+        {selected && <Result run={selected} protocol={protocolModels.includes(selected.baseline) && !baselines.includes(selected.baseline)} statusIcon={statusIcon} statusText={statusText} />}
       </Modal>
 
       <Card title={t('检测记录', 'History')} size="small">

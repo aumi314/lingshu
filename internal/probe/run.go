@@ -234,7 +234,7 @@ func (p *plan) build() {
 	}
 
 	// 单词指纹：从区分作用强的题里随机抽，每题问几次，不推理
-	pool := SeparatingPrompts(0.3)
+	pool := SeparatingPrompts(0.3, Family(p.spec.Baseline))
 	p.rng.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
 	n, samples := 40, 4
 	if !p.spec.Quick {
@@ -478,7 +478,7 @@ func (p *plan) judgeFingerprint(cs []Call) (Item, string, []string) {
 		return it, "", nil
 	}
 	it := Item{Key: "fingerprint", Title: "单词指纹"}
-	models := BaselineModels()
+	models := FamilyModels(Family(p.spec.Baseline))
 	ranked := Rank(answersOf(cs), models)
 	if len(ranked) == 0 {
 		it.Status, it.Summary = Warn, "没有可比对的答案"

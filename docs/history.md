@@ -261,6 +261,10 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 - ai8 gpt0.15（92、93）：模型正常；同口径检测缓存 66–73%（另两家 83–97%），真实流量约 90%；每个请求多注入约 1.4 万 token；14 号检测时渠道余额用完全部 403。保留为主渠道（优先级 10）。
 - dong gpt0.15（86、79、93）：指纹三次都离官方 sol 0.54–0.61（正常 0.25–0.30），注入量与官方 Codex 一致，排除注入影响；推理强度反常（low 推理 1034–1263 token，high 只有 425–437）；推理题 3/4、2/4、4/4；首字约 7 秒。判断不是原版 sol 或推理强度不受控，用户删除该渠道（操作日志 101）。
 
+### Claude 检测接入官方样本（2026-11-07）
+
+`scripts/probe/probe.py` 加 `--protocol messages`（Claude Code 请求形态）、`--provider`（OpenRouter 锁定服务方）、`--name`、`--math-kinds/-repeats/-effort`，key 可走环境变量 `PROBE_KEY`。在 DMIT 用 OpenRouter（锁定 Anthropic）采 claude-opus-5-5（分词、单词指纹 195 × 6、难题 4 类 × 3）和 claude-sonnet-5-5（分词、单词指纹），约 $0.8。检测按家族分开比（`Family`、`FamilyModels`、`SeparatingPrompts(…, family)`，GPT 题池仍 74 道）；Claude 有样本时加分词、单词指纹，推理按官方正确率和推理量判，指令层级守不住直接不通过；接口只列出能正确检测的型号（GPT + Claude 检测名单）。测试：`TestClaudeWithBaseline`、`TestJudgeThinkingWithBaseline`，原协议检测测试改用测试专用的无样本型号。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 改为自动发布前的手动发布记录

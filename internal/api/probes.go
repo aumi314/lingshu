@@ -35,9 +35,21 @@ func (s *Server) withProgress(r store.ProbeRun) probeView {
 	return v
 }
 
+// probeableBaselines 是能发起检测的有样本型号：GPT 走 Chat；Claude 只有在检测名单里的才走 Messages
+// （Sonnet 的样本目前只用来识别“拿 Sonnet 冒充 Opus”，不单独开放检测）。
+func probeableBaselines() []string {
+	var out []string
+	for _, m := range probe.BaselineModels() {
+		if probe.Family(m) == "gpt" || probe.IsProtocolModel(m) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 func (s *Server) listProbeBaselines(w http.ResponseWriter, r *http.Request) {
 	// protocol_models：没有官方样本、只做协议层检测的型号（Claude，需要渠道有 Messages 地址）
-	writeJSON(w, http.StatusOK, map[string]any{"models": probe.BaselineModels(), "protocol_models": probe.ProtocolModels})
+	writeJSON(w, http.StatusOK, map[string]any{"models": probeableBaselines(), "protocol_models": probe.ProtocolModels})
 }
 
 func (s *Server) listProbes(w http.ResponseWriter, r *http.Request) {
@@ -84,11 +96,11 @@ func (s *Server) startProbe(w http.ResponseWriter, r *http.Request) {
 	}
 	protocol := probe.IsProtocolModel(in.Baseline)
 	known := protocol
-	for _, m := range probe.BaselineModels() {
+	for _, m := range probeableBaselines() {
 		known = known || m == in.Baseline
 	}
 	if !known {
-		writeError(w, http.StatusBadRequest, "没有 "+in.Baseline+" 的官方样本，请选一个对照型号："+strings.Join(append(probe.BaselineModels(), probe.ProtocolModels...), "、"))
+		writeError(w, http.StatusBadRequest, "没有 "+in.Baseline+" 的官方样本，请选一个对照型号："+strings.Join(append(probeableBaselines(), probe.ProtocolModels...), "、"))
 		return
 	}
 	channels, err := s.Store.ListChannels(r.Context())

@@ -93,3 +93,12 @@ OpenRouter 上 claude-opus-5.5 的服务方是 Anthropic、AWS Bedrock、Google 
 
 完整档（检测 33）100 分：协议格式 12 / 12 符合官方；新出的两道难题都对（推理 6112、2103）；大海捞针约 10.3 万 token 三个编号全找到；基准请求 63 token 无注入；4 个会话一致无混池。首字约 12 秒、约 35 tok/s，比 kinght（7 秒、104 tok/s）慢。判断：目前唯一合格的 Claude 渠道；只抽样一次，需要隔段时间复测。路由暂不调整（它只在 Account Pool 分组，Third-party Relay 分组目前没有 Claude 渠道），用户说号池的事后面再谈。
 
+## 七、官方 Claude 样本（2026-11-07，OpenRouter 锁定 Anthropic）
+
+用 `scripts/probe/probe.py --protocol messages --provider anthropic`，请求形态和检测时的 `ProbeMessages` 相同，在 DMIT 上用渠道 12 的 key 采（key 只进环境变量）。花费约 $0.8（另有下午的逐题对照约 $0.3）。
+
+- 分词：官方 Opus、官方 Sonnet、kirisame 三者的基准都是 42 token，12 段探针差值全部一致：分词只能分“是不是 Claude”，分不了 Opus / Sonnet；也证明 OpenRouter 报的用量可信。
+- 单词指纹：Opus、Sonnet 各 195 题 × 6 次，0 错误。同家族区分作用 ≥ 0.3 的 84 道、≥ 0.5 的 67 道；例：中国菜 Opus 宫保鸡丁 / Sonnet 麻婆豆腐，运动 冰壶 / 羽毛球，美德 patience / humility。
+- 难题（Opus，high）：recurrence_hard、lattice_hard、subset_mod、digit_sum 各 3 次全对；推理中位数约 981、973、746、373。题库固定种子的题偏容易：下午那道随机参数的递推题官方推理 10878、kirisame 6–7.5k，所以推理量规则只抓极端降配，主判据是答对没有。
+- 这一轮是单次采样（每个型号 r1）；GPT 那边是两轮以上。以后有异常结论时，先补一轮官方样本再下结论。
+

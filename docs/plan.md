@@ -120,7 +120,7 @@ lingshu/
 | 用户 | 超级管理员 / 管理员 / 成员；用户分组控制服务分组可见范围；注册码注册；登录防护（频率限制 + 工作量证明） |
 | 钱包 | 五家支付适配（EPay 已真实开放）、兑换码、用 API key 查余额（`/v1/usage`） |
 | 日志 | 调用日志（耗时拆分、IP、推理强度、换渠道失败记录）+ 操作日志（同事务写入、改前改后对比） |
-| 模型检测 | 管理端页面，快速 / 完整两档（完整档含大海捞针），4 个会话抓号池混用；GPT 和官方样本比（gpt-6.1-sol、gpt-6-astra、gpt-6.1-terra、gpt-6-luna，Codex 环境），claude-opus-5-5 暂无样本、做协议层检测 |
+| 模型检测 | 管理端页面，快速 / 完整两档（完整档含大海捞针），4 个会话抓号池混用；GPT 和官方样本比（gpt-6.1-sol、gpt-6-astra、gpt-6.1-terra、gpt-6-luna，Codex 环境）；claude-opus-5-5 和官方样本比（OpenRouter 锁定 Anthropic 采的 Opus / Sonnet）并查协议 |
 | 运维 | CI + 合并即自动发布（破坏性迁移暂停待确认）、发布前备份 + 每日分层备份、`main` 分支保护（Rulesets「分支保护」，2026-11-07） |
 
 ## 6. 下一步
@@ -133,7 +133,7 @@ lingshu/
   - 知识时效题库：提示词要求直接回答、禁止联网搜索、禁止参考对话；用官方账号采集四个型号的样本。
   - 官方 API 环境（无 Codex 注入提示词）的样本：luna 在 API 环境下距离 0.44，贴近阈值。
   - 更可靠的推理强度降级检测（现有 low / high 对比只作参考）。新增候选项“Juice”：官方 Codex 一律拒答，回答了就说明不是官方环境（咔咔 3/3 回答 48），见 `research/model-probe.md`。
-  - Claude 官方对照组：渠道 18「Anthropic Platform」是官方 API，余额不足；充值后可建官方样本（单词指纹、分词）并实测 thinking 签名回传，再把 Claude 从协议检测升级为样本对比。思路见 `research/claude-probe.md`。
+  - Claude 官方样本已采（Opus、Sonnet 各一轮，OpenRouter 锁定 Anthropic）；需要时补第二轮；Sonnet 单独检测、知识时效题未做。
 - **公司团队网关**：例如按组共用金额池，按开源通用场景设计，细节后面再议。
 - **自有号池**：现用 sub2api 反代质量不够；作为灵枢的兄弟项目单独做，不急，灵枢只把它当渠道接。
 - **Claude 渠道**：kirisame（渠道 23，Account Pool 分组）测出和官方满血 Opus 一致，是目前唯一合格的 Claude 渠道，但较慢、只测过一次；Third-party Relay 分组没有 Claude 渠道。分组和路由怎么配，等用户谈号池时定。
