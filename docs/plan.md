@@ -136,4 +136,6 @@ lingshu/
   - Claude 官方对照组：渠道 18「Anthropic Platform」是官方 API，余额不足；充值后可建官方样本（单词指纹、分词）并实测 thinking 签名回传，再把 Claude 从协议检测升级为样本对比。思路见 `research/claude-probe.md`。
 - **公司团队网关**：例如按组共用金额池，按开源通用场景设计，细节后面再议。
 - **自有号池**：现用 sub2api 反代质量不够；作为灵枢的兄弟项目单独做，不急，灵枢只把它当渠道接。
+- **Claude 渠道**：目前没有质量合格又可用的 Claude 渠道（kinght 降配已停用，Anthropic Platform 余额不足，kirisame 无可用账号）。充值 Anthropic Platform 最快。
+- **GPT 兜底**：只有 ai8 一个渠道，出问题没有自动切换；找到质量合格的第二个渠道后挂低一档。
 - **运维缺口**：异地备份、告警通知（见 `decisions.md`「待定」）。
