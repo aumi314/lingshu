@@ -232,6 +232,10 @@ NVIDIA 模板（2026-11-07）：新增 `nvidia` 模板（只有 Chat，`https://
 
 > 注：上面最后一条“GitHub 给 main 设分支规则”已于 2026-11-07 由用户在 Rulesets 里设好（规则名「分支保护」）。
 
+### 上游中文报错导致日志丢失（2026-11-07 ✅ 已发布 DMIT，PR #35）
+
+上游报错按字节截断会切在汉字中间，写请求日志被 PostgreSQL 拒绝，整笔结算回滚：日志丢失、预扣冻结不释放。14 天内发生 3 次（均 cost=0，没有算错账），最近两次是 hvoy 测 claude-fable-5-1 时渠道 kirisame-claude0.7 返回中文 429。修复：`relay.truncate` 用 `strings.ToValidUTF8` 去掉残字节和上游原文的非法字节；新增 `TestLongChineseUpstreamErrorIsLogged`（修复前复现失败）。`558c089` 06:34 UTC 自动发布，发布前备份 `lingshu-deploy-20261107T063407Z-558c089.dump`；健康检查正常，aumif 卡住的冻结 $0.8256 随重启清零，发布后无 ERROR。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 改为自动发布前的手动发布记录
