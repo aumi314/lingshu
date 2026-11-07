@@ -169,3 +169,39 @@ func TestRunIdentifiesModels(t *testing.T) {
 		t.Errorf("不可见字符: %+v", it)
 	}
 }
+
+// 号池混用：第 3 个会话打到拿 luna 冒充的上游（基准还多注入 233 个 token，和 2026-11-07 在 咔咔 上实测到的一样），其余会话是真 sol。
+func TestRunCatchesMixedPool(t *testing.T) {
+	sol, luna := fakeUpstream(t, "gpt-6.1-sol", 21), fakeUpstream(t, "gpt-6-luna", 22)
+	mixed := func(ctx context.Context, req Request) Call {
+		if req.Session != 2 {
+			return sol(ctx, req)
+		}
+		c := luna(ctx, req)
+		if req.Item == "anchor" || req.Item == "tokens" {
+			c.InputTokens += 233
+		}
+		return c
+	}
+	r, err := Run(context.Background(), mixed, Spec{Baseline: "gpt-6.1-sol", Quick: true, Seed: 31}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it := itemOf(r, "fingerprint"); it.Status != Fail || !strings.Contains(it.Summary, "第 3 个会话最像 gpt-6-luna") {
+		t.Errorf("应指出第 3 个会话像 luna: %+v", it)
+	}
+	if !strings.Contains(r.Verdict, "部分请求疑似不是 gpt-6.1-sol") {
+		t.Errorf("总结论: %s", r.Verdict)
+	}
+	if it := itemOf(r, "mixed"); it.Status != Warn || !strings.Contains(it.Summary, "基准输入 token 不同") || !strings.Contains(it.Summary, "指纹最像的型号不同") {
+		t.Errorf("上游混用: %+v", it)
+	}
+	// 全是真 sol 时，各会话一致
+	r, _ = Run(context.Background(), sol, Spec{Baseline: "gpt-6.1-sol", Quick: true, Seed: 32}, nil)
+	if it := itemOf(r, "mixed"); it.Status != Pass {
+		t.Errorf("真 sol 不应报上游混用: %+v", it)
+	}
+	if it := itemOf(r, "fingerprint"); it.Status != Pass || !strings.Contains(it.Summary, "4 个会话一致") {
+		t.Errorf("真 sol 的指纹: %+v", it)
+	}
+}

@@ -145,9 +145,13 @@ func (s *Server) runProbe(run store.ProbeRun, ch *store.Channel) {
 	defer s.probeProgress.Delete(run.ID)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-	session := relay.NewProbeSession()
+	// 一次检测用几个会话编号：号池按会话路由，多个会话才能抽查到不同的上游
+	sessions := make([]string, probe.Sessions)
+	for i := range sessions {
+		sessions[i] = relay.NewProbeSession()
+	}
 	caller := func(ctx context.Context, req probe.Request) probe.Call {
-		return s.Relay.ProbeChat(ctx, ch, run.UpstreamModel, session, req)
+		return s.Relay.ProbeChat(ctx, ch, run.UpstreamModel, sessions[req.Session%len(sessions)], req)
 	}
 	report, err := probe.Run(ctx, caller, probe.Spec{Baseline: run.Baseline, Quick: run.Preset == "quick"}, func(done, total int) {
 		s.probeProgress.Store(run.ID, [2]int{done, total})

@@ -19,7 +19,7 @@ import (
 // probeUserAgent 是检测请求伪装成的客户端（Codex 命令行工具），避免中转认出检测流量、专门转给真模型。
 const probeUserAgent = "codex-tui/0.163.0 (Ubuntu 24.4.0; x86_64) WindowsTerminal (codex-tui; 0.163.0)"
 
-// NewProbeSession 生成一次检测共用的会话编号（UUID 格式），整次检测像同一段 Codex 对话。
+// NewProbeSession 生成一个检测会话编号（UUID 格式）；同一会话的请求像同一段 Codex 对话。
 func NewProbeSession() string {
 	b := make([]byte, 16)
 	rand.Read(b)
