@@ -123,7 +123,8 @@ def probe_fingerprint(args):
         prompts = f["prompts"][args.fingerprint_from:]
         if args.fingerprint_limit:
             prompts = prompts[: args.fingerprint_limit]
-    jobs = [p for p in prompts for _ in range(f["samples"])]
+    samples = args.fingerprint_samples or f["samples"]
+    jobs = [p for p in prompts for _ in range(samples)]
     state = {"streak": 0, "stopped": False}
 
     def one(p):
@@ -146,7 +147,7 @@ def probe_fingerprint(args):
             errors += 1
         else:
             answers[p].append(a)
-    return {"samples": f["samples"], "errors": errors, "stopped": state["stopped"], "answers": answers}
+    return {"samples": samples, "errors": errors, "stopped": state["stopped"], "answers": answers}
 
 
 # ---- 数学题：按种子生成，本地算标准答案；记正确率和推理 token（思考深度、稳定性） ----
@@ -571,6 +572,7 @@ def main():
     ds.add_argument("files", nargs="+")
     r.add_argument("--fingerprint-from", type=int, default=0, help="单词指纹从第 N 题开始（0 起算），用于只补跑新加的题")
     r.add_argument("--fingerprint-limit", type=int, default=0, help="最多跑 N 道单词指纹题（0 表示不限）")
+    r.add_argument("--fingerprint-samples", type=int, default=0, help="每道单词指纹题问几次（0 表示用题库里的设定）")
     r.add_argument("--fingerprint-prompts", default="", help="只跑这些序号的单词指纹题（逗号分隔，0 起算），结果合并进这一轮")
     lg = sub.add_parser("legs", help="单独测量鹈鹕 HTML 的腿部动画")
     lg.add_argument("--edge", required=True)
