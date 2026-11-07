@@ -168,7 +168,8 @@ export default function Probes() {
 function RunningTag({ run }: { run: Run }) {
   const { t } = useApp()
   const [done, total] = run.progress ?? [0, 0]
-  return <Tag icon={<LoadingOutlined />} color="processing">{total ? `${Math.floor((done * 100) / total)}%` : t('检测中', 'Running')}</Tag>
+  // 显示已完成 / 总数：完整档 500 多个请求，按百分比要 6 个请求才涨 1%，看起来像卡住
+  return <Tag icon={<LoadingOutlined />} color="processing">{total ? `${done} / ${total}` : t('检测中', 'Running')}</Tag>
 }
 
 function Result({ run, protocol, statusIcon, statusText }: { run: Run; protocol: boolean; statusIcon: Record<Status, ReactNode>; statusText: Record<Status, string> }) {
