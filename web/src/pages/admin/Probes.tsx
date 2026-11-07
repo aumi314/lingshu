@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Alert, App, Button, Card, Col, Collapse, Empty, Form, Modal, Progress, Row, Select, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
+import { Alert, App, Button, Card, Col, Collapse, Empty, Form, Modal, Progress, Radio, Row, Select, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
 import { CheckCircleFilled, CloseCircleFilled, ExclamationCircleFilled, InfoCircleFilled, LoadingOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { get, post, type Channel } from '../../api'
@@ -35,7 +35,7 @@ export default function Probes() {
   const [runs, setRuns] = useState<Run[]>([])
   const [selected, setSelected] = useState<Run | null>(null)
   const [starting, setStarting] = useState(false)
-  const [form] = Form.useForm<{ channel_id?: number; model?: string }>()
+  const [form] = Form.useForm<{ channel_id?: number; model?: string; preset: 'quick' | 'full' }>()
   const channelID = Form.useWatch('channel_id', form)
 
   const statusText: Record<Status, string> = { pass: t('通过', 'Pass'), warn: t('需关注', 'Check'), fail: t('不通过', 'Fail'), info: t('参考', 'Info') }
@@ -71,8 +71,8 @@ export default function Probes() {
     const v = await form.validateFields()
     setStarting(true)
     try {
-      // 只选渠道和模型：对照型号就是站内模型名（没有官方样本的模型选不了），默认快速档
-      const r = await post<{ id: number }>('/api/admin/probes', { channel_id: v.channel_id, model: v.model })
+      // 对照型号就是站内模型名（没有官方样本的模型选不了）
+      const r = await post<{ id: number }>('/api/admin/probes', { channel_id: v.channel_id, model: v.model, preset: v.preset })
       message.success(t('检测已开始，后台运行，关掉页面也会跑完', 'Started; it keeps running in the background'))
       await loadRuns()
       await open(r.id)
@@ -94,7 +94,7 @@ export default function Probes() {
       </Typography.Paragraph>
 
       <Card style={{ marginBottom: 16 }}>
-        <Form form={form} layout="inline" style={{ rowGap: 12 }}>
+        <Form form={form} layout="inline" initialValues={{ preset: 'quick' }} style={{ rowGap: 12 }}>
           <Form.Item name="channel_id" label={t('渠道', 'Channel')} rules={[{ required: true, message: t('选择渠道', 'Pick a channel') }]}>
             <Select style={{ width: 220 }} showSearch optionFilterProp="label" onChange={() => form.setFieldValue('model', undefined)}
               options={chatChannels.map((c) => ({ value: c.id, label: c.name + (c.enabled ? '' : t('（已停用）', ' (disabled)')) }))} />
@@ -106,6 +106,12 @@ export default function Probes() {
                 disabled: !baselines.includes(m.model_name), // 没有同名官方样本，无从对比
                 label: (m.upstream_name && m.upstream_name !== m.model_name ? `${m.model_name} ← ${m.upstream_name}` : m.model_name) + (baselines.includes(m.model_name) ? '' : t('（暂无官方样本）', ' (no baseline)')),
               }))} />
+          </Form.Item>
+          <Form.Item name="preset" label={t('档位', 'Preset')}>
+            <Radio.Group optionType="button" options={[
+              { value: 'quick', label: <Tooltip title={t('单词指纹抽 40 题、每题问 4 次，几分钟跑完，花费低', '40 fingerprint prompts × 4')}>{t('快速', 'Quick')}</Tooltip> },
+              { value: 'full', label: <Tooltip title={t('区分度高的指纹题全上、每题问 6 次，结论更稳，时间和花费约 2.5 倍', 'All separating prompts × 6')}>{t('完整', 'Full')}</Tooltip> },
+            ]} />
           </Form.Item>
           <Button type="primary" loading={starting} onClick={start}>{t('开始检测', 'Start')}</Button>
         </Form>
@@ -137,6 +143,7 @@ export default function Probes() {
             { title: t('时间', 'Time'), dataIndex: 'created_at', render: (v: string) => <span className="nowrap">{dayjs(v).format('MM-DD HH:mm')}</span> },
             { title: t('渠道', 'Channel'), dataIndex: 'channel_name' },
             { title: t('模型', 'Model'), render: (_, r) => <span className="mono">{r.model}</span> },
+            { title: t('档位', 'Preset'), dataIndex: 'preset', render: (v: string) => (v === 'full' ? t('完整', 'Full') : t('快速', 'Quick')) },
             { title: t('得分', 'Score'), render: (_, r) => r.status === 'running' ? <RunningTag run={r} /> : r.status === 'failed' ? <Tag color="red">{t('失败', 'Failed')}</Tag> : <b>{r.score}%</b> },
             { title: t('结论', 'Verdict'), dataIndex: 'verdict', render: (v: string) => <span style={{ whiteSpace: 'normal' }}>{v || '—'}</span> },
             { title: t('花费', 'Cost'), dataIndex: 'cost', align: 'right', render: (v: string) => money(v, 4) },
