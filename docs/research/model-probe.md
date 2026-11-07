@@ -62,19 +62,9 @@
 - 同一次检测里咔咔的一个 high 推理强度请求推理 token 为 0（日志 4346），疑似推理强度被降。
 - 输入 token 基准（一个字母 `a` 的请求）：kinght 约 4200–4500（和官方 Codex 相近），ai8 约 18200（多注入约 1.4 万 token），咔咔在 4400、5800、18200 三档之间变化，符合此前“号池混用多个上游”的结论。
 
-## hvoy 测 Claude（2026-11-07，claude-opus-5-5 两次）
+## hvoy 测 Claude（2026-11-07）
 
-两次都路由到渠道「kinght claude0.8」，结果正常。每次 5 个请求，全部走 `/v1/messages`，伪装成 Claude Code：`User-Agent: claude-cli/…`、`x-app: cli`、Claude Code 的 beta 头，系统提示只有计费头和一句“You are Claude Code…”，`metadata.user_id` 里的 device / account / session 每次随机；`thinking: adaptive`、`output_config.effort: xhigh`、`tools: []`。
-
-| 检测项 | 做法 |
-|---|---|
-| 知识时效 | 4 道 2025 年 8–10 月的新闻题；格式示例 `1|Alaska` 又是其中一题的答案 |
-| PDF 读取 | 附一个 base64 PDF（内容 “Hvoy AI report total <随机数>”），要求只返回文字：看中转是否支持 document 块原样转发 |
-| 乘法 JSON | 两位数乘法，按固定 JSON 格式返回 |
-| 尖括号校验串 | 让模型原样输出 `<随机串>`：看中转是否过滤或改写像 XML 标签的内容 |
-| 自报知识截止 | 只回 `YYYY-MM`，两次都答 `2025-01` |
-
-输入 token 很小（65–956），kinght 这条 Claude 渠道没有注入提示词。灵枢的模型检测目前只有 GPT 的官方样本，Claude 还不能检测；PDF 原样转发、尖括号原样输出这两项是协议层的检查，不需要官方样本，接 Claude 时可以先做。
+整理成了单独的检测思路，见 `docs/research/claude-probe.md`。
 
 ## 鹈鹕与推理强度（2026-11-07）
 
