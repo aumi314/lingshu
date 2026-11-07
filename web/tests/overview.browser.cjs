@@ -24,7 +24,7 @@ const fs = require('node:fs')
       if (p === '/api/me/logs') return json({ logs: [], summary: { requests: 589, failed: 0, input_tokens: 100000000, cache_read_tokens: 0, output_tokens: 3420000, cost: '31.95' } })
       if (p === '/api/me/keys') return json(state.keys)
       if (p === '/api/me/payment-methods') return json({ enabled: state.topup, methods: [] })
-      if (p === '/api/me/endpoints') return json({ api_base_url: 'https://gateway.example.com/v1' })
+      if (p === '/api/me/endpoints') return json({ api_base_url: 'https://gateway.example.com/v1', announcement: '客服邮箱：support@example.com' })
       return json({})
     })
     const goto = async () => {
@@ -34,6 +34,8 @@ const fs = require('node:fs')
 
     // 余额偏低：提前提醒，带充值入口；步骤按数据自动打勾
     await goto()
+    // 顶部公告：邮箱可点
+    assert.equal(await page.locator('a[href="mailto:support@example.com"]').textContent(), 'support@example.com')
     await page.getByText('余额不多了', { exact: true }).waitFor()
     await page.getByRole('button', { name: /^充\s*值$/ }).first().waitFor()
     await page.getByText('已完成 3/4', { exact: true }).waitFor()
@@ -93,7 +95,7 @@ const fs = require('node:fs')
     await page.setViewportSize({ width: 390, height: 844 })
     await goto()
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1))
-    console.log('PASS: low balance hint with top-up, auto-checked steps, agent setup prompt without key, Magpie import link, Claude Code root URL, Codex /v1, endpoint table removed, zero balance without top-up, all-done collapse, mobile width')
+    console.log('PASS: announcement with clickable email, low balance hint with top-up, auto-checked steps, agent setup prompt without key, Magpie import link, Claude Code root URL, Codex /v1, endpoint table removed, zero balance without top-up, all-done collapse, mobile width')
   } finally {
     await browser.close()
     server.kill()

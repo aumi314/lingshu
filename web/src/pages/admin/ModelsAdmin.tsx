@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { App, Button, Card, Divider, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { del, get, post, put, type Model, type PriceRule } from '../../api'
 import { priceText, useApp } from '../../app'
-import ModelIcon, { byVendor } from '../../components/ModelIcon'
+import ModelIcon, { byVendor, vendorOf } from '../../components/ModelIcon'
 
 const priceFields = ['input_price', 'output_price', 'cache_read_price', 'cache_write_price'] as const
 const clock = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -103,6 +104,20 @@ export default function ModelsAdmin() {
   const price = (v: string) => priceText(money, v)
   const symbol = inputCurrency === 'CNY' ? '¥' : '$'
 
+  // 厂商筛选：只列出现有模型里出现的厂商（按列表顺序），带数量；选择记在网址 ?vendor= 上，刷新保留
+  const [params, setParams] = useSearchParams()
+  const sorted = [...models].sort(byVendor)
+  const vendorList = [...new Set(sorted.map((m) => vendorOf(m.name)))]
+  const vendor = params.get('vendor') ?? ''
+  const active = vendor && vendorList.includes(vendor === 'other' ? '' : vendor) ? vendor : ''
+  const shown = active ? sorted.filter((m) => vendorOf(m.name) === (active === 'other' ? '' : active)) : sorted
+  const pickVendor = (v: string) => {
+    const next = new URLSearchParams(params)
+    if (v) next.set('vendor', v)
+    else next.delete('vendor')
+    setParams(next, { replace: true })
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 12 }}>
@@ -116,10 +131,24 @@ export default function ModelsAdmin() {
           {t('添加模型', 'Add model')}
         </Button>
       </div>
+      {vendorList.length > 1 && (
+        <Segmented
+          style={{ marginBottom: 12, maxWidth: '100%', overflowX: 'auto' }}
+          value={active}
+          onChange={(v) => pickVendor(v as string)}
+          options={[
+            { value: '', label: `${t('全部', 'All')} ${models.length}` },
+            ...vendorList.map((name) => ({
+              value: name || 'other',
+              label: `${name || t('其他', 'Other')} ${sorted.filter((m) => vendorOf(m.name) === name).length}`,
+            })),
+          ]}
+        />
+      )}
       <Table
         rowKey="id"
         loading={loading}
-        dataSource={[...models].sort(byVendor)}
+        dataSource={shown}
         pagination={false}
         columns={[
           { title: 'ID', dataIndex: 'id', width: 48, render: (v) => <span className="muted">{v}</span> },

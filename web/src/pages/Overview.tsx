@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Alert, Button, Card, Col, Row, Space, Statistic, Tabs, Tag, Typography } from 'antd'
-import { CheckCircleFilled, ExportOutlined } from '@ant-design/icons'
+import { CheckCircleFilled, ExportOutlined, NotificationOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { Link } from 'react-router-dom'
 import { get, type APIKey, type LogsResponse } from '../api'
@@ -16,6 +16,7 @@ export default function Overview() {
   const [keys, setKeys] = useState<APIKey[] | null>(null)
   const [topupOpen, setTopupOpen] = useState(false)
   const [apiBaseURL, setAPIBaseURL] = useState('')
+  const [announcement, setAnnouncement] = useState('') // 管理员在运营设置里填的公告，空就不显示
   const [error, setError] = useState('')
   const [showSteps, setShowSteps] = useState(false)
 
@@ -29,7 +30,7 @@ export default function Overview() {
       .catch((e) => setError(e.message))
     get<APIKey[]>('/api/me/keys').then(setKeys).catch(() => setKeys([]))
     get<{ enabled: boolean }>('/api/me/payment-methods').then((v) => setTopupOpen(v.enabled)).catch(() => {})
-    get<{ api_base_url: string }>('/api/me/endpoints').then((v) => setAPIBaseURL(v.api_base_url)).catch(() => {})
+    get<{ api_base_url: string; announcement?: string }>('/api/me/endpoints').then((v) => { setAPIBaseURL(v.api_base_url); setAnnouncement(v.announcement ?? '') }).catch(() => {})
   }, [])
 
   const balance = Number(user?.balance ?? 0)
@@ -82,6 +83,7 @@ export default function Overview() {
       <Typography.Title level={3} className="page-title">
         {t('概览', 'Overview')}
       </Typography.Title>
+      {announcement && <Alert type="info" showIcon icon={<NotificationOutlined />} title={<span style={{ whiteSpace: 'pre-wrap' }}>{linkEmails(announcement)}</span>} style={{ marginBottom: 16 }} />}
       {error && <Alert type="error" title={error} showIcon style={{ marginBottom: 16 }} />}
 
       <Row gutter={[16, 16]}>
@@ -169,4 +171,9 @@ export default function Overview() {
       </Card>
     </div>
   )
+}
+
+// 公告里的邮箱地址做成可点的 mailto 链接，其余原样显示
+function linkEmails(text: string) {
+  return text.split(/([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/).map((part, i) => (i % 2 ? <a key={i} href={`mailto:${part}`}>{part}</a> : part))
 }

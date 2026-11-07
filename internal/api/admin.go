@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/shopspring/decimal"
 
@@ -706,8 +707,20 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"call_limits": limits,
 		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode, "api_base_url": apiBaseURL, "deployment_mode": deploymentMode,
-		"fx_mode": s.fxMode(r.Context()), "fx_status": s.fxStatus(r.Context()),
+		"fx_mode": s.fxMode(r.Context()), "fx_status": s.fxStatus(r.Context()), "announcement": s.announcement(r.Context()),
 	})
+}
+
+// maxAnnouncement 是公告的字数上限（概览页顶部一条提示，写客服方式、维护通知这类短文字）。
+const maxAnnouncement = 500
+
+// announcement 是管理员在运营设置里填的公告，所有登录用户在概览页顶部看到；没填就是空，不显示。
+func (s *Server) announcement(ctx context.Context) string {
+	v, err := s.Store.Setting(ctx, "announcement")
+	if err != nil {
+		return ""
+	}
+	return v
 }
 
 func (s *Server) apiBaseURL(ctx context.Context) (string, error) {
@@ -730,7 +743,7 @@ func (s *Server) getAPIEndpoints(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"api_base_url": apiBaseURL})
+	writeJSON(w, http.StatusOK, map[string]string{"api_base_url": apiBaseURL, "announcement": s.announcement(r.Context())})
 }
 
 func validAPIBaseURL(raw string) (string, bool) {
@@ -759,6 +772,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		Concurrency      *int64           `json:"user_concurrency"`
 		RPM              *int64           `json:"user_rpm"`
 		ReserveOutput    *int64           `json:"reserve_output_tokens"`
+		Announcement     *string          `json:"announcement"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -801,6 +815,14 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		in.APIBaseURL = &value
 	}
+	if in.Announcement != nil {
+		v := strings.TrimSpace(*in.Announcement)
+		if utf8.RuneCountInString(v) > maxAnnouncement {
+			writeError(w, http.StatusBadRequest, "公告最多 "+strconv.Itoa(maxAnnouncement)+" 个字")
+			return
+		}
+		in.Announcement = &v
+	}
 	var kv [][2]string // 一次保存的多项设置在同一事务里写，操作日志记一条
 	if in.DeploymentMode != nil {
 		kv = append(kv, [2]string{"deployment_mode", *in.DeploymentMode})
@@ -824,6 +846,9 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.APIBaseURL != nil {
 		kv = append(kv, [2]string{"api_base_url", *in.APIBaseURL})
+	}
+	if in.Announcement != nil {
+		kv = append(kv, [2]string{"announcement", *in.Announcement})
 	}
 	if err := s.Store.SetSettings(r.Context(), kv); err != nil {
 		writeStoreError(w, err)
