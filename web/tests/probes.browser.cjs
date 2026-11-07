@@ -79,7 +79,7 @@ const path = require('node:path')
     await page.getByText(/请求明细/).click()
     await page.getByText('⟨零宽⟩kiwi', { exact: true }).waitFor()
     // 关闭弹窗回到列表；点检测记录再次打开
-    await dialog.getByRole('button', { name: /关\s*闭/ }).click()
+    await dialog.locator('.ant-modal-footer').getByRole('button', { name: /关\s*闭/ }).click()
     await dialog.waitFor({ state: 'hidden' })
     await page.locator('tbody tr').filter({ hasText: 'relay-fixture' }).first().click()
     await page.getByRole('dialog').getByText('88%', { exact: true }).first().waitFor()
