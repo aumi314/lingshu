@@ -134,6 +134,10 @@ func (h *Handler) ProbeMessages(ctx context.Context, ch *store.Channel, upstream
 					ThinkingTokens int64 `json:"thinking_tokens"`
 				} `json:"output_tokens_details"`
 			} `json:"usage"`
+			Error struct {
+				Type    string `json:"type"`
+				Message string `json:"message"`
+			} `json:"error"`
 		}
 		if json.Unmarshal(data, &ev) != nil || ev.Type == "" {
 			return
@@ -173,6 +177,8 @@ func (h *Handler) ProbeMessages(ctx context.Context, ch *store.Channel, upstream
 			}
 		case "message_stop":
 			c.Done = true
+		case "error": // 已经回了 200 再在流里报错（上下文超长、过载等）：算请求失败，不当成模型答错
+			c.Error = truncate("上游在流中报错: "+ev.Error.Type+" "+ev.Error.Message, 300)
 		}
 	}
 	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {

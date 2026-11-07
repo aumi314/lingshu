@@ -311,7 +311,7 @@ func (p *plan) build() {
 		Prompt: "Say hello in one short sentence."})
 
 	if !p.spec.Quick {
-		p.spread(p.needle(s.Needle.Effort))
+		p.spread(p.needle(s.Needle.Effort, 12))
 	}
 }
 
