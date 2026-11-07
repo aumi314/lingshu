@@ -240,6 +240,12 @@ NVIDIA 模板（2026-11-07）：新增 `nvidia` 模板（只有 Chat，`https://
 
 完整档加大海捞针（GPT、Claude 都做，编号和句子每次随机，提示词只存开头和长度）；claude-opus-5-5 开放协议层检测（`relay.ProbeMessages` 伪装 Claude Code 走 Messages，`internal/probe/protocol.go` 评判协议规范、推理、工具、指令、文档与原样输出）。上线前在 DMIT 用 kinght claude0.8 实测：协议特征、PDF、尖括号原样、工具调用都正常；thinking 签名回传（普通多轮、工具调用循环，原样 / 篡改 / 伪造 / 删除）全部 200 且输入 token 不变，判断依据不足，未上线该项。官方渠道 18 余额不足，kirisame 号池 503。测试：`TestNeedleInFullPreset`、`TestProtocolCheckForClaude`、`TestProbeMessagesDisguiseAndParse`（按 kinght 真实响应构造）、`probes.browser.cjs` 加 Messages 渠道和 Claude 选项。
 
+线上验收（`ca5bdb5`，含 PR #39 大海捞针按分词器定长度、记下 Claude 流中报错）：
+- 首轮（`dfd5152`，检测 10）Claude 大海捞针达 20.1 万 token，上游回 200 后在流中报错，检测误判为编号没找到、协议规范连带不通过，由 #39 修正。
+- 检测 11，kinght gpt-0.16 · gpt-6.1-sol 完整档 93 分：大海捞针 92577 token 三个编号全找到；结构化输出遇渠道 Cloudflare 524；会话 1 基准 28 token、其余 4391，渠道混了官方 API 和 Codex 号池两种上游；535 个流里 29 个没正常结束。
+- 检测 12，kinght claude0.8 · claude-opus-5-5 完整档 67 分：协议规范通过（11 个响应全部符合官方格式）；大海捞针（约 10 万 token）上游流中报 “Upstream access forbidden”，渠道不支持长上下文；推理两次 0/2、系统提示“只回某词”两次都没守住，没有官方样本，暂记需关注。
+- 本地 Codex 0.160（Responses 协议，`model_auto_compact_token_limit=2000`）经灵枢触发两次自动压缩均成功：压缩请求走 `/v1/responses`、带 `remote_compaction_v2`，不调 `/responses/compact`，灵枢透传即可。Codex 启动时会请求 `gpt-5.6-luna`、`gpt-5.6-terra`，站内没有这两个模型，返回 404，不影响主流程。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 改为自动发布前的手动发布记录
