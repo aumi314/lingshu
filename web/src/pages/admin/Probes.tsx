@@ -264,12 +264,21 @@ function Details({ item }: { item: Item }) {
   const { t } = useApp()
   const d = item.details ?? {}
   if (Array.isArray(d.ranking)) {
+    const sessions = (d.sessions ?? []) as { session: number; nearest: string; odd: boolean; baseline_distance: number; ranking: { model: string; distance: number }[] }[]
     return (
       <Space direction="vertical" size={2}>
         <Typography.Text type="secondary">{t('和各官方型号的距离（越小越像）：', 'Distance to each official model (smaller is closer):')}</Typography.Text>
         {(d.ranking as { model: string; distance: number; prompts: number }[]).map((x) => (
           <span key={x.model} className="mono">{x.model}：{x.distance.toFixed(3)}（{x.prompts} {t('题', 'prompts')}）</span>
         ))}
+        {sessions.length > 0 && <>
+          <Typography.Text type="secondary" style={{ marginTop: 6 }}>{t('各会话单独看（号池按会话路由，每个会话可能打到不同上游）：', 'Per session (pools route by session):')}</Typography.Text>
+          {sessions.map((x) => (
+            <span key={x.session} style={{ color: x.odd ? '#ff4d4f' : undefined }}>
+              {t(`会话 ${x.session}：最像`, `Session ${x.session}: closest to`)} <span className="mono">{x.nearest}</span>（{x.ranking[0].distance.toFixed(3)}）{x.odd && t('，明显不像对照型号', ', clearly not the baseline')}
+            </span>
+          ))}
+        </>}
       </Space>
     )
   }

@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/aumi314/lingshu/internal/probe"
 )
 
 // 模型检测：发起、后台跑完、结果入库；请求直接打到渠道、伪装成 Codex 客户端；流式工具调用分片能拼回来。
@@ -141,7 +143,7 @@ func TestProbeRun(t *testing.T) {
 	if len(run.Report.Calls) < 150 || run.Cost == "0" {
 		t.Errorf("请求数 %d、花费 %s", len(run.Report.Calls), run.Cost)
 	}
-	// 上游只看到一个会话编号、Codex 客户端的 User-Agent 和映射后的上游模型名
+	// 上游看到 4 个会话编号（一次检测抽查几个上游）、Codex 客户端的 User-Agent 和映射后的上游模型名
 	sessions, uas := 0, 0
 	for k := range seen {
 		if strings.HasPrefix(k, "session ") {
@@ -151,7 +153,7 @@ func TestProbeRun(t *testing.T) {
 			uas++
 		}
 	}
-	if sessions != 1 || uas != 1 || seen["model up-sol"] != len(run.Report.Calls) {
+	if sessions != probe.Sessions || uas != 1 || seen["model up-sol"] != len(run.Report.Calls) {
 		t.Errorf("请求伪装或模型映射不对: %v", seen)
 	}
 	// 列表不带完整结果；检测请求不进调用日志

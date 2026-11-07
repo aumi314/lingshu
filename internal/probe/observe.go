@@ -8,7 +8,7 @@ import (
 
 // observe 从全部请求里看请求质量：注入、不可见字符、上游混用、搜索痕迹、流式完整性、协议字段。
 // 只说明观察到的现象，不计入总分：上游有注入不等于模型是假的，两件事分开看。
-func observe(calls, tokenCalls []Call, base *Baseline) []Item {
+func observe(calls, tokenCalls, anchorCalls []Call, base *Baseline, sessionNearest []string) []Item {
 	var out []Item
 	ok := make([]Call, 0, len(calls))
 	for _, c := range calls {
@@ -78,7 +78,44 @@ func observe(calls, tokenCalls []Call, base *Baseline) []Item {
 		out = append(out, Item{Key: "invisible", Title: "不可见字符", Status: Pass, Summary: "回答里没有零宽字符等不可见字符"})
 	}
 
-	// 上游混用：按响应编号前缀和 service_tier 分组，出现多组说明同一渠道背后不止一种上游
+	// 上游混用：各会话的基准输入 token、各会话的指纹结论、响应编号前缀和 service_tier，任何一项不一致都说明同一渠道背后不止一种上游
+	var reasons []string
+	anchors := map[int]int64{}
+	if len(tokenCalls) > 0 && tokenCalls[0].UsageReported {
+		anchors[0] = tokenCalls[0].InputTokens
+	}
+	for _, c := range anchorCalls {
+		if c.Error == "" && c.UsageReported {
+			anchors[c.Session] = c.InputTokens
+		}
+	}
+	lo, hi := int64(-1), int64(-1)
+	for _, v := range anchors {
+		if lo < 0 || v < lo {
+			lo = v
+		}
+		if v > hi {
+			hi = v
+		}
+	}
+	if hi-lo > 50 {
+		var parts []string
+		for sess := 0; sess < Sessions; sess++ {
+			if v, ok := anchors[sess]; ok {
+				parts = append(parts, fmt.Sprintf("会话 %d：%d", sess+1, v))
+			}
+		}
+		reasons = append(reasons, "各会话的基准输入 token 不同（"+strings.Join(parts, "，")+"）")
+	}
+	if len(sessionNearest) > 1 {
+		distinct := map[string]bool{}
+		for _, m := range sessionNearest {
+			distinct[m] = true
+		}
+		if len(distinct) > 1 && !(len(distinct) == 2 && distinct["gpt-6.1-sol"] && distinct["gpt-6-astra"]) {
+			reasons = append(reasons, "各会话的指纹最像的型号不同（"+strings.Join(sessionNearest, "、")+"）")
+		}
+	}
 	groups := map[string]int{}
 	for _, c := range ok {
 		groups[idPrefix(c.ID)+" · service_tier "+orDash(c.ServiceTier)]++
@@ -95,9 +132,13 @@ func observe(calls, tokenCalls []Call, base *Baseline) []Item {
 		}
 	}
 	if mixed > 1 {
-		out = append(out, Item{Key: "mixed", Title: "上游混用", Status: Warn, Summary: fmt.Sprintf("响应格式分成 %d 组，同一渠道背后不止一种上游（号池混用）", mixed), Details: map[string]any{"groups": gs}})
+		reasons = append(reasons, fmt.Sprintf("响应格式分成 %d 组", mixed))
+	}
+	details := map[string]any{"groups": gs, "session_anchor_tokens": anchors, "session_nearest": sessionNearest}
+	if len(reasons) > 0 {
+		out = append(out, Item{Key: "mixed", Title: "上游混用", Status: Warn, Summary: strings.Join(reasons, "；") + "：同一渠道背后不止一种上游（号池混用）", Details: details})
 	} else {
-		out = append(out, Item{Key: "mixed", Title: "上游混用", Status: Pass, Summary: "响应格式一致", Details: map[string]any{"groups": gs}})
+		out = append(out, Item{Key: "mixed", Title: "上游混用", Status: Pass, Summary: fmt.Sprintf("%d 个会话的基准、指纹和响应格式一致", Sessions), Details: details})
 	}
 
 	// 搜索痕迹：检测题都要求直接回答，回答里出现搜索来源说明上游强行挂了搜索工具
