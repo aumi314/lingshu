@@ -67,9 +67,25 @@ func (h *Handler) Probe(ctx context.Context, ch *store.Channel, proto usage.Prot
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "lingshu-probe/1")
 	setUpstreamAuth(req.Header, proto, ch.APIKey)
+	var openCode *openCodeRequest
+	if ch.Template == openCodeTemplate && proto == usage.Chat && strings.HasSuffix(upstreamModel, "-free") {
+		prepared, state, err := prepareOpenCode(req, raw, ch.ID)
+		if err != nil {
+			res.Error = err.Error()
+			return res
+		}
+		req.Body = io.NopCloser(bytes.NewReader(prepared))
+		req.ContentLength = int64(len(prepared))
+		req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(prepared)), nil }
+		openCode = state
+	}
 
 	start := time.Now()
-	resp, err := h.clientFor(ch.ProxyURL).Do(req)
+	client := h.clientFor(ch.ProxyURL)
+	if ch.Template == openCodeTemplate {
+		client = h.openCodeClientFor(ch.ProxyURL)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		res.Error = "连接失败: " + err.Error()
 		return res
@@ -121,6 +137,12 @@ func (h *Handler) Probe(ctx context.Context, ch *store.Channel, proto usage.Prot
 		if res.FirstByteMS == 0 {
 			res.FirstByteMS = max(int(time.Since(start).Milliseconds()), 1)
 		}
+		if openCode != nil {
+			if err := openCode.sanitizeEvent(ev.Data); err != nil {
+				res.Error = err.Error()
+				break
+			}
+		}
 		tr.ObserveEvent(ev.Data)
 	}
 	res.TotalMS = int(time.Since(start).Milliseconds())
@@ -171,7 +193,11 @@ func (h *Handler) FetchModels(ctx context.Context, ch *store.Channel) ([]string,
 		} else {
 			setUpstreamAuth(req.Header, usage.Chat, ch.APIKey)
 		}
-		resp, err := h.clientFor(ch.ProxyURL).Do(req)
+		client := h.clientFor(ch.ProxyURL)
+		if ch.Template == openCodeTemplate {
+			client = h.openCodeClientFor(ch.ProxyURL)
+		}
+		resp, err := client.Do(req)
 		if err != nil {
 			lastErr = err
 			continue

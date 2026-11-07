@@ -348,14 +348,31 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 	}
 	copyRequestHeaders(upReq.Header, r.Header)
 	setUpstreamAuth(upReq.Header, c.proto, route.APIKey)
+	var openCode *openCodeRequest
+	if route.Template == openCodeTemplate && c.proto == usage.Chat && strings.HasSuffix(route.UpstreamModel, "-free") {
+		// 会话归属用灵枢 key 的标识，随后恢复上游鉴权，不将用户 key 发给厂商。
+		upReq.Header.Set("Authorization", fmt.Sprintf("lingshu-key:%d", c.log.APIKeyID))
+		body, openCode, err = prepareOpenCode(upReq, body, route.ChannelID)
+		setUpstreamAuth(upReq.Header, c.proto, route.APIKey)
+		if err != nil {
+			return &failure{status: http.StatusBadRequest, reason: "OpenCode 请求格式错误", msg: err.Error()}
+		}
+		upReq.Body = io.NopCloser(bytes.NewReader(body))
+		upReq.ContentLength = int64(len(body))
+		upReq.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil }
+	}
 
 	timeout := h.BodyHeaderTimeout
-	if req.stream {
+	if req.stream || openCode != nil {
 		timeout = h.StreamHeaderTimeout
 	}
 	timer := time.AfterFunc(timeout, cancel)
 	c.log.UpstreamStartMS = max(int(time.Since(c.start).Milliseconds()), 1) // 换渠道时以最后一次为准
-	resp, err := h.clientFor(route.ProxyURL).Do(upReq)
+	client := h.clientFor(route.ProxyURL)
+	if route.Template == openCodeTemplate {
+		client = h.openCodeClientFor(route.ProxyURL)
+	}
+	resp, err := client.Do(upReq)
 	timedOut := !timer.Stop()
 	if err == nil && timedOut {
 		resp.Body.Close()
@@ -394,7 +411,25 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 	}
 
 	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+		if openCode != nil {
+			if !req.stream {
+				if err := collectOpenCodeChat(resp, openCode); err != nil {
+					if r.Context().Err() != nil {
+						c.log.Status = "client_cancelled"
+						return nil
+					}
+					h.Health.Record(route.ChannelID, router.Failure)
+					return &failure{status: http.StatusBadGateway, reason: err.Error(), msg: err.Error()}
+				}
+				return h.relayBody(w, c, route, resp)
+			}
+			return h.relayOpenCodeStream(w, r, c, route, resp, injected, openCode)
+		}
 		return h.relayStream(w, r, c, route, resp, injected)
+	}
+	if openCode != nil {
+		h.Health.Record(route.ChannelID, router.Failure)
+		return &failure{status: http.StatusBadGateway, reason: "OpenCode 未返回流式响应", msg: "OpenCode 未返回预期的流式响应，请重试"}
 	}
 	return h.relayBody(w, c, route, resp)
 }
@@ -424,6 +459,10 @@ func (h *Handler) relayBody(w http.ResponseWriter, c *call, route store.Route, r
 }
 
 func (h *Handler) relayStream(w http.ResponseWriter, r *http.Request, c *call, route store.Route, resp *http.Response, injected bool) *failure {
+	return h.relayOpenCodeStream(w, r, c, route, resp, injected, nil)
+}
+
+func (h *Handler) relayOpenCodeStream(w http.ResponseWriter, r *http.Request, c *call, route store.Route, resp *http.Response, injected bool, openCode *openCodeRequest) *failure {
 	reader := usage.NewSSEReader(resp.Body)
 
 	// 先读第一个事件再给客户端回响应头：上游一开口就报错或断开时，还能换渠道
@@ -442,6 +481,11 @@ func (h *Handler) relayStream(w http.ResponseWriter, r *http.Request, c *call, r
 		// 所有渠道都这样时，把这个协议原生的错误事件原样交给客户端
 		return &failure{status: resp.StatusCode, header: resp.Header.Clone(), body: first.Raw,
 			reason: "流的第一个事件就是错误: " + truncate(string(first.Data), 200)}
+	}
+	if openCode != nil {
+		if err := openCode.sanitizeEvent(first.Data); err != nil {
+			return &failure{status: http.StatusBadGateway, reason: err.Error(), msg: err.Error()}
+		}
 	}
 
 	copyResponseHeaders(w.Header(), resp.Header)
@@ -468,6 +512,17 @@ func (h *Handler) relayStream(w http.ResponseWriter, r *http.Request, c *call, r
 			break
 		}
 		c.tracker.ObserveEvent(ev.Data)
+		if openCode != nil {
+			if checkErr := openCode.sanitizeEvent(ev.Data); checkErr != nil {
+				c.tracker.Failed = true
+				// 已发出首字后不能重试；显式错误事件让客户端知道工具调用失败。
+				b, _ := json.Marshal(map[string]any{"error": map[string]string{"type": "upstream_error", "message": checkErr.Error()}})
+				fmt.Fprintf(w, "data: %s\n\n", b)
+				rc.Flush()
+				err = checkErr
+				break
+			}
+		}
 	}
 
 	switch {
