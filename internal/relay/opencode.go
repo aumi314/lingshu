@@ -137,13 +137,22 @@ func prepareOpenCode(req *http.Request, body []byte, channelID int64) ([]byte, *
 
 // sanitizeEvent 保留真实工具调用。模型若调用补充的占位工具，整次响应报错，避免静默丢失动作。
 func (s *openCodeRequest) sanitizeEvent(data []byte) error {
-	if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) || len(data) == 0 {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
+		for key := range s.toolNames {
+			if err := s.checkToolNames(key[0]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if len(data) == 0 {
 		return nil
 	}
 	var chunk struct {
 		Choices []struct {
-			Index int `json:"index"`
-			Delta struct {
+			Index        int     `json:"index"`
+			FinishReason *string `json:"finish_reason"`
+			Delta        struct {
 				ToolCalls []struct {
 					Index    int                   `json:"index"`
 					Function struct{ Name string } `json:"function"`
@@ -161,9 +170,21 @@ func (s *openCodeRequest) sanitizeEvent(data []byte) error {
 			}
 			key := [2]int{choice.Index, tc.Index}
 			s.toolNames[key] += tc.Function.Name
-			if s.stubs[s.toolNames[key]] {
-				return fmt.Errorf("OpenCode 请求了客户端未提供的工具 %s，请用支持该工具的编码客户端重试", strings.TrimSpace(s.toolNames[key]))
+		}
+		// 名称也可能跨分片；等当前 choice 结束再判断，避免 readmore 被前缀 read 误伤。
+		if choice.FinishReason != nil && *choice.FinishReason != "" {
+			if err := s.checkToolNames(choice.Index); err != nil {
+				return err
 			}
+		}
+	}
+	return nil
+}
+
+func (s *openCodeRequest) checkToolNames(choice int) error {
+	for key, name := range s.toolNames {
+		if key[0] == choice && s.stubs[name] {
+			return fmt.Errorf("OpenCode 请求了客户端未提供的工具 %s，请用支持该工具的编码客户端重试", strings.TrimSpace(name))
 		}
 	}
 	return nil

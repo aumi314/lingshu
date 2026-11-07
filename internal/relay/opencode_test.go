@@ -129,8 +129,89 @@ func TestOpenCodeRejectsSplitStubName(t *testing.T) {
 	if err := state.sanitizeEvent([]byte(`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"ba"}}]}}]}`)); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.sanitizeEvent([]byte(`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"sh"}}]}}]}`)); err == nil {
+	if err := state.sanitizeEvent([]byte(`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"sh"}}]}}]}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.sanitizeEvent([]byte(`{"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`)); err == nil {
 		t.Fatal("分片工具名绕过占位工具检查")
+	}
+}
+
+func TestOpenCodePreservesToolNameWithStubPrefix(t *testing.T) {
+	state := &openCodeRequest{stubs: map[string]bool{"read": true}}
+	for _, event := range []string{
+		`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"read"}}]}}]}`,
+		`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"more","arguments":"{}"}}]}}]}`,
+		`{"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+		`[DONE]`,
+	} {
+		if err := state.sanitizeEvent([]byte(event)); err != nil {
+			t.Fatalf("真实工具 readmore 被误判: %v", err)
+		}
+	}
+}
+
+func TestOpenCodeChecksStubAtDone(t *testing.T) {
+	state := &openCodeRequest{stubs: map[string]bool{"read": true}}
+	_ = state.sanitizeEvent([]byte(`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"read"}}]}}]}`))
+	if err := state.sanitizeEvent([]byte(`[DONE]`)); err == nil {
+		t.Fatal("DONE 前没有检查未结束的占位工具调用")
+	}
+}
+
+func TestOpenCodeLimitResponsePreservesRetryAfterAndDoesNotCharge(t *testing.T) {
+	e := newEnv(t)
+	e.exec(`UPDATE channels SET template = 'opencode-zen'; UPDATE channel_models SET upstream_name = 'iceman-free'`)
+	const upstreamBody = `{"type":"error","error":{"type":"FreeUsageLimitError","message":"Free usage limit reached"}}`
+	e.upstream = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "3600")
+		status(http.StatusTooManyRequests, upstreamBody)(w, r)
+	}
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat","messages":[{"role":"user","content":"hi"}]}`, nil)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusTooManyRequests || resp.Header.Get("Retry-After") != "3600" || string(body) != upstreamBody {
+		t.Fatalf("限流响应未保留: %d %v %s", resp.StatusCode, resp.Header, body)
+	}
+	if log := e.logRow(resp.Header.Get("X-Lingshu-Request-Id")); log.status != "upstream_error" || !log.cost.IsZero() {
+		t.Fatalf("限流请求被计费: %+v", log)
+	}
+}
+
+func TestOpenCodeFragmentedToolResponse(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		for _, name := range []string{"readmore", "read"} {
+			t.Run(map[bool]string{false: "body", true: "stream"}[stream]+"/"+name, func(t *testing.T) {
+				e := newEnv(t)
+				e.exec(`UPDATE channels SET template = 'opencode-zen'; UPDATE channel_models SET upstream_name = 'iceman-free'`)
+				e.upstream = func(w http.ResponseWriter, r *http.Request) {
+					events := []string{`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_x","type":"function","function":{"name":"read"}}]}}]}`}
+					if name == "readmore" {
+						events = append(events, `{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"more","arguments":"{}"}}]}}]}`)
+					}
+					events = append(events,
+						`{"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":10,"completion_tokens":5}}`,
+						`[DONE]`)
+					sse(w, events...)
+				}
+				payload, _ := json.Marshal(map[string]any{
+					"model": "std-chat", "stream": stream,
+					"messages": []map[string]string{{"role": "user", "content": "Use readmore."}},
+					"tools":    []any{map[string]any{"type": "function", "function": map[string]any{"name": "readmore", "parameters": map[string]any{"type": "object"}}}},
+				})
+				resp := e.post("/v1/chat/completions", string(payload), nil)
+				body, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				log := e.logRow(resp.Header.Get("X-Lingshu-Request-Id"))
+				if name == "readmore" {
+					if resp.StatusCode != 200 || log.status != "success" || !bytes.Contains(body, []byte("tool_calls")) || bytes.Contains(body, []byte("upstream_error")) {
+						t.Fatalf("真实工具响应错误: %d %s %+v", resp.StatusCode, body, log)
+					}
+				} else if log.status != "upstream_error" || !log.cost.IsZero() || !bytes.Contains(body, []byte("error")) {
+					t.Fatalf("占位工具调用没有报错或被计费: %d %s %+v", resp.StatusCode, body, log)
+				}
+			})
+		}
 	}
 }
 

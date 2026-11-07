@@ -48,7 +48,7 @@ var channelTemplates = []ChannelTemplate{
 		BaseURLResponses: "https://openrouter.ai/api/v1", HasModelList: true, ProxyURL: "socks5://127.0.0.1:10808",
 		Note: "三种协议都支持；代理地址可按部署环境调整，留空直连。模型名带厂商前缀，如 anthropic/claude-opus-5.5"},
 	{ID: "opencode-zen", Name: "OpenCode Zen", BaseURLChat: "https://opencode.ai/inference/openai/v1", HasModelList: true,
-		Note: "OpenCode Zen 原生直连，只启用 Chat 协议；支持拉取模型列表。免费模型会补充编码上下文和缺少的核心工具定义，上游始终流式，客户端可选流式或非流式。已验证 deepseek-v4.1-flash-free；其他模型先测试再启用。价格由管理员在定价页配置"},
+		Note: "OpenCode Zen 原生直连，只启用 Chat 协议；支持拉取模型列表。免费模型会补充编码上下文和缺少的核心工具定义，上游始终流式，客户端可选流式或非流式。免费层当前可用性待验收，模型须先测试再启用；上游 429 和 Retry-After 原样返回。价格由管理员在定价页配置"},
 	{ID: "openai-platform", Name: "OpenAI Platform", BaseURLChat: "https://api.openai.com/v1", BaseURLResponses: "https://api.openai.com/v1",
 		HasModelList: true, Note: "OpenAI 官方 Platform API；支持 Chat Completions 和 Responses，不提供 Anthropic Messages 协议"},
 	{ID: "anthropic-platform", Name: "Anthropic Platform", BaseURLMessages: "https://api.anthropic.com",
