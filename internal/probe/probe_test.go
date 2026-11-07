@@ -321,3 +321,21 @@ func TestProtocolCheckForClaude(t *testing.T) {
 		t.Errorf("总结论: %s", r.Verdict)
 	}
 }
+
+// Claude 的大海捞针用一半句子：同一段英文 Claude 的 token 数约是 GPT 的 2.2 倍。
+func TestNeedleSizedByTokenizer(t *testing.T) {
+	size := map[string]int{}
+	capture := func(fam string, inner Caller) Caller {
+		return func(ctx context.Context, req Request) Call {
+			if req.Item == "needle" {
+				size[fam] = len(req.Prompt)
+			}
+			return inner(ctx, req)
+		}
+	}
+	Run(context.Background(), capture("gpt", fakeUpstream(t, "gpt-6.1-sol", 71)), Spec{Baseline: "gpt-6.1-sol", Seed: 71}, nil)
+	Run(context.Background(), capture("claude", fakeClaude(true)), Spec{Baseline: "claude-opus-5-5", UpstreamModel: "claude-opus-5-5", Seed: 72}, nil)
+	if size["claude"] == 0 || size["gpt"] == 0 || size["claude"]*2 > size["gpt"]+size["gpt"]/20 {
+		t.Errorf("Claude 的大海捞针应约为 GPT 的一半长: %v", size)
+	}
+}

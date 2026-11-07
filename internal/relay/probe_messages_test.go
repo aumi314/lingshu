@@ -108,3 +108,19 @@ func TestProbeMessagesDisguiseAndParse(t *testing.T) {
 		t.Errorf("工具调用 %+v", c.ToolCalls)
 	}
 }
+
+// 上游先回 200 再在流里报错（2026-11-07 Claude 大海捞针 20 万 token 时实际发生）：记成请求失败。
+func TestProbeMessagesStreamError(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_01x\",\"model\":\"claude-opus-5-5\",\"usage\":{\"input_tokens\":201223,\"output_tokens\":1}}}\n\n"+
+			"event: ping\ndata: {\"type\":\"ping\"}\n\n"+
+			"event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"prompt is too long\"}}\n\n")
+	}))
+	defer up.Close()
+	h := &Handler{Client: up.Client()}
+	c := h.ProbeMessages(context.Background(), &store.Channel{BaseURLMessages: up.URL, APIKey: "k"}, "claude-opus-5-5", "s", probe.Request{Prompt: "hi"})
+	if !strings.Contains(c.Error, "prompt is too long") || c.Done {
+		t.Errorf("流中报错应记成请求失败: %+v", c)
+	}
+}
