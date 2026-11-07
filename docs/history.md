@@ -236,6 +236,10 @@ NVIDIA 模板（2026-11-07）：新增 `nvidia` 模板（只有 Chat，`https://
 
 上游报错按字节截断会切在汉字中间，写请求日志被 PostgreSQL 拒绝，整笔结算回滚：日志丢失、预扣冻结不释放。14 天内发生 3 次（均 cost=0，没有算错账），最近两次是 hvoy 测 claude-fable-5-1 时渠道 kirisame-claude0.7 返回中文 429。修复：`relay.truncate` 用 `strings.ToValidUTF8` 去掉残字节和上游原文的非法字节；新增 `TestLongChineseUpstreamErrorIsLogged`（修复前复现失败）。`558c089` 06:34 UTC 自动发布，发布前备份 `lingshu-deploy-20261107T063407Z-558c089.dump`；健康检查正常，aumif 卡住的冻结 $0.8256 随重启清零，发布后无 ERROR。
 
+### 大海捞针与 Claude 协议检测（2026-11-07）
+
+完整档加大海捞针（GPT、Claude 都做，编号和句子每次随机，提示词只存开头和长度）；claude-opus-5-5 开放协议层检测（`relay.ProbeMessages` 伪装 Claude Code 走 Messages，`internal/probe/protocol.go` 评判协议规范、推理、工具、指令、文档与原样输出）。上线前在 DMIT 用 kinght claude0.8 实测：协议特征、PDF、尖括号原样、工具调用都正常；thinking 签名回传（普通多轮、工具调用循环，原样 / 篡改 / 伪造 / 删除）全部 200 且输入 token 不变，判断依据不足，未上线该项。官方渠道 18 余额不足，kirisame 号池 503。测试：`TestNeedleInFullPreset`、`TestProtocolCheckForClaude`、`TestProbeMessagesDisguiseAndParse`（按 kinght 真实响应构造）、`probes.browser.cjs` 加 Messages 渠道和 Claude 选项。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 改为自动发布前的手动发布记录

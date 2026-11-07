@@ -45,6 +45,10 @@ type Suite struct {
 			Tier string `json:"tier"`
 		} `json:"problems"`
 	} `json:"math"`
+	Needle struct {
+		Effort string `json:"effort"`
+		Tokens int    `json:"tokens"`
+	} `json:"needle"`
 }
 
 // PairSet 是专门区分两个相近型号的题组（如 sol 和 astra：同一个底子，整体指纹相近）。

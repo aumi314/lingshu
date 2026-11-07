@@ -36,7 +36,8 @@ func (s *Server) withProgress(r store.ProbeRun) probeView {
 }
 
 func (s *Server) listProbeBaselines(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"models": probe.BaselineModels()})
+	// protocol_models：没有官方样本、只做协议层检测的型号（Claude，需要渠道有 Messages 地址）
+	writeJSON(w, http.StatusOK, map[string]any{"models": probe.BaselineModels(), "protocol_models": probe.ProtocolModels})
 }
 
 func (s *Server) listProbes(w http.ResponseWriter, r *http.Request) {
@@ -81,12 +82,13 @@ func (s *Server) startProbe(w http.ResponseWriter, r *http.Request) {
 	if in.Baseline == "" {
 		in.Baseline = in.Model
 	}
-	known := false
+	protocol := probe.IsProtocolModel(in.Baseline)
+	known := protocol
 	for _, m := range probe.BaselineModels() {
 		known = known || m == in.Baseline
 	}
 	if !known {
-		writeError(w, http.StatusBadRequest, "没有 "+in.Baseline+" 的官方样本，请选一个对照型号："+strings.Join(probe.BaselineModels(), "、"))
+		writeError(w, http.StatusBadRequest, "没有 "+in.Baseline+" 的官方样本，请选一个对照型号："+strings.Join(append(probe.BaselineModels(), probe.ProtocolModels...), "、"))
 		return
 	}
 	channels, err := s.Store.ListChannels(r.Context())
@@ -122,7 +124,11 @@ func (s *Server) startProbe(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	if secret.BaseURLChat == "" {
+	if protocol && secret.BaseURLMessages == "" {
+		writeError(w, http.StatusBadRequest, in.Model+" 的检测走 Messages 协议，这个渠道没有配置 Messages 地址")
+		return
+	}
+	if !protocol && secret.BaseURLChat == "" {
 		writeError(w, http.StatusBadRequest, "检测目前走 Chat 协议，这个渠道没有配置 Chat 地址")
 		return
 	}
@@ -151,9 +157,12 @@ func (s *Server) runProbe(run store.ProbeRun, ch *store.Channel) {
 		sessions[i] = relay.NewProbeSession()
 	}
 	caller := func(ctx context.Context, req probe.Request) probe.Call {
+		if probe.IsProtocolModel(run.Baseline) {
+			return s.Relay.ProbeMessages(ctx, ch, run.UpstreamModel, sessions[req.Session%len(sessions)], req)
+		}
 		return s.Relay.ProbeChat(ctx, ch, run.UpstreamModel, sessions[req.Session%len(sessions)], req)
 	}
-	report, err := probe.Run(ctx, caller, probe.Spec{Baseline: run.Baseline, Quick: run.Preset == "quick"}, func(done, total int) {
+	report, err := probe.Run(ctx, caller, probe.Spec{Baseline: run.Baseline, UpstreamModel: run.UpstreamModel, Quick: run.Preset == "quick"}, func(done, total int) {
 		s.probeProgress.Store(run.ID, [2]int{done, total})
 	})
 	finish := context.Background()

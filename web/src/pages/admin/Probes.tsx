@@ -13,7 +13,7 @@ type Call = {
   error?: string; input_tokens: number; cached_tokens: number; output_tokens: number; reasoning_tokens: number
   id?: string; service_tier?: string; first_token_ms: number; total_ms: number
 }
-type Report = { baseline: string; score: number; verdict: string; items: Item[]; observations: Item[]; metrics: Record<string, number>; calls: Call[] }
+type Report = { baseline: string; mode?: 'protocol'; score: number; verdict: string; items: Item[]; observations: Item[]; metrics: Record<string, number>; calls: Call[] }
 type Run = {
   id: number; created_at: string; finished_at: string | null; created_by: string; channel_id: number | null; channel_name: string
   model: string; upstream_model: string; baseline: string; preset: 'quick' | 'full'; status: 'running' | 'done' | 'failed'
@@ -32,6 +32,7 @@ export default function Probes() {
   const { message } = App.useApp()
   const [channels, setChannels] = useState<Channel[]>([])
   const [baselines, setBaselines] = useState<string[]>([])
+  const [protocolModels, setProtocolModels] = useState<string[]>([]) // 没有官方样本、只做协议层检测的型号（Claude，走 Messages）
   const [runs, setRuns] = useState<Run[]>([])
   const [selected, setSelected] = useState<Run | null>(null)
   const [starting, setStarting] = useState(false)
@@ -49,7 +50,7 @@ export default function Probes() {
 
   useEffect(() => {
     get<Channel[]>('/api/admin/channels').then(setChannels).catch((e) => message.error(e.message))
-    get<{ models: string[] }>('/api/admin/probe-baselines').then((r) => setBaselines(r.models)).catch(() => {})
+    get<{ models: string[]; protocol_models?: string[] }>('/api/admin/probe-baselines').then((r) => { setBaselines(r.models); setProtocolModels(r.protocol_models ?? []) }).catch(() => {})
     void loadRuns()
   }, [loadRuns, message])
 
@@ -64,8 +65,15 @@ export default function Probes() {
     return () => clearInterval(timer)
   }, [running, selected, loadRuns, open])
 
-  const chatChannels = channels.filter((c) => c.base_url_chat && c.models.length > 0)
-  const models = chatChannels.find((c) => c.id === channelID)?.models ?? []
+  // GPT 走 Chat、和官方样本比；Claude 走 Messages、只做协议层检测
+  const probeChannels = channels.filter((c) => (c.base_url_chat || c.base_url_messages) && c.models.length > 0)
+  const channel = probeChannels.find((c) => c.id === channelID)
+  const models = channel?.models ?? []
+  const modelNote = (name: string) => {
+    if (protocolModels.includes(name)) return channel?.base_url_messages ? { ok: true, note: t('（协议检测）', ' (protocol check)') } : { ok: false, note: t('（渠道没有 Messages 地址）', ' (no Messages URL)') }
+    if (baselines.includes(name)) return channel?.base_url_chat ? { ok: true, note: '' } : { ok: false, note: t('（渠道没有 Chat 地址）', ' (no Chat URL)') }
+    return { ok: false, note: t('（暂无官方样本）', ' (no baseline)') }
+  }
 
   const start = async () => {
     const v = await form.validateFields()
@@ -88,7 +96,7 @@ export default function Probes() {
       <Typography.Title level={3} className="page-title">{t('模型检测', 'Model check')}</Typography.Title>
       <Typography.Paragraph type="secondary">
         {t(
-          '选渠道和模型，向渠道直接发一组检测题，和同名官方型号的样本对比，看上游有没有换模型、降推理强度、注入内容。检测请求伪装成常见客户端、每次随机抽题，不走路由、不进调用日志、不扣用户余额；花费按站内价估算，由渠道承担。',
+          '选渠道和模型，向渠道直接发一组检测题，和同名官方型号的样本对比，看上游有没有换模型、降推理强度、注入内容。Claude 暂无官方样本，先做协议层检测（格式、推理是否发生、工具、文档）。检测请求伪装成常见客户端、每次随机出题，不走路由、不进调用日志、不扣用户余额；花费按站内价估算，由渠道承担。',
           'Sends a set of probe questions straight to the channel and compares the answers with official baselines. Probe requests bypass routing, are not logged as calls and are not charged to users.',
         )}
       </Typography.Paragraph>
@@ -97,20 +105,23 @@ export default function Probes() {
         <Form form={form} layout="inline" initialValues={{ preset: 'quick' }} style={{ rowGap: 12 }}>
           <Form.Item name="channel_id" label={t('渠道', 'Channel')} rules={[{ required: true, message: t('选择渠道', 'Pick a channel') }]}>
             <Select style={{ width: 220 }} showSearch optionFilterProp="label" onChange={() => form.setFieldValue('model', undefined)}
-              options={chatChannels.map((c) => ({ value: c.id, label: c.name + (c.enabled ? '' : t('（已停用）', ' (disabled)')) }))} />
+              options={probeChannels.map((c) => ({ value: c.id, label: c.name + (c.enabled ? '' : t('（已停用）', ' (disabled)')) }))} />
           </Form.Item>
           <Form.Item name="model" label={t('模型', 'Model')} rules={[{ required: true, message: t('选择模型', 'Pick a model') }]}>
             <Select style={{ width: 280 }} showSearch disabled={!channelID}
-              options={models.map((m) => ({
-                value: m.model_name,
-                disabled: !baselines.includes(m.model_name), // 没有同名官方样本，无从对比
-                label: (m.upstream_name && m.upstream_name !== m.model_name ? `${m.model_name} ← ${m.upstream_name}` : m.model_name) + (baselines.includes(m.model_name) ? '' : t('（暂无官方样本）', ' (no baseline)')),
-              }))} />
+              options={models.map((m) => {
+                const n = modelNote(m.model_name)
+                return {
+                  value: m.model_name,
+                  disabled: !n.ok, // 没有官方样本、或者渠道缺这个检测要走的协议地址
+                  label: (m.upstream_name && m.upstream_name !== m.model_name ? `${m.model_name} ← ${m.upstream_name}` : m.model_name) + n.note,
+                }
+              })} />
           </Form.Item>
           <Form.Item name="preset" label={t('档位', 'Preset')}>
             <Radio.Group optionType="button" options={[
               { value: 'quick', label: <Tooltip title={t('单词指纹抽 40 题、每题问 4 次，几分钟跑完，花费低', '40 fingerprint prompts × 4')}>{t('快速', 'Quick')}</Tooltip> },
-              { value: 'full', label: <Tooltip title={t('区分度高的指纹题全上、每题问 6 次，结论更稳，时间和花费约 2.5 倍', 'All separating prompts × 6')}>{t('完整', 'Full')}</Tooltip> },
+              { value: 'full', label: <Tooltip title={t('区分度高的指纹题全上、每题问 6 次，另加一次约 10 万 token 的大海捞针（查上下文截断、压缩）；时间和花费明显更高', 'All separating prompts × 6, plus a ~100K-token needle test')}>{t('完整', 'Full')}</Tooltip> },
             ]} />
           </Form.Item>
           <Button type="primary" loading={starting} onClick={start}>{t('开始检测', 'Start')}</Button>
@@ -126,7 +137,7 @@ export default function Probes() {
         footer={<Button onClick={() => setSelected(null)}>{t('关闭', 'Close')}</Button>}
         destroyOnHidden
       >
-        {selected && <Result run={selected} statusIcon={statusIcon} statusText={statusText} />}
+        {selected && <Result run={selected} protocol={protocolModels.includes(selected.baseline)} statusIcon={statusIcon} statusText={statusText} />}
       </Modal>
 
       <Card title={t('检测记录', 'History')} size="small">
@@ -160,7 +171,7 @@ function RunningTag({ run }: { run: Run }) {
   return <Tag icon={<LoadingOutlined />} color="processing">{total ? `${Math.floor((done * 100) / total)}%` : t('检测中', 'Running')}</Tag>
 }
 
-function Result({ run, statusIcon, statusText }: { run: Run; statusIcon: Record<Status, ReactNode>; statusText: Record<Status, string> }) {
+function Result({ run, protocol, statusIcon, statusText }: { run: Run; protocol: boolean; statusIcon: Record<Status, ReactNode>; statusText: Record<Status, string> }) {
   const { t, money } = useApp()
   const [item, setItem] = useState<string | undefined>()
   const r = run.report
@@ -170,7 +181,7 @@ function Result({ run, statusIcon, statusText }: { run: Run; statusIcon: Record<
     return (
       <div>
         <Space direction="vertical" style={{ width: '100%' }}>
-          <Typography.Text>{t(`正在检测 ${run.channel_name} 的 ${run.model}（对照 ${run.baseline}）…`, `Checking ${run.model} on ${run.channel_name}…`)}</Typography.Text>
+          <Typography.Text>{t(`正在检测 ${run.channel_name} 的 ${run.model}（${protocol ? '协议检测' : `对照 ${run.baseline}`}）…`, `Checking ${run.model} on ${run.channel_name}…`)}</Typography.Text>
           <Progress percent={total ? Math.floor((done * 100) / total) : 0} status="active" format={() => `${done} / ${total || '?'}`} />
           <Typography.Text type="secondary">{t('检测在后台运行，关掉这个窗口也会继续，跑完在检测记录里点开查看。', 'Runs in the background; you can close this window.')}</Typography.Text>
         </Space>
@@ -216,7 +227,7 @@ function Result({ run, statusIcon, statusText }: { run: Run; statusIcon: Record<
           <div className="muted" style={{ fontSize: 13, lineHeight: 1.9 }}>
             <div>{dayjs(run.created_at).format('YYYY-MM-DD HH:mm')}</div>
             <div>{run.channel_name} · <span className="mono">{run.model}</span>{run.upstream_model !== run.model && <> ← <span className="mono">{run.upstream_model}</span></>}</div>
-            <div>{t('对照', 'Baseline')} <span className="mono">{run.baseline}</span> · {run.preset === 'full' ? t('完整', 'Full') : t('快速', 'Quick')} · {t('花费约', 'Cost ~')} {money(run.cost, 4)}</div>
+            <div>{r.mode === 'protocol' ? t('协议层检测，暂无官方样本', 'Protocol check, no baseline') : <>{t('对照', 'Baseline')} <span className="mono">{run.baseline}</span></>} · {run.preset === 'full' ? t('完整', 'Full') : t('快速', 'Quick')} · {t('花费约', 'Cost ~')} {money(run.cost, 4)}</div>
           </div>
         </Col>
         <Col xs={24} md={18}>
@@ -295,10 +306,10 @@ function Details({ item }: { item: Item }) {
   if (Array.isArray(d.problems)) {
     return (
       <Space direction="vertical" size={2}>
-        {(d.problems as { kind: string; answer: number; got: string; correct: boolean; reasoning_tokens: number; baseline_reasoning: number; baseline_correct: string }[]).map((p, i) => (
-          <span key={i}>{p.correct ? '✓' : '✗'} {p.kind}：{t('标准答案', 'answer')} {p.answer}，{t('回答', 'got')} {short(p.got, 30) || '—'}；{t('推理', 'reasoning')} {p.reasoning_tokens}（{t('官方中位数', 'official median')} {p.baseline_reasoning}，{t('官方答对', 'official correct')} {p.baseline_correct}）</span>
+        {(d.problems as { kind: string; answer: number; got: string; correct: boolean; reasoning_tokens: number; baseline_reasoning?: number; baseline_correct?: string }[]).map((p, i) => (
+          <span key={i}>{p.correct ? '✓' : '✗'} {p.kind}：{t('标准答案', 'answer')} {p.answer}，{t('回答', 'got')} {short(p.got, 30) || '—'}；{t('推理', 'reasoning')} {p.reasoning_tokens}{p.baseline_correct !== undefined && <>（{t('官方中位数', 'official median')} {p.baseline_reasoning}，{t('官方答对', 'official correct')} {p.baseline_correct}）</>}</span>
         ))}
-        <span>{t('推理强度 low / high 的推理 token：', 'Reasoning tokens at low / high: ')}{String(d.effort_low)} / {String(d.effort_high)}</span>
+        {d.effort_low !== undefined && <span>{t('推理强度 low / high 的推理 token：', 'Reasoning tokens at low / high: ')}{String(d.effort_low)} / {String(d.effort_high)}</span>}
       </Space>
     )
   }

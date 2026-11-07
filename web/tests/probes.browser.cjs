@@ -13,8 +13,9 @@ const path = require('node:path')
       try { if ((await fetch('http://127.0.0.1:25191')).ok) break } catch {}
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
-    const channel = { id: 24, name: 'relay-fixture', template: 'standard', api_key_masked: 'sk-…', priority: 0, enabled: true, base_url_chat: 'https://up.example/v1', base_url_messages: '', base_url_responses: '', base_url_systemone: '', proxy_url: '', group_ids: [1], models: [{ model_id: 1, model_name: 'gpt-6.1-sol', upstream_name: '' }, { model_id: 2, model_name: 'claude-x', upstream_name: '' }], balance: [], balance_checked_at: null, balance_error: '', stats: null }
-    const noResp = { ...channel, id: 25, name: 'messages-only', base_url_chat: '' } // 没有 Chat 地址的渠道不能检测，不出现在下拉里
+    const channel = { id: 24, name: 'relay-fixture', template: 'standard', api_key_masked: 'sk-…', priority: 0, enabled: true, base_url_chat: 'https://up.example/v1', base_url_messages: '', base_url_responses: '', base_url_systemone: '', proxy_url: '', group_ids: [1], models: [{ model_id: 1, model_name: 'gpt-6.1-sol', upstream_name: '' }, { model_id: 2, model_name: 'claude-x', upstream_name: '' }, { model_id: 3, model_name: 'claude-opus-5-5', upstream_name: '' }], balance: [], balance_checked_at: null, balance_error: '', stats: null }
+    const msgOnly = { ...channel, id: 25, name: 'messages-only', base_url_chat: '', base_url_messages: 'https://up.example' } // 只有 Messages 地址：只能做 Claude 协议检测
+    const noURL = { ...channel, id: 26, name: 'no-url', base_url_chat: '' } // 两个协议地址都没有，不能检测，不出现在下拉里
     const base = { id: 7, created_at: '2026-11-07T08:43:00Z', finished_at: null, created_by: 'admin', channel_id: 24, channel_name: 'relay-fixture', model: 'gpt-6.1-sol', upstream_model: 'gpt-6.1-sol', baseline: 'gpt-6.1-sol', preset: 'quick', score: null, verdict: '', cost: '0' }
     const report = {
       baseline: 'gpt-6.1-sol', score: 88, verdict: '基本达标，1 项需要关注',
@@ -38,8 +39,8 @@ const path = require('node:path')
       const p = new URL(req.url()).pathname
       const json = (b) => route.fulfill({ json: b })
       if (p === '/api/me') return json({ user: { id: 1, username: 'admin', role: 'admin', balance: '5', enabled: true, user_group_ids: [1], preferences: { language: 'zh' }, created_at: '2026-10-25' }, cny_per_usd: '6.7' })
-      if (p === '/api/admin/channels') return json([channel, noResp])
-      if (p === '/api/admin/probe-baselines') return json({ models: ['gpt-6-astra', 'gpt-6-luna', 'gpt-6.1-sol', 'gpt-6.1-terra'] })
+      if (p === '/api/admin/channels') return json([channel, msgOnly, noURL])
+      if (p === '/api/admin/probe-baselines') return json({ models: ['gpt-6-astra', 'gpt-6-luna', 'gpt-6.1-sol', 'gpt-6.1-terra'], protocol_models: ['claude-opus-5-5'] })
       if (p === '/api/admin/probes' && req.method() === 'POST') { posted = req.postDataJSON(); return json({ id: 7 }) }
       if (p === '/api/admin/probes') return json(posted ? [{ ...base, status: polls < 2 ? 'running' : 'done', score: polls < 2 ? null : 88, verdict: polls < 2 ? '' : report.verdict, progress: [30, 60] }] : [])
       if (p === '/api/admin/probes/7') {
@@ -51,12 +52,21 @@ const path = require('node:path')
     await page.goto('http://127.0.0.1:25191/console/admin/probes')
     await page.getByText('检测记录', { exact: true }).waitFor()
 
-    // 只选渠道和模型：没有官方样本的模型是灰的
+    // Claude 走 Messages：只有 Messages 地址的渠道里 claude-opus-5-5 可选（协议检测），GPT 置灰
     await page.locator('#channel_id').click()
-    assert.equal(await page.locator('.ant-select-dropdown:visible').getByText('messages-only').count(), 0)
+    assert.equal(await page.locator('.ant-select-dropdown:visible').getByText('no-url').count(), 0)
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: 'messages-only' }).click()
+    await page.locator('#model').click()
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option:not(.ant-select-item-option-disabled)').filter({ hasText: 'claude-opus-5-5（协议检测）' }).waitFor()
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option-disabled').filter({ hasText: 'gpt-6.1-sol（渠道没有 Chat 地址）' }).waitFor()
+    await page.keyboard.press('Escape')
+
+    // 只选渠道和模型：没有官方样本的模型是灰的；Chat 渠道上的 Claude 也是灰的
+    await page.locator('#channel_id').click()
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: 'relay-fixture' }).click()
     await page.locator('#model').click()
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option-disabled').filter({ hasText: 'claude-x（暂无官方样本）' }).waitFor()
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option-disabled').filter({ hasText: 'claude-opus-5-5（渠道没有 Messages 地址）' }).waitFor()
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: 'gpt-6.1-sol' }).click()
     await page.waitForTimeout(100)
     await page.getByText('完整', { exact: true }).click()
@@ -84,7 +94,7 @@ const path = require('node:path')
     await dialog.waitFor({ state: 'hidden' })
     await page.locator('tbody tr').filter({ hasText: 'relay-fixture' }).first().click()
     await page.getByRole('dialog').getByText('88%', { exact: true }).first().waitFor()
-    console.log('PASS: channel without chat URL hidden, only channel and model chosen, models without baseline disabled, result in a modal with close and reopen from history, progress then report, items and request quality, metrics, fingerprint distances, invisible characters shown in request details')
+    console.log('PASS: channel without any probe URL hidden, Claude protocol check only on channels with a Messages URL, only channel and model chosen, models without baseline disabled, result in a modal with close and reopen from history, progress then report, items and request quality, metrics, fingerprint distances, invisible characters shown in request details')
   } finally {
     await browser.close()
     server.kill()
