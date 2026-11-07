@@ -8,7 +8,7 @@
 
 `deepseek-v4.1-flash-free` 使用独立站内模型名，可在定价页把四项单价设为零；创建模板不自动调整任何价格或现有渠道。其他模型需先冒烟测试，模型列表中的存在不保证该模型支持 Chat 协议。
 
-2026-11-07 验收：用户新给的三把个人 key（每把一个渠道）按本分支组合（uTLS Bun ClientHello、编码上下文、五个占位工具、真实格式会话、上游流式）本机直连全部 200、`billing_source=free`、零费用；上游 `/models` 列出的 10 个免费模型（beam、flint-40b、mimo-v2.6-flash、nemotron-3.5-super-vl、nemotron-3.5-lightning、deepseek-v4.1-flash、glm-5.3-flash、crouton-alpha、iceman、inkling-2-small，均带 `-free`）逐个通过。此前的 429 是原 key 的免费额度被限流，不是请求组合失效。下文保留历史实验。
+2026-11-07 验收：用户新给的三把个人 key 中两把可用（第二把上游报 401），按本分支组合（uTLS Bun ClientHello、编码上下文、五个占位工具、真实格式会话、上游流式）本机直连 200、`billing_source=free`、零费用；上游 `/models` 列出的 10 个免费模型（beam、flint-40b、mimo-v2.6-flash、nemotron-3.5-super-vl、nemotron-3.5-lightning、deepseek-v4.1-flash、glm-5.3-flash、crouton-alpha、iceman、inkling-2-small，均带 `-free`）逐个通过。此前的 429 是原 key 的免费额度被限流，不是请求组合失效。线上现状（2026-11-07 用户自行调整后核对）：只留一个渠道 `OpenCode Zen`（id 32，第一把 key，Cloud Providers 分组），映射 `deepseek-v4.1-flash-free`（零价）和站内 `GLM-5.3-Flash` ← 上游 `glm-5.3-flash-free`（站内按 GLM-5.3-Flash 原价收费）；我建的另两个渠道和 `OpenCode Free` 分组已被用户删除。实测时注意：`go test` 会缓存结果并重放旧日志，打上游的实测一律加 `-count=1`。下文保留历史实验。
 
 ## 请求与响应
 
@@ -25,7 +25,7 @@
 
 2026-11-06 同机对照中，Go 默认 TLS 和 Chrome ClientHello 的请求返回 `429 FreeUsageLimitError`；使用本地捕获的 Bun ClientHello 构造 Go uTLS 请求，直接从 DMIT 调用得到 HTTP 200、`OK`、`opencode.billing_source: free` 和零费用。因此该模板使用单独的原生 Go TLS 传输，普通渠道不受影响。该次对照没有逐项排除请求头与请求体的影响；后续单变量实验见下节。
 
-公开合同与模型可用性会变化。官方说明免费层面向 OpenCode 内调用，服务端限制仍可能返回 403 / 429；灵枢沿用现有错误和重试规则，不将免费模型改成收费模型兜底。当前验证范围为 `deepseek-v4.1-flash-free`。
+公开合同与模型可用性会变化。官方说明免费层面向 OpenCode 内调用，服务端限制仍可能返回 403 / 429；灵枢沿用现有错误和重试规则，不将免费模型改成收费模型兜底。2026-11-07 已验证 10 个免费模型，线上启用哪些见文首现状。
 
 参考来源：[官方推理 API](https://opencode.ai/v2/docs/console/api/inference/)、[模型目录](https://opencode.ai/v2/docs/console/models/)、[uTLS](https://github.com/refraction-networking/utls)。
 
