@@ -102,9 +102,11 @@
 # 项目文档与代码约定
 
 ## 新会话先读
-1. `docs/decisions.md`：已定的需求和决策（做什么、为什么）
-2. `docs/plan.md`：MVP 实施计划和进度（怎么做、做到哪了）
-3. `docs/research/`：上游协议查证和实测记录
+1. `docs/plan.md`：架构、当前状态和下一步（一页看懂项目）
+2. `docs/decisions.md`：现行的需求和决策，按模块分（做什么、为什么）
+3. 按需再读：`docs/deploy.md`（运维，开头有速查）、`docs/payments.md`（支付）、`docs/research/`（上游查证和实测数据）
+
+`docs/history.md` 是验收记录、发布证据和被取代的旧决策，只在追溯时读。
 
 需求或方案要变，先改 `decisions.md`，再改代码。
 
@@ -115,8 +117,8 @@
 - 密钥只放 `.env` 或数据库，不进 git、不进日志、不打印；日志里的 key 只显示前缀。
 - 改协议处理或计费逻辑，必须带测试；测试样本优先用真实抓到的上游数据。
 - 常用命令：`make db-up`（起本地 Postgres 容器）、`make dev`、`make test`、`make build`。
-- 每个阶段完成后，更新 `docs/plan.md` 的进度；产生新决策时同步更新 `docs/decisions.md`。
-- `references/` 只读，用来参考，不改、不引用其代码。
+- 完成一项工作后：`docs/plan.md`「当前状态」只改一句话，验收细节和发布证据追加到 `docs/history.md`；产生新决策时更新 `docs/decisions.md` 对应模块，被取代的旧决策移到 `history.md`。不要在 plan / decisions 里写流水账。
+- `references/` 只读，用来参考，不改、不引用其代码。整个目录不进 git（仓库公开）；`references/hvoy/` 存 hvoy 检测站的抓包（提取脚本和请求明细），只用来了解检测维度，不当作我们的题库。
 
 ## 运维约定（线上数据）
 - 项目维护环境为本机 WSL 与 DMIT 洛杉矶服务器，线上入口为 `https://gateway.piqode.com`。源码与构建在 WSL，部署、备份和恢复步骤以 `docs/deploy.md` 为准。
