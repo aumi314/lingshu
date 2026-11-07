@@ -265,6 +265,8 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 `scripts/probe/probe.py` 加 `--protocol messages`（Claude Code 请求形态）、`--provider`（OpenRouter 锁定服务方）、`--name`、`--math-kinds/-repeats/-effort`，key 可走环境变量 `PROBE_KEY`。在 DMIT 用 OpenRouter（锁定 Anthropic）采 claude-opus-5-5（分词、单词指纹 195 × 6、难题 4 类 × 3）和 claude-sonnet-5-5（分词、单词指纹），约 $0.8。检测按家族分开比（`Family`、`FamilyModels`、`SeparatingPrompts(…, family)`，GPT 题池仍 74 道）；Claude 有样本时加分词、单词指纹，推理按官方正确率和推理量判，指令层级守不住直接不通过；接口只列出能正确检测的型号（GPT + Claude 检测名单）。测试：`TestClaudeWithBaseline`、`TestJudgeThinkingWithBaseline`，原协议检测测试改用测试专用的无样本型号。
 
+上线（`c58945a`）后两次快速档验证：检测 34 kirisame 100 分（分词 12/12、指纹最像 Opus 0.19、4 个会话一致、推理 2/2、守住系统提示，基准 42 token 与官方相同）；检测 35 kinght claude0.8 57 分不达标——协议格式 186 个响应全部符合（hvoy 给它 100%），但分词只有 3/12 和官方一致、指纹离 Opus 0.80 且一个会话像 Sonnet、推理 1/2、系统提示没守住、基准 68 token。说明协议层全过不代表是原样的 Opus，智能层把它拦下了。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 改为自动发布前的手动发布记录
