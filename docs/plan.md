@@ -311,9 +311,7 @@ GPT Fast 计费（2026-11-06 ✅ 已发布 DMIT）：模型加「Fast 倍率」�
 
 渠道连接状态（2026-11-06）：渠道列表去掉模型列，加“连接状态”（最近 24 小时成功率与次数、首字和速度中位数、缓存命中率、冷却中）；调用日志新增 `failed_channel_ids`（迁移 0028），换渠道成功的请求也把前面失败的渠道计入失败。测试：`TestChannelStatsCountFailover`（换渠道、断流、原样 400、用户断开、首字 / 速度 / 缓存口径）；新增 `web/tests/channels.browser.cjs` 并加入 CI。口径见 `docs/decisions.md`「渠道连接状态」。下一步：渠道质量与智商。
 
-OpenCode Zen 原生渠道（Draft PR #21，未部署，免费层待验收）：内置 `opencode-zen` 模板和独立 Go TLS 客户端，直连官方 Chat 入口。免费模型按模板补充编码上下文、工具声明和会话，非流式客户端收到完整 Chat JSON，沿用原有路由、计费和日志。历史 `deepseek-v4.1-flash-free` 原生流式、非流式及冒烟测试曾返回 200；2026-11-07 后续调用返回 429。`iceman-free` 的官方 CLI 单次成功与灵枢原生验证分开记录。此次修复真实工具 `readmore` 被分片前缀 `read` 误判的问题，覆盖两种响应模式、占位调用报错与不扣费，以及 429/Retry-After 透传；独立测试库 `make test`、`go vet`、程序构建通过。未修改生产配置。接入与维护范围见 [OpenCode Zen](research/opencode-zen.md)。
-
-OpenCode Zen 验收与上线（2026-11-07）：合并 main，用三把新 key 实测 10 个免费模型全部免费通过；之前的 429 是旧 key 被限流。上线后每把 key 建一个渠道。
+OpenCode Zen 原生渠道（2026-11-07 ✅ 已发布 DMIT，PR #29 接替 Codex 的 #21）：内置 `opencode-zen` 模板和独立 Go TLS 客户端，直连官方 Chat 入口；免费模型补充编码上下文、占位工具和会话，非流式客户端收到完整 Chat JSON，沿用原有路由、计费和日志。合并 main 后用户新给的 key 实测上游 10 个免费模型全部免费通过（此前 429 是旧 key 被限流）。按用户要求先只上 `deepseek-v4.1-flash-free`（每把 key 一个渠道、专用分组；第二把 key 上游报 401，后缀比另两把少一位），经网关临时 key 实测流式、非流式都成功，费用 0，临时 key 已删。线上现状（2026-11-07 用户自行调整后核对）：只留一个渠道 `OpenCode Zen`（id 32，第一把 key，Cloud Providers 分组），映射 `deepseek-v4.1-flash-free`（零价）和站内 `GLM-5.3-Flash` ← 上游 `glm-5.3-flash-free`（站内按 GLM-5.3-Flash 原价收费）；我建的另两个渠道和 `OpenCode Free` 分组已被用户删除。接入细节见 [OpenCode Zen](research/opencode-zen.md)。
 
 模型检测 · 试验阶段（2026-11-06）：本机脚本 `scripts/probe/probe.py` 按 `internal/probe/data/suite.json`（第 1 版）检测分词指纹、单词指纹、数学题、大海捞针、鹈鹕（结构检查表和腿部测量 `legs.js`）。用用户的官方账号（本机 Magpie `codex/*`）给 gpt-6.1-sol、gpt-6-astra、gpt-6.1-terra、gpt-6-luna 建了两轮样本（`internal/probe/data/baselines/`；第二轮未跑大海捞针，astra 第二轮的鹈鹕因额度中断）。单词指纹和最难的数学题都能把 terra、luna 和 sol、astra 分开，sol 和 astra 分不开；可疑阈值 0.40。中转 咔咔 的 sol、astra 未见掺水。题库已扩到 195 题（第 2 版），四个型号都跑完新题（含补跑的希腊字母、表情符号两题），答案分布在 `fingerprint-distributions.json`。待办：推理强度对鹈鹕腿的影响（high / xhigh）。口径见 `docs/decisions.md`「模型检测」。
 
@@ -321,6 +319,8 @@ OpenCode Zen 验收与上线（2026-11-07）：合并 main，用三把新 key �
 
 模型检测 · 实测与改进（2026-11-07）：线上检测 咔咔 的 gpt-6.1-sol，第一次最像 luna、复测像 sol，基准输入不同，确认号池里有上游拿 luna 冒充 sol（用户自行处理该渠道）；对照组发现 OpenAI Platform 的 gpt-6-luna 映射到 gpt-5.6-luna（用户已改）。改进：一次检测用 4 个会话编号并分会话评判、报告上游混用；工具调用题用 `none` 推理强度；推理强度两档比较改为参考（官方校准见 `docs/decisions.md`）。新增 `TestRunCatchesMixedPool`。
 
-NVIDIA 模板（2026-11-07）：新增 `nvidia` 模板（只有 Chat，`https://integrate.api.nvidia.com/v1`，可拉取模型列表）；NVIDIA、OpenCode Zen 加上渠道图标（lobehub-icons 1.95.1）。
+NVIDIA 模板（2026-11-07）：新增 `nvidia` 模板（只有 Chat，`https://integrate.api.nvidia.com/v1`，可拉取模型列表）；NVIDIA、OpenCode Zen 加上渠道图标（lobehub-icons 1.95.1）。已发布 DMIT（d8da83b），线上 NVIDIA 渠道（id 31）原来没选模板，只把模板字段改为 `nvidia` 以显示图标。
 
-模型检测加回档位（2026-11-07）：发起检测可选快速（指纹 40 题 × 4 次）或完整（区分度 ≥ 0.3 的指纹题全上 × 6 次），检测记录加“档位”列；浏览器测试改为选完整档。
+模型检测加回档位（2026-11-07）：发起检测可选快速（指纹 40 题 × 4 次）或完整（区分度 ≥ 0.3 的指纹题全上 × 6 次），检测记录加“档位”列；浏览器测试改为选完整档。已发布 DMIT（66d44c9）。
+
+待办：GitHub 给 `main` 设分支规则（禁删、禁强推、必须走 PR、要求两项 CI 通过、审批数 0、管理员仅 PR 可跳过），已向用户建议、未设置；设之前先确认只改文档的 PR 也会触发 CI，否则必需检查会卡住合并。
