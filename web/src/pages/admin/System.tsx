@@ -12,7 +12,7 @@ type GeneratedCode = { id: number; prefix: string; code: string }
 
 type FXStatus = { source: string; date?: string; rate?: string; checked_at?: string; error?: string }
 type CallLimits = { user_concurrency: number; user_rpm: number; reserve_output_tokens: number }
-type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string; fx_mode?: string; fx_status?: FXStatus }
+type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string }
 
 export default function System() {
   const { t, reload } = useApp()
@@ -28,6 +28,8 @@ export default function System() {
   const [savingLimits, setSavingLimits] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savingAPIURL, setSavingAPIURL] = useState(false)
+  const [noticeForm] = Form.useForm<{ announcement: string }>()
+  const [savingNotice, setSavingNotice] = useState(false)
   const [deploymentMode, setDeploymentMode] = useState<'commercial_relay'>('commercial_relay')
   const [savingDeploymentMode, setSavingDeploymentMode] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -47,6 +49,7 @@ export default function System() {
     setFXMode(s.fx_mode === 'live' ? 'live' : 'manual')
     setFXStatus(s.fx_status ?? { source: 'Frankfurter' })
     apiURLForm.setFieldsValue({ api_base_url: s.api_base_url })
+    noticeForm.setFieldsValue({ announcement: s.announcement ?? '' })
     setDeploymentMode(s.deployment_mode === 'commercial_relay' ? s.deployment_mode : 'commercial_relay')
     setPaymentEnabled(s.payment_enabled)
     setRegistrationMode(s.registration_mode === 'code' ? 'code' : 'manual')
@@ -122,6 +125,20 @@ export default function System() {
       message.error((e as Error).message)
     } finally {
       setSavingAPIURL(false)
+    }
+  }
+
+  const saveNotice = async () => {
+    const v = await noticeForm.validateFields()
+    setSavingNotice(true)
+    try {
+      await put('/api/admin/settings', { announcement: v.announcement ?? '' })
+      noticeForm.setFieldValue('announcement', (v.announcement ?? '').trim())
+      message.success(t('已保存', 'Saved'))
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSavingNotice(false)
     }
   }
 
@@ -290,6 +307,19 @@ export default function System() {
                   <Input placeholder="https://gateway.example.com/v1" style={{ width: 'min(360px, 70vw)' }} disabled={loading} />
                 </Form.Item>
                 <Button type="primary" htmlType="submit" loading={savingAPIURL} disabled={loading}>
+                  {t('保存', 'Save')}
+                </Button>
+              </Form>
+            </Card>
+            <Card title={t('公告', 'Announcement')}>
+              <Typography.Paragraph type="secondary">
+                {t('显示在所有用户概览页的顶部，适合写客服方式、维护通知。留空就不显示。', 'Shown at the top of every user\'s Overview page, e.g. support contact or maintenance notices. Leave empty to hide it.')}
+              </Typography.Paragraph>
+              <Form form={noticeForm} layout="vertical" onFinish={saveNotice}>
+                <Form.Item name="announcement" rules={[{ max: 500, message: t('最多 500 字', 'At most 500 characters') }]}>
+                  <Input.TextArea rows={2} showCount maxLength={500} placeholder={t('例如：客服邮箱 support@example.com', 'e.g. Support: support@example.com')} disabled={loading} />
+                </Form.Item>
+                <Button type="primary" htmlType="submit" loading={savingNotice} disabled={loading}>
                   {t('保存', 'Save')}
                 </Button>
               </Form>

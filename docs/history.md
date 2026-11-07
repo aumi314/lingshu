@@ -267,6 +267,10 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 上线（`c58945a`）后两次快速档验证：检测 34 kirisame 100 分（分词 12/12、指纹最像 Opus 0.19、4 个会话一致、推理 2/2、守住系统提示，基准 42 token 与官方相同）；检测 35 kinght claude0.8 57 分不达标——协议格式 186 个响应全部符合（hvoy 给它 100%），但分词只有 3/12 和官方一致、指纹离 Opus 0.80 且一个会话像 Sonnet、推理 1/2、系统提示没守住、基准 68 token。说明协议层全过不代表是原样的 Opus，智能层把它拦下了。
 
+### 厂商筛选、公告、USDT 占位（2026-11-07）
+
+模型定价加厂商筛选（`vendorOf`，`?vendor=`）；运营设置加公告（`announcement` 设置项，`/api/me/endpoints` 返回，概览页顶部显示，邮箱可点）；支付设置加 USDT（BEpusdt）“规划中”占位。测试：`TestAnnouncement`（默认空、去空白、成员可读、超 500 字拒绝、成员不能改、留空不显示），`models.browser.cjs` 加厂商筛选，`overview.browser.cjs` 加公告。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 改为自动发布前的手动发布记录

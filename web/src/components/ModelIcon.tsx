@@ -1,24 +1,29 @@
 import VendorIcon from './VendorIcon'
 
-// 顺序即模型列表里的厂商排列顺序：国际厂商在前，国内厂商在后，识别不了的排最后
-const vendors: [RegExp, string][] = [
-  [/^claude-/i, 'anthropic-platform'],
-  [/^gpt-/i, 'openai-platform'],
-  [/^gemini-/i, 'google-gemini'],
-  [/^grok-/i, 'xai'],
-  [/^muse-/i, 'meta'],
-  [/^deepseek-/i, 'deepseek'],
-  [/^kimi-/i, 'moonshot'],
-  [/^glm-/i, 'zhipu'],
-  [/^qwen/i, 'dashscope'],
-  [/^minimax-/i, 'minimax'],
-  [/^doubao-/i, 'volcengine'],
-  [/^(hy\d|hunyuan)/i, 'hunyuan'],
-  [/^step-/i, 'stepfun'],
-  [/^mimo-/i, 'mimo'],
-  [/^jev-/i, 'typesafe'],
-  [/^drex-/i, 'nace'],
+// 顺序即模型列表里的厂商排列顺序：国际厂商在前，国内厂商在后，识别不了的排最后。第三列是筛选里显示的厂商名
+const vendors: [RegExp, string, string][] = [
+  [/^claude-/i, 'anthropic-platform', 'Anthropic'],
+  [/^gpt-/i, 'openai-platform', 'OpenAI'],
+  [/^gemini-/i, 'google-gemini', 'Google'],
+  [/^grok-/i, 'xai', 'xAI'],
+  [/^muse-/i, 'meta', 'Meta'],
+  [/^deepseek-/i, 'deepseek', 'DeepSeek'],
+  [/^kimi-/i, 'moonshot', 'Moonshot'],
+  [/^glm-/i, 'zhipu', 'Zhipu'],
+  [/^qwen/i, 'dashscope', 'Qwen'],
+  [/^minimax-/i, 'minimax', 'MiniMax'],
+  [/^doubao-/i, 'volcengine', 'Doubao'],
+  [/^(hy\d|hunyuan)/i, 'hunyuan', 'Hunyuan'],
+  [/^step-/i, 'stepfun', 'StepFun'],
+  [/^mimo-/i, 'mimo', 'MiMo'],
+  [/^jev-/i, 'typesafe', 'TypeSafe'],
+  [/^drex-/i, 'nace', 'Nace'],
 ]
+
+// vendorOf 返回模型所属厂商的显示名，识别不了返回空串（筛选里归到“其他”）
+export function vendorOf(name: string): string {
+  return vendors.find(([pattern]) => pattern.test(name))?.[2] ?? ''
+}
 
 const vendorRank = (name: string) => {
   const i = vendors.findIndex(([pattern]) => pattern.test(name))

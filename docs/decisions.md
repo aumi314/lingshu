@@ -377,6 +377,12 @@
 - 各工具写法按官方文档核对：Claude Code 用 `ANTHROPIC_BASE_URL`（根地址）+ `ANTHROPIC_AUTH_TOKEN`（Bearer，避免 `ANTHROPIC_API_KEY` 覆盖已登录订阅的提示）；Codex 在用户级 `~/.codex/config.toml` 自定义 provider，`base_url` 带 /v1，只支持 Responses 协议。
 - 内容现在写死在 `web/src/guide.ts`；以后做后台自定义时改为从设置读取，页面按数据渲染不用动。
 
+### 厂商筛选、公告、USDT 占位（2026-11-07 用户要求）
+
+- 「定价 → 模型定价」表格上方加厂商筛选：第一项“全部”，之后按列表顺序列出现有模型里出现的厂商（Anthropic、OpenAI、Google……识别不了的归“其他”），每项带数量；选择记在网址 `?vendor=`，刷新保留。厂商识别沿用模型图标的名称前缀规则（`web/src/components/ModelIcon.tsx`）。
+- 公告：「系统设置 → 运营设置」可编辑一段公告（最多 500 字，去首尾空白，留空不显示），所有登录用户在概览页顶部看到，邮箱自动变成可点的链接。不写死在代码里（开源通用项目，各部署的客服方式不同）；DMIT 设为客服邮箱 support@piqode.com。随 `/api/me/endpoints` 返回，改动记操作日志。
+- 「系统设置 → 支付设置」加 “USDT（BEpusdt）” 占位，标“规划中”，不可配置，用户充值页不出现；以后考虑部署自托管的 BEpusdt 收 USDT。
+
 ### 管理与模型页细节（2026-11-05 确认）
 
 - 服务分组可拖拽排序（迁移 0021 `groups.sort_order`，新建排最后），管理端、成员「模型与价格」和建 key 都按这个顺序；只影响显示，不进操作日志（同渠道排序）。原成员侧按倍率排序改为按手动顺序。

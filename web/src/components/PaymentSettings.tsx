@@ -139,7 +139,11 @@ export default function PaymentSettings() {
   useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   return <div style={{ marginTop: 20 }}>
     {!publicURL && <Alert showIcon type="warning" title={t('请设置 LINGSHU_PUBLIC_URL 后启用在线支付', 'Set LINGSHU_PUBLIC_URL before enabling online payments')} style={{ marginBottom: 16 }} />}
-    <Collapse items={services.map((s) => ({ key: s.config.provider, label: <Space>{paymentNames[s.config.provider]}<Tag color={s.config.enabled && s.ready ? 'green' : 'default'}>{s.config.enabled && s.ready ? t('已启用', 'Enabled') : t('未开放', 'Not available')}</Tag></Space>, children: <ServiceForm service={s} onSave={load} /> }))} />
+    <Collapse items={[
+      ...services.map((s) => ({ key: s.config.provider, label: <Space>{paymentNames[s.config.provider]}<Tag color={s.config.enabled && s.ready ? 'green' : 'default'}>{s.config.enabled && s.ready ? t('已启用', 'Enabled') : t('未开放', 'Not available')}</Tag></Space>, children: <ServiceForm service={s} onSave={load} /> })),
+      // 占位：计划接入自托管的 BEpusdt 收 USDT，接入前不能配置，用户也看不到这个支付方式
+      { key: 'usdt', label: <Space>USDT（BEpusdt）<Tag>{t('规划中', 'Planned')}</Tag></Space>, children: <Typography.Text type="secondary">{t('计划接入 BEpusdt（自托管的 USDT 收款网关）。接入前不能配置，用户的充值页也不会出现这个支付方式。', 'BEpusdt (self-hosted USDT gateway) is planned. Not configurable yet, and users will not see it as a payment method.')}</Typography.Text> },
+    ]} />
     <Typography.Paragraph type="secondary" style={{ marginTop: 16 }}>{t('充值记录在「全站日志 → 操作日志」里查看，对象选“充值订单”可只看充值。', 'Top-ups are under All logs → Operation logs; filter by "Top-up order" to see only top-ups.')}</Typography.Paragraph>
   </div>
 }
