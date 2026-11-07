@@ -45,7 +45,7 @@ func TestNormalizeAndFold(t *testing.T) {
 
 // 区分作用强的题数和脚本 dist 算出来的一致（含第 4 轮验证样本，74 道 ≥ 0.3）。
 func TestSeparatingPromptsMatchesScript(t *testing.T) {
-	if n := len(SeparatingPrompts(0.3)); n != 74 {
+	if n := len(SeparatingPrompts(0.3, "gpt")); n != 74 {
 		t.Errorf("区分作用 ≥ 0.3 的题 = %d，脚本是 74", n)
 	}
 }
@@ -291,7 +291,11 @@ func fakeClaude(real bool) Caller {
 }
 
 func TestProtocolCheckForClaude(t *testing.T) {
-	spec := Spec{Baseline: "claude-opus-5-5", UpstreamModel: "claude-opus-5-5", Quick: true, Seed: 61}
+	// 没有官方样本的 Claude 型号只做协议检测（claude-opus-5-5 已有样本，换一个测试用的型号）
+	saved := ProtocolModels
+	ProtocolModels = append(append([]string{}, saved...), "claude-test-nobaseline")
+	defer func() { ProtocolModels = saved }()
+	spec := Spec{Baseline: "claude-test-nobaseline", UpstreamModel: "claude-opus-5-5", Quick: true, Seed: 61}
 	r, err := Run(context.Background(), fakeClaude(true), spec, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -337,5 +341,86 @@ func TestNeedleSizedByTokenizer(t *testing.T) {
 	Run(context.Background(), capture("claude", fakeClaude(true)), Spec{Baseline: "claude-opus-5-5", UpstreamModel: "claude-opus-5-5", Seed: 72}, nil)
 	if size["claude"] == 0 || size["gpt"] == 0 || size["claude"]*2 > size["gpt"]+size["gpt"]/20 {
 		t.Errorf("Claude 的大海捞针应约为 GPT 的一半长: %v", size)
+	}
+}
+
+// fakeClaudeAs 模拟一个 Claude 渠道：协议原样，单词指纹按某个官方型号的样本作答，分词按官方差值；obey 为 false 时不守“只回某词”。
+func fakeClaudeAs(t *testing.T, model string, obey bool, seed uint64) Caller {
+	s, bs, _ := Load()
+	b := bs[model]
+	if b == nil {
+		t.Fatalf("没有 %s 的官方样本", model)
+	}
+	inner := fakeClaude(true)
+	rng := rand.New(rand.NewPCG(seed, 7))
+	var mu sync.Mutex
+	return func(ctx context.Context, req Request) Call {
+		c := inner(ctx, req)
+		mu.Lock()
+		defer mu.Unlock()
+		switch req.Item {
+		case "tokens":
+			c.InputTokens = 42
+			if req.Prompt == s.Tokens.Suffix {
+				c.InputTokens = 43
+			}
+			for name, text := range s.Tokens.Probes {
+				if req.Prompt == text+s.Tokens.Suffix {
+					c.InputTokens = 43 + int64(b.TokenDeltas[name])
+				}
+			}
+		case "fingerprint":
+			q := strings.TrimSuffix(strings.TrimSuffix(req.Prompt, " "+s.Fingerprint.SuffixZh), s.Fingerprint.Suffix)
+			if ans := b.Answers[q]; len(ans) > 0 {
+				c.Text = ans[rng.IntN(len(ans))]
+			}
+		case "instruction":
+			if !obey && strings.Contains(req.System, "single word") {
+				c.Text = "2+3 = 5"
+			}
+		}
+		return c
+	}
+}
+
+// 有官方样本后的 Claude 检测：真 Opus 通过；拿 Sonnet 冒充被单词指纹识破；不守系统提示判不通过（2026-11-07 kinght 的表现）。
+func TestClaudeWithBaseline(t *testing.T) {
+	spec := Spec{Baseline: "claude-opus-5-5", UpstreamModel: "claude-opus-5-5", Quick: true, Seed: 81}
+	r, err := Run(context.Background(), fakeClaudeAs(t, "claude-opus-5-5", true, 1), spec, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Mode != "" {
+		t.Errorf("有官方样本时不是协议检测: %q", r.Mode)
+	}
+	for _, k := range []string{"protocol_format", "tokens", "fingerprint", "instruction", "document"} {
+		if it := itemOf(r, k); it.Status != Pass {
+			t.Errorf("真 Opus 的 %s 应通过: %+v", k, it)
+		}
+	}
+	r, _ = Run(context.Background(), fakeClaudeAs(t, "claude-sonnet-5-5", true, 2), spec, nil)
+	if it := itemOf(r, "fingerprint"); it.Status != Fail || !strings.Contains(r.Verdict, "最像 claude-sonnet-5-5") {
+		t.Errorf("Sonnet 冒充 Opus 应被识破: %+v / %s", it, r.Verdict)
+	}
+	r, _ = Run(context.Background(), fakeClaudeAs(t, "claude-opus-5-5", false, 3), spec, nil)
+	if it := itemOf(r, "instruction"); it.Status != Fail {
+		t.Errorf("不守系统提示应不通过: %+v", it)
+	}
+}
+
+// 有官方样本时的推理判定：答对通过；两道都错不通过；答对但推理量远低于官方判推理被降。
+func TestJudgeThinkingWithBaseline(t *testing.T) {
+	_, bs, _ := Load()
+	base := bs["claude-opus-5-5"]
+	p := &plan{math: []MathProblem{{Kind: "recurrence_hard", Answer: 74}, {Kind: "subset_mod", Answer: 501}}}
+	call := func(text string, rsn int64) Call { return Call{Text: text, ReasoningTokens: rsn, SignedThinking: 1} }
+	if it := p.judgeThinking([]Call{call("74", 900), call("501", 800)}, base); it.Status != Pass {
+		t.Errorf("都答对: %+v", it)
+	}
+	if it := p.judgeThinking([]Call{call("590", 356), call("490", 2193)}, base); it.Status != Fail {
+		t.Errorf("两道都错（kinght 的表现）: %+v", it)
+	}
+	if it := p.judgeThinking([]Call{call("74", 30), call("501", 800)}, base); it.Status != Fail || !strings.Contains(it.Summary, "推理强度被降") {
+		t.Errorf("推理量极低: %+v", it)
 	}
 }

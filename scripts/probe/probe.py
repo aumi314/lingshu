@@ -4,6 +4,9 @@
   运行：python3 scripts/probe/probe.py run --base http://127.0.0.1:3425/v1 --key magpie --model codex/gpt-6.1-sol \\
           --round 1 --out internal/probe/data/baselines [--only tokens,fingerprint,math,needle,pelican] \\
           [--pelican-dir 目录 --edge msedge.exe 路径 --judge-model codex/gpt-6.1-sol]
+  Claude（Messages 协议，伪装成 Claude Code，和灵枢检测的 ProbeMessages 同一种请求）：
+        PROBE_KEY=… python3 scripts/probe/probe.py run --protocol messages --base https://openrouter.ai/api --model anthropic/claude-opus-5.5 \\
+          --name claude-opus-5-5 --provider anthropic --round 1 --out 目录 --only tokens,fingerprint,math --math-effort high --math-kinds recurrence_hard,subset_mod
   对比：python3 scripts/probe/probe.py compare 结果1.json 结果2.json ...
 
 检测项和口径见 docs/decisions.md「模型检测」。只用标准库；密钥只从命令行传入，不写进结果。
@@ -32,8 +35,73 @@ SUITE = json.load(open(os.path.join(DATA, "suite.json"), encoding="utf-8"))
 
 # ---- 请求 ----
 
+# Claude Code 的请求形态（和 internal/relay/probe_messages.go 一致）：号池类中转只接受像 Claude Code 的请求，官方样本也按同样的系统提示采
+CLAUDE_SYSTEM = [{"type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.319.781; cc_entrypoint=cli;"},
+                 {"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."}]
+CLAUDE_HEADERS = {"User-Agent": "claude-cli/2.1.319.781 (external, cli)", "x-app": "cli", "anthropic-version": "2023-06-01",
+                  "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,effort-2025-11-24"}
+
+
+def call_messages(args, content, effort=None, retries=3):
+    """流式调用 Anthropic Messages。effort 为空或 none 时不开 thinking，否则 adaptive thinking + 推理强度。
+    --provider 只用于 OpenRouter：锁定服务方、不许换（官方样本必须来自 Anthropic 本家）。"""
+    body = {"model": args.model, "max_tokens": 16000 if effort and effort != "none" else 1024, "stream": True, "system": CLAUDE_SYSTEM,
+            "messages": [{"role": "user", "content": content}],
+            "metadata": {"user_id": json.dumps({"device_id": os.urandom(32).hex(), "account_uuid": str(random.getrandbits(128)), "session_id": args.session})}}
+    if effort and effort != "none":
+        body["thinking"] = {"type": "adaptive"}
+        body["output_config"] = {"effort": effort}
+    if args.provider:
+        body["provider"] = {"only": [args.provider], "allow_fallbacks": False}
+    url = args.base.rstrip("/") + "/v1/messages"
+    err = ""
+    for attempt in range(retries):
+        req = urllib.request.Request(url, data=json.dumps(body).encode(),
+                                     headers={**CLAUDE_HEADERS, "x-api-key": args.key, "Authorization": "Bearer " + args.key, "Content-Type": "application/json"})
+        start, first, parts, usage, meta, finish, done = time.time(), None, [], {}, {}, None, False
+        try:
+            with urllib.request.urlopen(req, timeout=1800) as r:
+                for raw in r:
+                    line = raw.decode("utf-8", "replace").strip()
+                    if not line.startswith("data:"):
+                        continue
+                    ev = json.loads(line[5:])
+                    t = ev.get("type")
+                    if t == "message_start":
+                        meta["id"], meta["model"] = ev["message"].get("id"), ev["message"].get("model")
+                        usage.update(ev["message"].get("usage") or {})
+                    elif t == "content_block_delta" and ev["delta"].get("type") == "text_delta":
+                        if first is None:
+                            first = time.time()
+                        parts.append(ev["delta"]["text"])
+                    elif t == "message_delta":
+                        finish = ev["delta"].get("stop_reason") or finish
+                        usage.update(ev.get("usage") or {})
+                    elif t == "message_stop":
+                        done = True
+                    elif t == "error":
+                        raise ConnectionError("流中报错: " + json.dumps(ev.get("error"))[:200])
+            if not done:
+                raise ConnectionError("流在正常结束前断开")
+            inp = (usage.get("input_tokens") or 0) + (usage.get("cache_read_input_tokens") or 0) + (usage.get("cache_creation_input_tokens") or 0)
+            return {"text": "".join(parts).strip(), "finish_reason": finish, "prompt_tokens": inp, "cached_tokens": usage.get("cache_read_input_tokens"),
+                    "completion_tokens": usage.get("output_tokens"), "reasoning_tokens": (usage.get("output_tokens_details") or {}).get("thinking_tokens"),
+                    "first_token_s": round(first - start, 2) if first else None, "seconds": round(time.time() - start, 2), **meta}
+        except urllib.error.HTTPError as e:
+            err = f"HTTP {e.code}: {e.read()[:300]!r}"
+            if e.code in (400, 401, 403, 404):
+                break
+        except Exception as e:
+            err = f"{type(e).__name__}: {e}"[:300]
+        time.sleep(5 * (attempt + 1))
+    return {"error": err}
+
+
 def call(args, content, effort=None, model=None, base=None, retries=3):
-    """流式调用 chat completions，返回文本、用量和耗时。content 可以是字符串或多段内容（带图片）。"""
+    """流式调用 chat completions，返回文本、用量和耗时。content 可以是字符串或多段内容（带图片）。
+    --protocol messages 时改走 Anthropic Messages（看图评判仍走 chat，所以传了 model / base 的不转）。"""
+    if getattr(args, "protocol", "chat") == "messages" and model is None and base is None:
+        return call_messages(args, content, effort=effort, retries=retries)
     body = {"model": model or args.model, "messages": [{"role": "user", "content": content}],
             "stream": True, "stream_options": {"include_usage": True}}
     if effort:
@@ -212,11 +280,14 @@ def probe_math(args):
     m = SUITE["math"]
     rng = random.Random(m["seed"])
     problems = [(p["kind"], p["tier"], *make_problem(p["kind"], rng)) for p in m["problems"]]
-    jobs = [(i, q, a) for i, (_, _, q, a) in enumerate(problems) for _ in range(m["repeats"])]
+    # 题目按固定种子全部生成（和已有样本同题），--math-kinds 只发其中几类；--math-effort / --math-repeats 覆盖题库设定
+    keep = set(args.math_kinds.split(",")) if args.math_kinds else None
+    repeats = args.math_repeats or m["repeats"]
+    jobs = [(i, q, a) for i, (k, _, q, a) in enumerate(problems) if keep is None or k in keep for _ in range(repeats)]
 
     def one(job):
         i, q, a = job
-        r = call(args, q, effort=m["effort"])
+        r = call(args, q, effort=args.math_effort or m["effort"])
         got = last_int(r.get("text", ""))
         return {"problem": i, "correct": got == a, "got": r.get("text", "")[-40:], "reasoning_tokens": r.get("reasoning_tokens"),
                 "seconds": r.get("seconds"), "error": r.get("error")}
@@ -404,9 +475,15 @@ PROBES = {"tokens": probe_tokens, "fingerprint": probe_fingerprint, "math": prob
 
 def run(args):
     os.makedirs(args.out, exist_ok=True)
-    path = os.path.join(args.out, re.sub(r"[^\w.-]", "_", args.model) + f"-r{args.round}.json")
+    if not args.key:
+        sys.exit("缺少 key：用 --key 或环境变量 PROBE_KEY")
+    args.session = str(random.getrandbits(128))  # 一轮样本是同一段对话（号池按会话路由）
+    name = args.name or args.model  # 样本里记的型号名：Claude 样本记站内名（claude-opus-5-5），请求用 OpenRouter 的名字
+    path = os.path.join(args.out, re.sub(r"[^\w.-]", "_", name) + f"-r{args.round}.json")
     out = json.load(open(path)) if os.path.exists(path) else {}
-    out.update({"suite_version": SUITE["version"], "model": args.model, "round": args.round})
+    out.update({"suite_version": SUITE["version"], "model": name, "round": args.round})
+    if args.protocol == "messages":
+        out["source"] = {"protocol": "messages", "base": args.base, "request_model": args.model, "provider": args.provider or None}
     for name in args.only.split(","):
         start = time.time()
         print(f"[{args.model} 第 {args.round} 轮] {name} …", file=sys.stderr, flush=True)
@@ -557,7 +634,13 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
     r.add_argument("--base", required=True)
-    r.add_argument("--key", required=True)
+    r.add_argument("--key", default=os.environ.get("PROBE_KEY", ""), help="也可以用环境变量 PROBE_KEY（不出现在进程列表里）")
+    r.add_argument("--protocol", choices=["chat", "messages"], default="chat")
+    r.add_argument("--name", default="", help="样本里记的型号名（默认同 --model）")
+    r.add_argument("--provider", default="", help="OpenRouter 锁定的服务方，如 anthropic")
+    r.add_argument("--math-kinds", default="", help="只发这些题型（逗号分隔）")
+    r.add_argument("--math-repeats", type=int, default=0)
+    r.add_argument("--math-effort", default="")
     r.add_argument("--model", required=True)
     r.add_argument("--round", type=int, default=1)
     r.add_argument("--out", required=True)

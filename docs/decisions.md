@@ -420,14 +420,12 @@
   - 知识时效还没做：题库要新写（提示里要求直接凭自己的知识回答、禁止联网搜索、不参考对话；不带答案或示例），四个型号要用官方账号建样本。鹈鹕、大海捞针放完整档以后再加。
 - 指纹类检测的防范：题目固定会被中转认出来专门转给真模型，正式版要建一两百题的题库每次随机抽；厂商升级模型后偏好会变，官方样本要定期重测（官方和旧样本的距离也变大时就该换）。
 - 大海捞针（2026-11-07 上线，完整档，GPT 和 Claude 都做）：约 10 万 token 的随机句子里（同一段英文 Claude 的 token 数约是 GPT 的 2.2 倍，Claude 用一半句子，两家口径一致），在 10%、50%、90% 处各藏一个 8 位编号，要求按顺序列出。编号和句子每次随机生成（本机脚本用固定种子，和页面版不同）。三个都找到才通过；漏了哪个就指出位置，说明上下文被截断或被中转压缩；上游报的输入 token 低于 6 万（应在 9 万左右）也判不通过。提示词全文不存进检测记录，只存开头和长度。
-- Claude 协议层检测（2026-11-07 上线，先只开放 claude-opus-5-5）：还没有官方 Claude 样本，先做不需要样本的检查，页面标“协议检测”。请求伪装成 Claude Code（`claude-cli` UA、`x-app: cli`、Claude Code 的 beta 头、系统提示带计费头和 “You are Claude Code…”、`metadata.user_id` 里的会话编号每个会话一个），走渠道的 Messages 地址。计分项：
-  - 协议规范：消息编号 `msg_` 开头、`model` 和上游模型名一致、事件以 `message_start` 开始以 `message_stop` 结束、有 `stop_reason` 和用量；用量缺少官方的 `cache_creation`、`service_tier` 字段记“需关注”（常见于格式转换）。
-  - 推理：两道难题用 adaptive thinking、`effort: high`；每次都要有带签名的 thinking 块且推理 token 大于 0，没有就是推理被降或不是真 Claude；答错记“需关注”（没有官方样本，不判不通过）。
-  - 工具调用、指令层级：和 GPT 同一套题，工具用 Anthropic 格式。
-  - 文档与原样输出：附一个只含随机编号的 PDF 要求读出；要求原样输出 `<随机串>`。
-  - 完整档加大海捞针。
-  - 请求质量（不计分）沿用 GPT 的：注入（短请求输入 token 超过 300 记“需关注”，官方加 Claude Code 系统提示约 90）、上游混用、流式完整性、不可见字符。
-  - 不做：thinking 签名回传验证。2026-11-07 在 kinght 上实测，工具调用循环里把签名篡改、随机伪造、甚至删掉 thinking 块都返回 200，输入 token 不变，说明上一轮的 thinking 没进上下文，分不清是官方行为还是中转剥掉了；官方渠道（Anthropic Platform）余额不足，没有对照。有官方对照后再定。
+- Claude 检测（2026-11-07，开放 claude-opus-5-5）：走渠道的 Messages 地址，请求伪装成 Claude Code（`claude-cli` UA、`x-app: cli`、Claude Code 的 beta 头、系统提示带计费头和 “You are Claude Code…”、`metadata.user_id` 里的会话编号每个会话一个）。分两层，智能一票否决：
+  - 协议与身份（借鉴 hvoy，筛掉格式转换和假冒）：协议规范（`msg_` 编号、model 一致、事件首尾、stop_reason、用量和官方的 `cache_creation`、`service_tier` 字段）；工具调用；文档与原样输出（随机编号的 PDF、原样输出 `<随机串>`）。hvoy 这一层全过的 kinght 实际是降配，所以这一层过了不代表满血。
+  - 智能（和官方样本比）：官方样本用 OpenRouter 锁定 Anthropic（`provider.only: ["anthropic"]`）、和检测同样的 Claude Code 请求形态，由 `scripts/probe/probe.py --protocol messages` 采，存 `internal/probe/data/baselines/claude-*.json`。分词指纹（和官方差值一致）；单词指纹（Opus 对 Sonnet，同家族区分作用 ≥ 0.3 的题，不开 thinking；抓“拿 Sonnet 冒充 Opus”）；推理（adaptive thinking + high，必须有带签名的 thinking 和推理 token；按官方正确率判，官方 12 / 12 全对；推理量低于官方中位数 20% 判推理被降——题目参数随机、难度差别大，这条只抓极端降配）；指令层级（守不住“只回某词”直接不通过，官方守得住）；完整档加大海捞针。
+  - 指纹按家族分开算：GPT 只和 GPT 样本比、Claude 只和 Claude 样本比，Claude 样本加入不改变 GPT 的题池（仍是 74 道）。Sonnet 的样本目前只用来识别冒充，不单独开放检测。
+  - 没有官方样本的 Claude 型号退回只做协议层检测，推理答错只记需关注，页面标“协议检测”。
+  - 不做：thinking 签名回传验证。2026-11-07 在 kinght 上实测，工具调用循环里把签名篡改、随机伪造、甚至删掉 thinking 块都返回 200，输入 token 不变，分不清是官方行为还是中转剥掉了；官方渠道余额不足没法对照。
 - 所有检测请求都用流式。经 Cloudflare 的非流式请求超过 100 秒会被 524 断开，灵枢自身也有这个限制，待定。
 - 已知局限：官方样本走 Codex，前面有约 4000 token 的注入提示词。Codex 号池类渠道可以直接比；走正规 API 的渠道（OpenRouter、OpenAI Platform）没有这段提示词，单词指纹这类对提示词敏感的项目不能直接比，需要另建样本。
 

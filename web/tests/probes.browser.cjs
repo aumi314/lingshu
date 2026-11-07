@@ -13,7 +13,7 @@ const path = require('node:path')
       try { if ((await fetch('http://127.0.0.1:25191')).ok) break } catch {}
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
-    const channel = { id: 24, name: 'relay-fixture', template: 'standard', api_key_masked: 'sk-…', priority: 0, enabled: true, base_url_chat: 'https://up.example/v1', base_url_messages: '', base_url_responses: '', base_url_systemone: '', proxy_url: '', group_ids: [1], models: [{ model_id: 1, model_name: 'gpt-6.1-sol', upstream_name: '' }, { model_id: 2, model_name: 'claude-x', upstream_name: '' }, { model_id: 3, model_name: 'claude-opus-5-5', upstream_name: '' }], balance: [], balance_checked_at: null, balance_error: '', stats: null }
+    const channel = { id: 24, name: 'relay-fixture', template: 'standard', api_key_masked: 'sk-…', priority: 0, enabled: true, base_url_chat: 'https://up.example/v1', base_url_messages: '', base_url_responses: '', base_url_systemone: '', proxy_url: '', group_ids: [1], models: [{ model_id: 1, model_name: 'gpt-6.1-sol', upstream_name: '' }, { model_id: 2, model_name: 'claude-x', upstream_name: '' }, { model_id: 3, model_name: 'claude-opus-5-5', upstream_name: '' }, { model_id: 4, model_name: 'claude-sonnet-5-5', upstream_name: '' }], balance: [], balance_checked_at: null, balance_error: '', stats: null }
     const msgOnly = { ...channel, id: 25, name: 'messages-only', base_url_chat: '', base_url_messages: 'https://up.example' } // 只有 Messages 地址：只能做 Claude 协议检测
     const noURL = { ...channel, id: 26, name: 'no-url', base_url_chat: '' } // 两个协议地址都没有，不能检测，不出现在下拉里
     const base = { id: 7, created_at: '2026-11-07T08:43:00Z', finished_at: null, created_by: 'admin', channel_id: 24, channel_name: 'relay-fixture', model: 'gpt-6.1-sol', upstream_model: 'gpt-6.1-sol', baseline: 'gpt-6.1-sol', preset: 'quick', score: null, verdict: '', cost: '0' }
@@ -40,7 +40,7 @@ const path = require('node:path')
       const json = (b) => route.fulfill({ json: b })
       if (p === '/api/me') return json({ user: { id: 1, username: 'admin', role: 'admin', balance: '5', enabled: true, user_group_ids: [1], preferences: { language: 'zh' }, created_at: '2026-10-25' }, cny_per_usd: '6.7' })
       if (p === '/api/admin/channels') return json([channel, msgOnly, noURL])
-      if (p === '/api/admin/probe-baselines') return json({ models: ['gpt-6-astra', 'gpt-6-luna', 'gpt-6.1-sol', 'gpt-6.1-terra'], protocol_models: ['claude-opus-5-5'] })
+      if (p === '/api/admin/probe-baselines') return json({ models: ['claude-sonnet-5-5', 'gpt-6-astra', 'gpt-6-luna', 'gpt-6.1-sol', 'gpt-6.1-terra'], protocol_models: ['claude-opus-5-5', 'claude-sonnet-5-5'] })
       if (p === '/api/admin/probes' && req.method() === 'POST') { posted = req.postDataJSON(); return json({ id: 7 }) }
       if (p === '/api/admin/probes') return json(posted ? [{ ...base, status: polls < 2 ? 'running' : 'done', score: polls < 2 ? null : 88, verdict: polls < 2 ? '' : report.verdict, progress: [30, 60] }] : [])
       if (p === '/api/admin/probes/7') {
@@ -59,6 +59,8 @@ const path = require('node:path')
     await page.locator('#model').click()
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option:not(.ant-select-item-option-disabled)').filter({ hasText: 'claude-opus-5-5（协议检测）' }).waitFor()
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option-disabled').filter({ hasText: 'gpt-6.1-sol（渠道没有 Chat 地址）' }).waitFor()
+    // 有官方样本的 Claude 不再标“协议检测”
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option:not(.ant-select-item-option-disabled)').filter({ hasText: /^claude-sonnet-5-5$/ }).waitFor()
     await page.keyboard.press('Escape')
 
     // 只选渠道和模型：没有官方样本的模型是灰的；Chat 渠道上的 Claude 也是灰的

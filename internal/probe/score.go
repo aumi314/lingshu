@@ -77,11 +77,11 @@ func Rank(answers map[string][]string, models []string) []Ranked {
 
 func round3(x float64) float64 { return float64(int(x*1000+0.5)) / 1000 }
 
-// SeparatingPrompts 返回区分作用较强的题：各官方型号之间的差距明显大于各自的波动。
-// 用官方样本当场算（答案一分为二求自身波动），和脚本 dist 命令的 score 一致。
-func SeparatingPrompts(minScore float64) []string {
+// SeparatingPrompts 返回某个家族里区分作用较强的题：同家族各官方型号之间的差距明显大于各自的波动
+// （GPT 和 Claude 各算各的，Claude 样本加进来不改变 GPT 的题池）。
+func SeparatingPrompts(minScore float64, family string) []string {
 	s, bs, _ := Load()
-	models := BaselineModels() // 固定顺序：型号之间的差距是一个型号的前半对另一个的后半，顺序要和脚本一致
+	models := FamilyModels(family) // 固定顺序：型号之间的差距是一个型号的前半对另一个的后半，顺序要和脚本一致
 	var out []string
 	for _, q := range s.Fingerprint.Prompts {
 		var halves [][2][]string

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -75,9 +76,43 @@ func (p *plan) judgeNeedle(cs []Call) Item {
 
 func (p *plan) buildProtocol() {
 	s := p.suite
+	_, bs, _ := Load()
+	base := bs[p.spec.Baseline] // 有官方样本（OpenRouter 锁定 Anthropic 采的）时，加分词和单词指纹，推理、指令按官方表现判
 	// 各会话一个基准请求：看注入，以及号池里各会话的上游是否一致
 	for sess := range Sessions {
 		p.add(Request{Item: "anchor", Session: sess, Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
+	}
+	if base != nil && len(base.TokenDeltas) > 0 {
+		// 分词指纹：和 GPT 同一套探针（基准两次、锚点一次、逐个加探针文本），Claude 的分词器和别家不同
+		p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
+		p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
+		p.add(Request{Item: "tokens", Prompt: s.Tokens.Suffix, MaxTokens: 16})
+		for name := range s.Tokens.Probes {
+			p.tokenNames = append(p.tokenNames, name)
+		}
+		sort.Strings(p.tokenNames)
+		for _, name := range p.tokenNames {
+			p.add(Request{Item: "tokens", Prompt: s.Tokens.Probes[name] + s.Tokens.Suffix, MaxTokens: 16})
+		}
+	}
+	if base != nil && len(base.Answers) > 0 {
+		// 单词指纹：同家族（Opus / Sonnet）区分作用强的题，不开 thinking（和官方样本的采法一致）
+		pool := SeparatingPrompts(0.3, "claude")
+		p.rng.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
+		n, samples := 40, 4
+		if !p.spec.Quick {
+			n, samples = len(pool), 6
+		}
+		p.fingerprint = pool[:min(n, len(pool))]
+		for _, q := range p.fingerprint {
+			suffix := s.Fingerprint.Suffix
+			if HasCJK(q) && s.Fingerprint.SuffixZh != "" {
+				suffix = " " + s.Fingerprint.SuffixZh
+			}
+			for k := range samples {
+				p.add(Request{Item: "fingerprint", Session: k % Sessions, Prompt: q + suffix, MaxTokens: 64})
+			}
+		}
 	}
 	// 推理：两道难题，adaptive thinking + high；看有没有真的推理（带签名的 thinking 块、推理 token）
 	for _, k := range []string{"recurrence_hard", []string{"lattice_hard", "subset_mod", "digit_sum"}[p.rng.IntN(3)]} {
@@ -120,23 +155,44 @@ func (p *plan) reportProtocol(calls []Call) *Report {
 	for _, c := range calls {
 		by[c.Item] = append(by[c.Item], c)
 	}
-	r := &Report{Baseline: p.spec.Baseline, Mode: "protocol", SuiteVersion: p.suite.Version, Calls: calls}
+	_, bs, _ := Load()
+	base := bs[p.spec.Baseline]
+	r := &Report{Baseline: p.spec.Baseline, SuiteVersion: p.suite.Version, Calls: calls}
+	if base == nil {
+		r.Mode = "protocol"
+	}
 	r.Items = append(r.Items, p.judgeMessagesProtocol(calls))
-	r.Items = append(r.Items, p.judgeThinking(by["reasoning"]))
+	hint := ""
+	var nearest []string
+	if len(by["tokens"]) > 0 {
+		r.Items = append(r.Items, p.judgeTokens(by["tokens"], base))
+	}
+	if len(by["fingerprint"]) > 0 {
+		var fp Item
+		fp, hint, nearest = p.judgeFingerprint(by["fingerprint"])
+		r.Items = append(r.Items, fp)
+	}
+	r.Items = append(r.Items, p.judgeThinking(by["reasoning"], base))
 	tool := p.judgeStructured(nil, by["tool"])
 	tool.Key, tool.Title = "tool", "工具调用"
 	if tool.Status == Warn { // judgeStructured 按 json_schema 和工具两项算，这里只有工具一项：做对了就是通过
 		tool.Status = Pass
 	}
 	r.Items = append(r.Items, tool)
-	r.Items = append(r.Items, p.judgeInstruction(by["instruction"]))
+	ins := p.judgeInstruction(by["instruction"])
+	// 官方 Opus 守得住“只能回某个词”（2026-11-07 官方 1 / 1、kirisame 2 / 2，降配的 kinght 两次都没守住）：有官方样本时守不住直接不通过
+	if is := by["instruction"]; base != nil && ins.Status == Warn && len(is) == 2 && !strings.EqualFold(strings.Trim(clean(is[0].Text), ".!。 "), p.onlyWord) {
+		ins.Status = Fail
+		ins.Summary += "（官方 Opus 守得住系统提示）"
+	}
+	r.Items = append(r.Items, ins)
 	r.Items = append(r.Items, p.judgeDocument(by["document"], by["echo"]))
 	if len(by["needle"]) > 0 {
 		r.Items = append(r.Items, p.judgeNeedle(by["needle"]))
 	}
-	r.Observations = observe(calls, by["anchor"][:min(1, len(by["anchor"]))], by["anchor"], nil, nil)
+	r.Observations = observe(calls, by["anchor"][:min(1, len(by["anchor"]))], by["anchor"], nil, nearest)
 	r.Metrics = metrics(calls)
-	finalize(r, "")
+	finalize(r, hint)
 	return r
 }
 
@@ -206,8 +262,12 @@ func (p *plan) judgeMessagesProtocol(calls []Call) Item {
 	return it
 }
 
-// judgeThinking：high 推理强度下每次都应有带签名的 thinking 块、推理 token 大于 0；答案对不对没有官方样本，答错只记需关注。
-func (p *plan) judgeThinking(cs []Call) Item {
+// minReasoningShare：推理 token 低于官方同类题中位数的这个比例，判推理被降（官方递推难题 6–11k，降配的 kinght 只有 356）。
+const minReasoningShare = 0.2
+
+// judgeThinking：high 推理强度下每次都应有带签名的 thinking 块、推理 token 大于 0。
+// 没有官方样本时答错只记需关注；有官方样本时和 GPT 一样按官方正确率判，推理量远低于官方判推理被降。
+func (p *plan) judgeThinking(cs []Call, base *Baseline) Item {
 	if it, bad := errorItem("reasoning", "推理", cs); bad {
 		return it
 	}
@@ -223,15 +283,48 @@ func (p *plan) judgeThinking(cs []Call) Item {
 		if c.Error == "" && c.SignedThinking > 0 && c.ReasoningTokens > 0 {
 			thought++
 		}
-		rows = append(rows, map[string]any{"kind": prob.Kind, "answer": prob.Answer, "got": truncate(clean(c.Text), 40), "correct": right,
-			"reasoning_tokens": c.ReasoningTokens, "signed_thinking": c.SignedThinking})
+		row := map[string]any{"kind": prob.Kind, "answer": prob.Answer, "got": truncate(clean(c.Text), 40), "correct": right,
+			"reasoning_tokens": c.ReasoningTokens, "signed_thinking": c.SignedThinking}
+		if base != nil {
+			ref := base.Math[prob.Kind]
+			row["baseline_reasoning"], row["baseline_correct"] = ref.MedianReasoning, fmt.Sprintf("%d/%d", ref.Correct, ref.Runs)
+		}
+		rows = append(rows, row)
 	}
 	it.Details = map[string]any{"problems": rows}
-	summary := fmt.Sprintf("推理强度 high 下 %d / %d 次有带签名的 thinking 和推理 token；难题答对 %d / %d（暂无官方样本，答错只记需关注）", thought, len(cs), correct, len(cs))
+	summary := fmt.Sprintf("推理强度 high 下 %d / %d 次有带签名的 thinking 和推理 token；难题答对 %d / %d", thought, len(cs), correct, len(cs))
+	if base == nil {
+		summary += "（暂无官方样本，答错只记需关注）"
+		switch {
+		case thought < len(cs):
+			it.Status, it.Summary = Fail, summary+"：推理没有发生，可能被降了推理强度，或者不是真 Claude"
+		case correct < len(cs):
+			it.Status, it.Summary = Warn, summary
+		default:
+			it.Status, it.Summary = Pass, summary
+		}
+		return it
+	}
+	expected := 0
+	var low []string
+	for i, c := range cs {
+		ref := base.Math[p.math[i].Kind]
+		if ref.Runs > 0 && ref.Correct*2 > ref.Runs {
+			expected++
+		}
+		if ref.MedianReasoning > 0 && c.Error == "" && float64(c.ReasoningTokens) < minReasoningShare*float64(ref.MedianReasoning) {
+			low = append(low, fmt.Sprintf("%s 推理 %d token，官方中位数 %d", p.math[i].Kind, c.ReasoningTokens, ref.MedianReasoning))
+		}
+	}
+	summary += fmt.Sprintf("（官方样本在同类题上应答对 %d 道）", expected)
 	switch {
 	case thought < len(cs):
 		it.Status, it.Summary = Fail, summary+"：推理没有发生，可能被降了推理强度，或者不是真 Claude"
-	case correct < len(cs):
+	case len(low) > 0:
+		it.Status, it.Summary = Fail, summary+"；推理量远低于官方（"+strings.Join(low, "；")+"）：推理强度被降"
+	case correct+1 < expected:
+		it.Status, it.Summary = Fail, summary
+	case correct < expected:
 		it.Status, it.Summary = Warn, summary
 	default:
 		it.Status, it.Summary = Pass, summary

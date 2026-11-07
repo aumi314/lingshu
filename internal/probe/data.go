@@ -87,6 +87,25 @@ func Load() (*Suite, map[string]*Baseline, error) {
 	return &suite, baselines, loadErr
 }
 
+// Family 是型号所属的家族。指纹只在同一家族的官方样本之间比（GPT 和 Claude 的题池、距离各算各的）。
+func Family(model string) string {
+	if strings.HasPrefix(model, "claude-") {
+		return "claude"
+	}
+	return "gpt"
+}
+
+// FamilyModels 返回某个家族有官方样本的型号，按名字排序。
+func FamilyModels(family string) []string {
+	var out []string
+	for _, m := range BaselineModels() {
+		if Family(m) == family {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // BaselineModels 返回有官方样本的型号，按名字排序。
 func BaselineModels() []string {
 	_, bs, err := Load()
