@@ -8,6 +8,7 @@ import (
 
 // observe 从全部请求里看请求质量：注入、不可见字符、上游混用、搜索痕迹、流式完整性、协议字段。
 // 只说明观察到的现象，不计入总分：上游有注入不等于模型是假的，两件事分开看。
+// base 为 nil 表示协议检测（Claude，没有官方样本）：注入只按绝对数判断。
 func observe(calls, tokenCalls, anchorCalls []Call, base *Baseline, sessionNearest []string) []Item {
 	var out []Item
 	ok := make([]Call, 0, len(calls))
@@ -20,8 +21,15 @@ func observe(calls, tokenCalls, anchorCalls []Call, base *Baseline, sessionNeare
 	// 注入：最短的基准请求（"Reply with exactly: ok"）的输入 token；直连官方 API 只有十几个，Codex 号池会带上 Codex 指令
 	if len(tokenCalls) > 0 && tokenCalls[0].UsageReported {
 		anchor := tokenCalls[0].InputTokens
-		it := Item{Key: "injection", Title: "注入", Details: map[string]any{"anchor_tokens": anchor, "official_codex_tokens": base.TokenBase}}
+		it := Item{Key: "injection", Title: "注入", Details: map[string]any{"anchor_tokens": anchor}}
+		if base != nil {
+			it.Details["official_codex_tokens"] = base.TokenBase
+		}
 		switch {
+		case base == nil && anchor < 300: // 官方 Claude 加上 Claude Code 系统提示约 90
+			it.Status, it.Summary = Pass, fmt.Sprintf("基准请求只有 %d 个输入 token，没有明显注入", anchor)
+		case base == nil:
+			it.Status, it.Summary = Warn, fmt.Sprintf("基准请求有 %d 个输入 token（官方加 Claude Code 系统提示约 90），上游注入了内容，这部分按输入计费", anchor)
 		case anchor < 200:
 			it.Status, it.Summary = Pass, fmt.Sprintf("基准请求只有 %d 个输入 token，没有明显注入", anchor)
 		case abs(anchor-int64(base.TokenBase)) <= 150:

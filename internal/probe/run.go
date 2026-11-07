@@ -22,7 +22,8 @@ type Request struct {
 	Effort         string           // 推理强度，空表示不指定
 	MaxTokens      int              // 0 表示不限
 	ResponseFormat map[string]any   // 结构化输出
-	Tools          []map[string]any // 工具声明
+	Tools          []map[string]any // 工具声明（按渠道协议的格式写）
+	Document       string           // 附带的 PDF（base64），只用于 Claude
 }
 
 // ToolCall 是模型发起的一次工具调用。
@@ -51,8 +52,11 @@ type Call struct {
 	Model           string     `json:"model,omitempty"`
 	ServiceTier     string     `json:"service_tier,omitempty"`
 	FinishReason    string     `json:"finish_reason,omitempty"`
-	Done            bool       `json:"done"` // 流正常结束（chat 的 [DONE]）
+	Done            bool       `json:"done"` // 流正常结束（chat 的 [DONE]、messages 的 message_stop）
 	Events          int        `json:"events"`
+	EventTypes      []string   `json:"event_types,omitempty"`     // messages：事件类型序列（相邻相同的合并）
+	SignedThinking  int        `json:"signed_thinking,omitempty"` // messages：带签名的 thinking 块数
+	UsageFields     []string   `json:"usage_fields,omitempty"`    // messages：message_start 里 usage 的字段名
 	FirstTokenMS    int        `json:"first_token_ms"`
 	TotalMS         int        `json:"total_ms"`
 }
@@ -62,9 +66,23 @@ type Caller func(ctx context.Context, req Request) Call
 
 // Spec 是一次检测的设置。
 type Spec struct {
-	Baseline string // 对照的官方型号，如 gpt-6.1-sol
-	Quick    bool   // 快速档：单词指纹少抽一些题
-	Seed     uint64 // 随机种子（抽题、出题参数、随机校验码）；0 表示随机
+	Baseline      string // 对照的官方型号，如 gpt-6.1-sol；协议检测时是站内模型名
+	UpstreamModel string // 渠道上的模型名，协议检测核对响应里的 model
+	Quick         bool   // 快速档：单词指纹少抽一些题，不做大海捞针
+	Seed          uint64 // 随机种子（抽题、出题参数、随机校验码）；0 表示随机
+}
+
+// ProtocolModels 是还没有官方样本、只做协议层检测的型号（Claude，走 Messages 协议，docs/decisions.md「模型检测」）。
+var ProtocolModels = []string{"claude-opus-5-5"}
+
+// IsProtocolModel 判断是不是只做协议层检测的型号。
+func IsProtocolModel(m string) bool {
+	for _, x := range ProtocolModels {
+		if x == m {
+			return true
+		}
+	}
+	return false
 }
 
 // Status 是一项的结论。
@@ -89,6 +107,7 @@ type Item struct {
 // Report 是一次检测的完整结果。
 type Report struct {
 	Baseline     string         `json:"baseline"`
+	Mode         string         `json:"mode,omitempty"` // protocol：没有官方样本，只做协议层检测
 	SuiteVersion int            `json:"suite_version"`
 	Score        int            `json:"score"` // 0–100：通过记 1、警告记 0.5、不通过记 0
 	Verdict      string         `json:"verdict"`
@@ -111,7 +130,7 @@ func Run(ctx context.Context, call Caller, spec Spec, progress Progress) (*Repor
 	if err != nil {
 		return nil, err
 	}
-	if bs[spec.Baseline] == nil {
+	if bs[spec.Baseline] == nil && !IsProtocolModel(spec.Baseline) {
 		return nil, fmt.Errorf("没有 %s 的官方样本，可选：%s", spec.Baseline, strings.Join(BaselineModels(), "、"))
 	}
 	seed := spec.Seed
@@ -119,8 +138,12 @@ func Run(ctx context.Context, call Caller, spec Spec, progress Progress) (*Repor
 		seed = rand.Uint64()
 	}
 	rng := rand.New(rand.NewPCG(seed, seed>>1|1))
-	plan := &plan{suite: s, rng: rng, spec: spec}
-	plan.build()
+	plan := &plan{suite: s, rng: rng, spec: spec, protocol: IsProtocolModel(spec.Baseline)}
+	if plan.protocol {
+		plan.buildProtocol()
+	} else {
+		plan.build()
+	}
 
 	calls := make([]Call, len(plan.reqs))
 	var done atomic.Int32
@@ -136,7 +159,7 @@ func Run(ctx context.Context, call Caller, spec Spec, progress Progress) (*Repor
 				calls[i] = Call{Item: req.Item, Prompt: req.Prompt, Error: "检测已取消"}
 			} else {
 				calls[i] = call(ctx, req)
-				calls[i].Item, calls[i].Session, calls[i].System, calls[i].Prompt, calls[i].Effort = req.Item, req.Session, req.System, req.Prompt, req.Effort
+				calls[i].Item, calls[i].Session, calls[i].System, calls[i].Prompt, calls[i].Effort = req.Item, req.Session, req.System, storedPrompt(req.Prompt), req.Effort
 			}
 			if progress != nil {
 				progress(int(done.Add(1)), len(plan.reqs))
@@ -144,7 +167,18 @@ func Run(ctx context.Context, call Caller, spec Spec, progress Progress) (*Repor
 		}(i, req)
 	}
 	wg.Wait()
+	if plan.protocol {
+		return plan.reportProtocol(calls), nil
+	}
 	return plan.report(calls), nil
+}
+
+// storedPrompt 是存进检测记录的提示词：大海捞针约 10 万 token，只存开头和长度。
+func storedPrompt(s string) string {
+	if len(s) <= 4000 {
+		return s
+	}
+	return fmt.Sprintf("%s…（共 %d 个字符，中间省略）…%s", truncate(s, 300), len([]rune(s)), string([]rune(s)[len([]rune(s))-200:]))
 }
 
 // plan 生成本次检测的全部请求，并记住评判需要的标准答案。
@@ -165,6 +199,11 @@ type plan struct {
 	city        string
 	onlyWord    string
 	marker      string
+
+	protocol    bool     // 协议层检测（Claude，没有官方样本）
+	needleCodes []string // 大海捞针藏的三个编号，按位置顺序
+	docCode     string   // PDF 里的随机编号
+	echoTag     string   // 要求原样输出的 <随机串>
 }
 
 func (p *plan) add(r Request) { p.reqs = append(p.reqs, r) }
@@ -270,6 +309,10 @@ func (p *plan) build() {
 	p.marker = fmt.Sprintf("[[END-%04x]]", p.rng.IntN(0x10000))
 	p.spread(Request{Item: "instruction", MaxTokens: 128, System: "Always end every reply with the exact marker " + p.marker + " on its own line.",
 		Prompt: "Say hello in one short sentence."})
+
+	if !p.spec.Quick {
+		p.spread(p.needle(s.Needle.Effort))
+	}
 }
 
 // ---- 评判 ----
@@ -304,9 +347,17 @@ func (p *plan) report(calls []Call) *Report {
 	r.Items = append(r.Items, p.judgeReasoning(by["reasoning"], by["effort"], base))
 	r.Items = append(r.Items, p.judgeStructured(by["structured"], by["tool"]))
 	r.Items = append(r.Items, p.judgeInstruction(by["instruction"]))
+	if len(by["needle"]) > 0 {
+		r.Items = append(r.Items, p.judgeNeedle(by["needle"]))
+	}
 	r.Observations = observe(calls, by["tokens"], by["anchor"], base, sessionNearest)
 	r.Metrics = metrics(calls)
+	finalize(r, hint)
+	return r
+}
 
+// finalize 按各项结论算总分（通过 1、需关注 0.5、不通过 0）并写总结论；hint 非空时作为总结论。
+func finalize(r *Report, hint string) {
 	score, n, fails, warns := 0.0, 0, []string{}, 0
 	for _, it := range r.Items {
 		switch it.Status {
@@ -335,7 +386,6 @@ func (p *plan) report(calls []Call) *Report {
 	default:
 		r.Verdict = "达到标准"
 	}
-	return r
 }
 
 func failedCalls(cs []Call) int {
