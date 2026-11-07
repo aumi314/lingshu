@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/shopspring/decimal"
 
@@ -154,6 +155,24 @@ func TestAllChannelsFailReturnsLastErrorAndNoCharge(t *testing.T) {
 	}
 	if !strings.Contains(l.errorText, "c-chat") || !strings.Contains(l.errorText, "c-backup") {
 		t.Errorf("日志里应记下每个渠道的失败原因，实际 %q", l.errorText)
+	}
+}
+
+// 上游报错是中文长文本时，截断不能切在汉字中间；上游原文里的非法字节也要清掉。
+// 否则写请求日志被 PostgreSQL 拒绝（invalid byte sequence for encoding "UTF8"），日志丢失、预扣冻结不释放（2026-11-07 线上发生）。
+func TestLongChineseUpstreamErrorIsLogged(t *testing.T) {
+	e := newEnv(t)
+	msg := strings.Repeat("当前模型需要可用的账号", 40)
+	e.withBackup(status(429, `{"error":{"message":"`+msg+`"}}`), status(429, "{\"error\":{\"message\":\"bad \xff\xfe byte "+msg+"\"}}"))
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	l := e.logRow(resp.Header.Get("X-Lingshu-Request-Id"))
+	if l.status != "upstream_error" || !utf8.ValidString(l.errorText) || !strings.Contains(l.errorText, "当前模型") {
+		t.Errorf("日志 = %+v", l)
+	}
+	if got := e.decimal(`SELECT reserved::text FROM users WHERE id = 1`); !got.IsZero() {
+		t.Errorf("预扣冻结应已释放，实际 %s", got)
 	}
 }
 

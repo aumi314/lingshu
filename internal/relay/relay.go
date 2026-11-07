@@ -627,11 +627,13 @@ func newRequestID() string {
 	return "req_" + strings.ToLower(rand.Text())
 }
 
+// truncate 按字节截到 n 以内。结果要写进数据库，必须是合法 UTF-8：切在多字节字符中间的残字节、
+// 上游原文里本来就有的非法字节都去掉，否则写日志被 PostgreSQL 拒绝，整笔结算回滚。
 func truncate(s string, n int) string {
 	if len(s) <= n {
-		return s
+		return strings.ToValidUTF8(s, "")
 	}
-	return s[:n] + "…"
+	return strings.ToValidUTF8(s[:n], "") + "…"
 }
 
 // ServeUsage 实现 GET /v1/usage：用 API key 查余额，给 Magpie 等工具的“余额查询”用（鉴权方式同对话请求）。
