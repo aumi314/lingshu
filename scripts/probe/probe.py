@@ -2,7 +2,7 @@
 """模型检测（试验版）：按 suite.json 的检测题检测一个 OpenAI 兼容地址上的模型，结果写成 JSON，和官方样本对比。
 
   运行：python3 scripts/probe/probe.py run --base http://127.0.0.1:3425/v1 --key magpie --model codex/gpt-6.1-sol \\
-          --round 1 --out scripts/probe/baselines [--only tokens,fingerprint,math,needle,pelican] \\
+          --round 1 --out internal/probe/data/baselines [--only tokens,fingerprint,math,needle,pelican] \\
           [--pelican-dir 目录 --edge msedge.exe 路径 --judge-model codex/gpt-6.1-sol]
   对比：python3 scripts/probe/probe.py compare 结果1.json 结果2.json ...
 
@@ -25,7 +25,9 @@ import urllib.request
 from itertools import combinations
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SUITE = json.load(open(os.path.join(HERE, "suite.json"), encoding="utf-8"))
+# 检测题和官方样本放在 internal/probe/data/，灵枢把它们编译进程序；本脚本读同一份
+DATA = os.path.join(HERE, "..", "..", "internal", "probe", "data")
+SUITE = json.load(open(os.path.join(DATA, "suite.json"), encoding="utf-8"))
 
 
 # ---- 请求 ----
