@@ -833,9 +833,24 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "实时模式下汇率自动更新，要手动填写请先切到手动")
 		return
 	}
-	if in.RegistrationMode != nil && *in.RegistrationMode != "manual" && *in.RegistrationMode != "code" {
-		writeError(w, http.StatusBadRequest, "注册方式只能是 manual 或 code；邮箱注册尚未开放")
+	if in.RegistrationMode != nil && *in.RegistrationMode != "manual" && *in.RegistrationMode != "code" && *in.RegistrationMode != "email" {
+		writeError(w, http.StatusBadRequest, "注册方式只能是 manual、code 或 email")
 		return
+	}
+	if in.RegistrationMode != nil && *in.RegistrationMode == "email" {
+		ready, err := s.Store.MailReady(r.Context())
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		if !ready {
+			writeError(w, 400, "请先启用并检查一个发信账号")
+			return
+		}
+		if currentUser(r).Role != "super_admin" {
+			writeError(w, 403, "只有超级管理员能开启邮箱注册")
+			return
+		}
 	}
 	if in.DeploymentMode != nil && *in.DeploymentMode != "commercial_relay" {
 		writeError(w, http.StatusBadRequest, "当前只开放商业中转模式，公司团队网关还在开发")

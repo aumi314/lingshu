@@ -14,6 +14,10 @@ import (
 
 // 不写操作日志的写路由，每条都要写明原因。新增写路由时，要么在 TestOperationLogCoverage 里登记并验证，要么加到这里。
 var operationExempt = map[string]string{
+	"POST /api/auth/email-code":                "注册验证码，发送结果存在 registration_emails 中，不记验证码或邮箱授权",
+	"POST /api/admin/mail-accounts/{id}/check": "授权探测，结果存在 mail_accounts 中",
+	"POST /api/admin/mail-accounts/{id}/test":  "实际测试邮件，结果存在 mail_accounts 中",
+
 	"POST /api/auth/login":                                         "登录不记，失败已写服务日志",
 	"POST /api/auth/challenge":                                     "人机验证",
 	"POST /api/auth/logout":                                        "登出",
@@ -200,6 +204,18 @@ func TestOperationLogCoverage(t *testing.T) {
 	}
 	step("DELETE /api/me/keys/{id}", bob, "/api/me/keys/"+itoa(key.ID), nil, nil, "api_key.delete")
 	step("PUT /api/me/password", bob, "/api/me/password", map[string]string{"old_password": "password-1", "new_password": "new-password-123"}, nil, "user.update")
+
+	e.store.Pool.Exec(context.Background(), `UPDATE users SET role='super_admin' WHERE id=1`)
+	super := e.login("admin")
+	var sender struct {
+		ID int64 `json:"id"`
+	}
+	config := map[string]any{"email": "audit@example.com", "client_id": "client", "refresh_token": "audit-token-secret", "enabled": true, "sort_order": 0}
+	step("POST /api/admin/mail-accounts", super, "/api/admin/mail-accounts", config, &sender, "mail_account.save")
+	config["refresh_token"] = ""
+	step("PUT /api/admin/mail-accounts/{id}", super, "/api/admin/mail-accounts/"+itoa(sender.ID), config, nil, "mail_account.save")
+	step("PUT /api/admin/mail-accounts/order", super, "/api/admin/mail-accounts/order", map[string]any{"ids": []int64{sender.ID}}, nil, "mail_account.order")
+	step("DELETE /api/admin/mail-accounts/{id}", super, "/api/admin/mail-accounts/"+itoa(sender.ID), nil, nil, "mail_account.delete")
 
 	for route := range writeRoutes(t) {
 		_, exempt := operationExempt[route]
