@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { App, Button, Form, Input, InputNumber, Modal, Segmented, Select, Space, Switch, Table, Tag, Tooltip, Typography } from 'antd'
+import { App, Button, Form, Input, InputNumber, Modal, Segmented, Select, Space, Switch, Table, Tag, Typography } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useSearchParams } from 'react-router-dom'
 import { get, patch, post, type Group, type User, type UserGroup } from '../../api'
 import { useApp } from '../../app'
+import { rowEditing } from '../../rowEditing'
 
 export default function Users() {
   const { user: me, money, t, currency, reload } = useApp()
@@ -19,6 +20,7 @@ export default function Users() {
   const [creating, setCreating] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [toggling, setToggling] = useState<number[]>([])
   const editSession = useRef(0)
   const [createForm] = Form.useForm()
   const [editForm] = Form.useForm<{ username: string; password?: string; note?: string; role: User['role']; user_group_ids: number[]; enabled: boolean }>()
@@ -62,22 +64,20 @@ export default function Users() {
   // 用户能用的服务分组：启用中，且对所有用户开放或开放给他所在的某个用户分组
   const accessible = (userGroupIDs: number[]) => groups.filter((g) => g.enabled && (g.is_public || g.user_group_ids.some((id) => userGroupIDs.includes(id))))
   const groupNames = (ids: number[]) => ids.map((id) => userGroups.find((g) => g.id === id)?.name ?? id).join('、')
-  const accessCell = (userGroupIDs: number[]) => {
-    const list = accessible(userGroupIDs)
-    const open = list.filter((g) => g.is_public)
-    const granted = list.filter((g) => !g.is_public)
-    return (
-      <Space size={4} wrap>
-        {granted.map((g) => (
-          <Tooltip key={g.id} title={t(`通过用户分组：${groupNames(g.user_group_ids.filter((id) => userGroupIDs.includes(id)))}`, `Via user groups: ${groupNames(g.user_group_ids.filter((id) => userGroupIDs.includes(id)))}`)}>
-            <Tag color="gold">{g.name}</Tag>
-          </Tooltip>
-        ))}
-        <Tooltip title={open.map((g) => g.name).join('、') || undefined}>
-          <span className="muted">{granted.length ? '+ ' : ''}{t(`公开分组 ${open.length} 个`, `${open.length} open groups`)}</span>
-        </Tooltip>
-      </Space>
-    )
+  const toggle = async (u: User, enabled: boolean) => {
+    if (u.id === me?.id || (u.role === 'super_admin' && !isSuper) || toggling.includes(u.id)) return
+    setToggling((ids) => [...ids, u.id])
+    try {
+      if (!enabled && !await modal.confirm({
+        title: t('停用账号？', 'Disable account?'),
+        content: t('停用后，该用户将退出登录，所有 API key 将无法继续调用。余额和历史记录保留。', 'The user will be signed out and all their API keys will stop working. Their balance and history will be retained.'),
+        okText: t('提交', 'Submit'),
+        cancelText: t('取消', 'Cancel'),
+      })) return
+      await run(() => patch(`/api/admin/users/${u.id}`, { enabled }), t('用户已更新', 'User updated'))
+    } finally {
+      setToggling((ids) => ids.filter((id) => id !== u.id))
+    }
   }
 
   const closeEdit = () => {
@@ -87,6 +87,7 @@ export default function Users() {
   }
 
   const openEdit = (u: User) => {
+    if (u.role === 'super_admin' && !isSuper) return
     ++editSession.current
     setSubmitting(false)
     editForm.setFieldsValue({ username: u.username, password: '', note: u.note ?? '', role: u.role, user_group_ids: u.user_group_ids ?? [], enabled: u.enabled })
@@ -163,6 +164,9 @@ export default function Users() {
       <Table
         rowKey="id"
         loading={loading}
+        onRow={(u) => u.role === 'super_admin' && !isSuper
+          ? { 'aria-disabled': true, title: t('只有超级管理员能修改超级管理员的账号', 'Only super admins can edit a super admin') }
+          : rowEditing(() => openEdit(u), `${t('编辑用户', 'Edit user')} · ${u.username}`)}
         dataSource={status === 'all' ? users : users.filter((u) => u.enabled === (status === 'enabled'))}
         locale={{ emptyText: status === 'disabled' ? t('没有停用的用户', 'No disabled users') : status === 'enabled' ? t('没有启用的用户', 'No enabled users') : undefined }}
         pagination={false}
@@ -180,7 +184,7 @@ export default function Users() {
             ),
           },
           { title: t('角色', 'Role'), dataIndex: 'role', render: (v) => v === 'super_admin' ? <Tag color="purple">{t('超级管理员', 'Super admin')}</Tag> : v === 'admin' ? <Tag color="blue">{t('管理员', 'Admin')}</Tag> : <span className="muted">{t('成员', 'Member')}</span> },
-          { title: t('可用服务分组', 'Service groups'), render: (_, u) => accessCell(u.user_group_ids ?? []) },
+          { title: t('用户分组', 'User groups'), render: (_, u) => u.user_group_ids?.length ? <Space size={4} wrap>{u.user_group_ids.map((id) => <Tag key={id}>{groupNames([id])}</Tag>)}</Space> : <span className="muted">{t('无', 'None')}</span> },
           {
             title: t('余额', 'Balance'),
             dataIndex: 'balance',
@@ -188,18 +192,9 @@ export default function Users() {
           },
           { title: t('最近调用', 'Last call'), dataIndex: 'last_used_at', render: (v?: string) => v ? <span className="nowrap">{dayjs(v).format('MM-DD HH:mm')}</span> : <span className="muted">{t('从未', 'Never')}</span> },
           {
-            title: t('状态', 'Status'),
+            title: t('开关', 'Enabled'),
             dataIndex: 'enabled',
-            render: (v) => <Tag color={v ? 'green' : undefined}>{v ? t('已启用', 'Enabled') : t('已停用', 'Disabled')}</Tag>,
-          },
-          {
-            title: '',
-            align: 'right',
-            render: (_, u) => (
-              u.role === 'super_admin' && !isSuper
-                ? <Tooltip title={t('只有超级管理员能修改超级管理员的账号', 'Only super admins can edit a super admin')}><Button size="small" type="link" disabled>{t('编辑', 'Edit')}</Button></Tooltip>
-                : <Button size="small" type="link" onClick={() => openEdit(u)}>{t('编辑', 'Edit')}</Button>
-            ),
+            render: (v, u) => <Switch size="small" aria-label={`${t('启停用户', 'Enable user')} · ${u.username}`} checked={v} loading={toggling.includes(u.id)} disabled={u.id === me?.id || (u.role === 'super_admin' && !isSuper)} onChange={(enabled) => void toggle(u, enabled)} />,
           },
         ]}
       />

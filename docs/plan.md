@@ -112,7 +112,7 @@ lingshu/
 
 ## 5. 当前状态（2026-11-08）
 
-线上 `https://gateway.piqode.com`（DMIT）已支持开放注册及协议同意；当前分支实现 Responses → Messages、显式压缩和客户端 WebSocket，已通过 Codex 工具、压缩及续接验收，待 PR 合并。
+线上 `https://gateway.piqode.com`（DMIT）已支持开放注册及协议同意；当前分支实现 Responses → Messages、显式压缩和客户端 WebSocket，已通过 Codex 工具、压缩及续接验收，待 PR 合并；后台已加入用户分组与启停开关、渠道“原生协议”表头、调用日志刷新和概览页先测试再配置的提示词，相关构建与浏览器回归通过，等待合并发布。
 
 | 模块 | 现在有什么 |
 |---|---|

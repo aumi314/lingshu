@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, Card, Col, DatePicker, Descriptions, Drawer, Row, Segmented, Select, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
+import { Alert, Button, Card, Col, DatePicker, Descriptions, Drawer, Row, Segmented, Select, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useSearchParams } from 'react-router-dom'
 import { get, type LogEntry, type ActivityLogsResponse, type OperationLogsResponse, type RequestActivity, type User } from '../api'
@@ -315,6 +315,8 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
           onChange={(v) => update({ status: v })}
           options={Object.entries(statusTag).map(([k, [, label]]) => ({ value: k, label }))}
         />
+        {/* 刷新：保留当前筛选和页码，重新拉列表和汇总 */}
+        <Button loading={loading} onClick={() => void load()}>{t('刷新', 'Refresh')}</Button>
         </>}
         {tab === 'operations' && (
           <Select
