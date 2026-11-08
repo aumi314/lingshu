@@ -56,6 +56,25 @@ const activityCTE = `WITH events AS (
 )
 `
 
+// requestLoad 按和调用日志相同的筛选（用户、模型、状态、渠道、时间）算峰值 RPM / TPM 和响应时间中位数。
+func (s *Store) requestLoad(ctx context.Context, f LogFilter, sum *LogSummary) error {
+	return s.Pool.QueryRow(ctx, `
+		WITH r AS (
+			SELECT created_at, status, stream, first_byte_ms, upstream_start_ms, total_ms,
+			       input_tokens + cache_read_tokens + cache_write_tokens + output_tokens AS tok
+			FROM request_logs
+			WHERE ($1::bigint = 0 OR user_id = $1) AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)
+			  AND ($4::text = '' OR model = $4) AND ($5::text = '' OR status = $5) AND ($6::bigint = 0 OR channel_id = $6)
+		), m AS (SELECT date_trunc('minute', created_at) AS at, count(*) AS n, sum(tok) AS tok FROM r GROUP BY 1)
+		SELECT COALESCE((SELECT max(n) FROM m), 0), (SELECT at FROM m ORDER BY n DESC, at DESC LIMIT 1),
+		       COALESCE((SELECT max(tok) FROM m), 0)::bigint, (SELECT at FROM m ORDER BY tok DESC, at DESC LIMIT 1),
+		       (SELECT round(percentile_cont(0.5) WITHIN GROUP (ORDER BY first_byte_ms - upstream_start_ms))::bigint FROM r
+		        WHERE status = 'success' AND stream AND upstream_start_ms > 0 AND first_byte_ms > upstream_start_ms),
+		       (SELECT round(percentile_cont(0.5) WITHIN GROUP (ORDER BY total_ms))::bigint FROM r WHERE status = 'success')`,
+		f.UserID, f.From, f.To, f.Model, f.Status, f.ChannelID,
+	).Scan(&sum.PeakRPM, &sum.PeakRPMAt, &sum.PeakTPM, &sum.PeakTPMAt, &sum.MedianFirstTokenMS, &sum.MedianTotalMS)
+}
+
 func (s *Store) ListActivityLogs(ctx context.Context, f LogFilter) ([]ActivityLog, LogSummary, int64, error) {
 	limit := f.Limit
 	if limit <= 0 || limit > 200 {
@@ -74,6 +93,11 @@ func (s *Store) ListActivityLogs(ctx context.Context, f LogFilter) ([]ActivityLo
 		return nil, summary, 0, err
 	}
 	summary.Cost, summary.TopupTotal, summary.AdjustmentNet = mustDecimal(cost), mustDecimal(topup), mustDecimal(adjustment)
+	if f.Type == "request" || f.Type == "all" {
+		if err := s.requestLoad(ctx, f, &summary); err != nil {
+			return nil, summary, 0, err
+		}
+	}
 	args = append(args, limit, f.Offset)
 	rows, err := s.Pool.Query(ctx, activityCTE+`SELECT f.id,f.type,f.user_id,u.username,f.created_at,f.status,
  f.delta::text,f.balance_after::text,COALESCE(actor.username,''),f.note,

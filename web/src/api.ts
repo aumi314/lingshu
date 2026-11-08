@@ -152,7 +152,12 @@ export type LogEntry = {
   upstream_start_ms?: number // 发出最终上游请求的时刻（从进入网关算）；旧日志为 0，此时首字按旧口径（从进入网关算）
 }
 
-export type LogSummary = { requests: number; failed: number; input_tokens: number; cache_read_tokens: number; output_tokens: number; cost: string } // input_tokens 含缓存读写
+export type LogSummary = {
+  requests: number; failed: number; input_tokens: number; cache_read_tokens: number; output_tokens: number; cost: string // input_tokens 含缓存读写
+  // 负载与响应：峰值取最忙的那一分钟；响应时间是成功请求的中位数（首字从发给上游算起）
+  peak_rpm?: number; peak_rpm_at?: string | null; peak_tpm?: number; peak_tpm_at?: string | null
+  median_first_token_ms?: number | null; median_total_ms?: number | null
+}
 export type LogsResponse = { logs: LogEntry[]; summary: LogSummary; models: string[] }
 
 type ActivityFields = { id: number; event_key: string; user_id: number; username: string; created_at: string; balance_delta: string; operator: string; note: string }

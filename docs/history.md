@@ -275,6 +275,10 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 迁移 0030 新建 `channel_keys`（现有 key 搬成第一把，`channels.api_key` 保留不删）、`channels.note`、`request_logs.channel_key_id / failed_key_ids`。网关按“灵枢 key + 会话编号”做最高随机权重哈希固定 key（`relay/keys.go`），`previous_response_id` 回原 key；`router.KeyHealth` 管单把 key 的冷却（429，按 Retry-After，最多 10 分钟）和失效（401 / 402 / 403，30 分钟后再试），5xx / 超时仍是渠道级、跳过同渠道其余 key；原 `router.Order` 由 `orderAttempts` 取代后删除。OpenCode 免费模型会话按 key 区分。管理端 key 列表（掩码、状态、24 小时次数、备注、启停），批量添加分追加 / 覆盖，服务端自动去重（覆盖时相同 key 沿用原记录），上限 50；冒烟测试可选 key；渠道备注显示在列表名称下方。测试：`TestKeyHealth`、`TestMultiKey*`（会话固定、429 本渠道换 key、401 标失效、5xx 跳过渠道、续接回原 key）、`TestChannelKeysSave`、`channels.browser.cjs`；测试环境加触发器把 `channels.api_key` 同步成一把 key。期间 WSL 重启清空 `/tmp`，未提交的改动丢失后重做，`AGENTS.md` 改为工作区放 `~/worktrees/`。
 
+### 调用日志加峰值 RPM / TPM、响应时间中位数和快捷时间段（2026-11-07）
+
+`store.requestLoad` 按调用日志的筛选算最忙那一分钟的请求数和 token 数、成功请求的首字和总耗时中位数，随汇总返回（`peak_rpm`、`peak_tpm` 及发生时间、`median_first_token_ms`、`median_total_ms`）。日志页汇总卡片 6 张（宽屏一行 6 张、中屏 3 张、手机 2 张，数字不折行），日期旁加今日 / 本周 / 本月 / 近 7 天 / 近 30 天。测试：`TestLogLoadMetrics`，`activity-logs.browser.cjs` 加新卡片和快捷时间段（含手机宽度不撑宽页面）。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 改为自动发布前的手动发布记录

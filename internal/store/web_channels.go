@@ -485,6 +485,15 @@ type LogSummary struct {
 	CacheRead     int64           `json:"cache_read_tokens"`
 	OutputTokens  int64           `json:"output_tokens"`
 	Cost          decimal.Decimal `json:"cost"`
+	// 负载与响应（调用日志，2026-11-07）：区间平均的 RPM 没有意义（7 天 3000 次平均每分钟 0.3 次），
+	// 取最忙那一分钟——它决定会不会撞上游限流。TPM 按输入（含缓存）+ 输出算，和厂商限流口径一致。
+	// 响应时间取中位数：推理请求偶尔几分钟，平均值会被少数长请求拉高。只算成功的请求。
+	PeakRPM            int64      `json:"peak_rpm"`
+	PeakRPMAt          *time.Time `json:"peak_rpm_at"`
+	PeakTPM            int64      `json:"peak_tpm"`
+	PeakTPMAt          *time.Time `json:"peak_tpm_at"`
+	MedianFirstTokenMS *int64     `json:"median_first_token_ms"` // 成功流式请求，从发给上游算起（同调用日志的首字）
+	MedianTotalMS      *int64     `json:"median_total_ms"`
 }
 
 func (f LogFilter) where() (string, []any) {
