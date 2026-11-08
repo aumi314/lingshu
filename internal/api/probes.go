@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -168,11 +169,33 @@ func (s *Server) runProbe(run store.ProbeRun, ch *store.Channel) {
 	for i := range sessions {
 		sessions[i] = relay.NewProbeSession()
 	}
+	// 这个渠道不支持推理强度 none 时，后面的请求直接用 low，免得几百道指纹题每道都先失败一次。
+	// 明确返回 400 立刻认定；只是空流要几乎全军覆没（至少 5 次且占 80%）才认定——kinght 这类渠道约 7% 的流会随机断，不能因此整次降档
+	var noneUnsupported atomic.Bool
+	var noneTried, noneEmpty atomic.Int32
 	caller := func(ctx context.Context, req probe.Request) probe.Call {
 		if probe.IsProtocolModel(run.Baseline) {
 			return s.Relay.ProbeMessages(ctx, ch, run.UpstreamModel, sessions[req.Session%len(sessions)], req)
 		}
-		return s.Relay.ProbeChat(ctx, ch, run.UpstreamModel, sessions[req.Session%len(sessions)], req)
+		if req.Effort == "none" && noneUnsupported.Load() {
+			req.Effort = "low"
+			c := s.Relay.ProbeChat(ctx, ch, run.UpstreamModel, sessions[req.Session%len(sessions)], req)
+			c.EffortSent = "low"
+			return c
+		}
+		c := s.Relay.ProbeChat(ctx, ch, run.UpstreamModel, sessions[req.Session%len(sessions)], req)
+		if req.Effort == "none" {
+			tried := noneTried.Add(1)
+			switch c.NoneRejectedBy {
+			case "400":
+				noneUnsupported.Store(true)
+			case "empty":
+				if empty := noneEmpty.Add(1); empty >= 5 && empty*5 >= tried*4 {
+					noneUnsupported.Store(true)
+				}
+			}
+		}
+		return c
 	}
 	report, err := probe.Run(ctx, caller, probe.Spec{Baseline: run.Baseline, UpstreamModel: run.UpstreamModel, Quick: run.Preset == "quick"}, func(done, total int) {
 		s.probeProgress.Store(run.ID, [2]int{done, total})

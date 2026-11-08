@@ -291,6 +291,12 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 系统设置去掉“兑换码”标签，兑换码收成一张卡片放在“支付设置”第二张（第一张为“在线支付”）；旧链接 `?tab=redeem` 落到支付设置并滚到兑换码卡片。开关“开放用户充值”改名“开放在线支付”并注明不影响兑换码；兑换码说明加“可以放到第三方发卡平台售卖（例如 wzyp.cn）”。只改前端和文档，无接口或数据库变更。测试：`redeem.browser.cjs`（合并后的两张卡片、旧链接、第三方平台说明，原有生成和兑换流程）。
 
+### 分词固定偏移与 none 降档（2026-11-08）
+
+- 超超 claude 检测 62 分词 5/12 判不通过，逐段看是 5 段一致、7 段恰好 +28：分词器一致，是部分请求被固定注入，属误报。对照所有分词不通过的记录，只有它是“0 和固定数”两种，其余（kinght、咔咔、codezhongzhuan、zoowyoo 等）零散不一致。新增 `fixedOffset`，这种情况记需关注。
+- pikaqiu gpt 测 astra（检测 59）指纹 444 题全部 HTTP 400“Unsupported value: 'none'”，原重试条件只认报错里的 reasoning 字样，没重试；aresai gpt 测 astra（检测 60）上游把 Chat 转成 Responses，none 时回空流（对方后台显示 0 token）。改为两种都换 low 重试、按规则决定是否整次降档，指纹大部分降档时只作参考。测试：`TestTokensFixedOffsetIsInjection`、`TestProbeChatRetriesUnsupportedNone`、`TestProbeChatRetriesNoneOnEmptyStream`、`TestFingerprintLoweredEffortIsOnlyAdvisory`。
+- 本轮复核四个 GPT 渠道：超超 gpt 100（未挂分组，没生效）；pikaqiu 100、93、79（一次会话像 luna，偶发混池）；aresai 93、79、86、93、93（指纹一直离官方 0.46–0.60，两次有会话像 terra）；code 86、86、86、93（指纹稳定是 sol，推理常 3/4）。aresai、pikaqiu 是官方 API 环境（基准 11 token），和 Codex 环境的官方样本有环境差，需要补官方 API 环境样本（渠道 16 OpenAI Platform）。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 改为自动发布前的手动发布记录

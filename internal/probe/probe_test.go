@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"math/rand/v2"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -422,5 +423,64 @@ func TestJudgeThinkingWithBaseline(t *testing.T) {
 	}
 	if it := p.judgeThinking([]Call{call("74", 30), call("501", 800)}, base); it.Status != Fail || !strings.Contains(it.Summary, "推理强度被降") {
 		t.Errorf("推理量极低: %+v", it)
+	}
+}
+
+// 分词差值只有“0 和某一个固定数”两种：分词器一致，只是部分请求被上游固定注入（2026-11-08 超超 claude：5 段 0、7 段 +28），记需关注；
+// 差值零零散散（kinght claude：-47 到 +4）仍判不通过。
+func TestTokensFixedOffsetIsInjection(t *testing.T) {
+	_, bs, _ := Load()
+	base := bs["claude-opus-5-5"]
+	p := &plan{}
+	for name := range base.TokenDeltas {
+		p.tokenNames = append(p.tokenNames, name)
+	}
+	sort.Strings(p.tokenNames)
+	build := func(offset func(i int) int64) []Call {
+		cs := []Call{{InputTokens: 42, UsageReported: true}, {InputTokens: 42, UsageReported: true}, {InputTokens: 43, UsageReported: true}}
+		for i, name := range p.tokenNames {
+			cs = append(cs, Call{InputTokens: 43 + int64(base.TokenDeltas[name]) + offset(i), UsageReported: true})
+		}
+		return cs
+	}
+	if it := p.judgeTokens(build(func(int) int64 { return 0 }), base); it.Status != Pass {
+		t.Errorf("完全一致应通过: %+v", it)
+	}
+	if it := p.judgeTokens(build(func(i int) int64 {
+		if i < 7 {
+			return 28
+		}
+		return 0
+	}), base); it.Status != Warn || !strings.Contains(it.Summary, "28") {
+		t.Errorf("0 和 +28 两种差值应记需关注并写出 28: %+v", it)
+	}
+	scattered := []int64{1, 3, -4, -4, -4, -1, -1, 2, 4, -6, -47, -3}
+	if it := p.judgeTokens(build(func(i int) int64 { return scattered[i] }), base); it.Status != Fail {
+		t.Errorf("零散差值应不通过: %+v", it)
+	}
+}
+
+// 指纹题大部分因上游不支持 none 改用了 low：和官方样本条件不同，原本会判不通过的只记需关注，不写进总结论。
+func TestFingerprintLoweredEffortIsOnlyAdvisory(t *testing.T) {
+	terra := fakeUpstream(t, "gpt-6.1-terra", 91)
+	lowered := func(ctx context.Context, req Request) Call {
+		c := terra(ctx, req)
+		if req.Effort == "none" {
+			c.EffortSent = "low"
+		}
+		return c
+	}
+	r, err := Run(context.Background(), lowered, Spec{Baseline: "gpt-6.1-sol", Quick: true, Seed: 92}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := itemOf(r, "fingerprint")
+	if it.Status != Warn || !strings.Contains(it.Summary, "改用 low") || strings.Contains(r.Verdict, "疑似不是") {
+		t.Errorf("降档后指纹只作参考: %+v / %s", it, r.Verdict)
+	}
+	// 没降档时 terra 冒充 sol 照样判不通过
+	r, _ = Run(context.Background(), terra, Spec{Baseline: "gpt-6.1-sol", Quick: true, Seed: 93}, nil)
+	if itemOf(r, "fingerprint").Status != Fail {
+		t.Errorf("没降档时应不通过: %+v", itemOf(r, "fingerprint"))
 	}
 }
