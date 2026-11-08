@@ -172,8 +172,8 @@ func TestOperationLogCoverage(t *testing.T) {
 	}
 	step("DELETE /api/admin/groups/{id}", a, "/api/admin/groups/3", nil, nil, "group.delete")
 	o = step("PUT /api/admin/settings", a, "/api/admin/settings", map[string]any{"cny_per_usd": "7.1", "registration_mode": "code"}, nil, "settings.update")
-	if len(o.Changes) != 2 {
-		t.Fatalf("一次保存多项设置应记一条、两项变更: %+v", o.Changes)
+	if len(o.Changes) != 5 {
+		t.Fatalf("一次保存多项设置应记一条、包含注册限制变更: %+v", o.Changes)
 	}
 	o = step("PUT /api/admin/payments/{provider}", a, "/api/admin/payments/epay", map[string]any{"enabled": true,
 		"values": map[string]string{"merchant_id": "100", "gateway": "https://pay.example"}, "secrets": map[string]string{"key": "payment-fixture-secret"}}, nil, "payment.create")

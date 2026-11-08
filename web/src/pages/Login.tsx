@@ -6,6 +6,7 @@ import { ApiError, get, post } from '../api'
 import { solveCaptcha } from '../captcha'
 import { useApp } from '../app'
 import Logo from '../components/Logo'
+import { normalizeRegistration } from '../registration'
 
 export default function Login() {
   const { reload, t } = useApp()
@@ -14,14 +15,12 @@ export default function Login() {
   const [verifying, setVerifying] = useState(false)
   const [needCaptcha, setNeedCaptcha] = useState(false) // 失败几次后服务端会要求人机验证
   const [registrationEnabled, setRegistrationEnabled] = useState(false)
-  const [registrationMode, setRegistrationMode] = useState('manual')
   const nav = useNavigate()
 
   useEffect(() => {
-    get<{ enabled: boolean; mode?: string }>('/api/auth/registration').then((status) => {
-      setRegistrationEnabled(status.enabled)
-      setRegistrationMode(status.mode ?? 'code')
-    }).catch(() => {})
+    get<{ enabled?: boolean; code_required?: boolean; email_required?: boolean; mode?: string }>('/api/auth/registration')
+      .then((status) => setRegistrationEnabled(normalizeRegistration(status).enabled))
+      .catch(() => {})
   }, [])
 
   const withCaptcha = async (v: { username: string; password: string }) => {
@@ -62,9 +61,7 @@ export default function Login() {
         </Typography.Title>
         <Typography.Paragraph type="secondary">
           {registrationEnabled
-            ? registrationMode === 'email'
-              ? t('团队统一 AI 模型网关。验证邮箱即可创建账号。', 'Team AI model gateway. Verify your email to create an account.')
-              : t('团队统一 AI 模型网关。可使用注册码加入团队。', 'Team AI model gateway. Join your team with a registration code.')
+            ? t('团队统一 AI 模型网关。可自助创建账号。', 'Team AI model gateway. You can create your own account.')
             : t('团队统一 AI 模型网关。账号由管理员创建。', 'Team AI model gateway. Accounts are created by admins.')}
         </Typography.Paragraph>
         {error && <Alert type="error" title={error} showIcon style={{ marginBottom: 16 }} />}
@@ -79,7 +76,7 @@ export default function Login() {
             {verifying ? t('正在进行人机验证…', 'Verifying you are human…') : t('登录', 'Sign in')}
           </Button>
         </Form>
-        {registrationEnabled && <div style={{ marginTop: 12 }}><Link to="/register">{registrationMode === 'email' ? t('使用邮箱创建账号', 'Register with email') : t('使用注册码创建账号', 'Register with a code')}</Link></div>}
+        {registrationEnabled && <div style={{ marginTop: 12 }}><Link to="/register">{t('创建账号', 'Create an account')}</Link></div>}
         <Button type="link" style={{ padding: 0, marginTop: 12 }} onClick={() => nav('/')}>
           ← {t('返回首页', 'Back to home')}
         </Button>

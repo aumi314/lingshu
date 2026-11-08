@@ -134,13 +134,14 @@ func EmailCodeHash(email, code string) string {
 }
 func (s *Store) ClaimEmailCode(ctx context.Context, email, hash string) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
-		var mode string
-		if err := tx.QueryRow(ctx, `SELECT COALESCE((SELECT value FROM settings WHERE key='registration_mode'),'manual')`).Scan(&mode); err != nil {
+		flags, err := registrationFlags(ctx, tx)
+		if err != nil {
 			return err
 		}
-		if mode != "email" {
+		if !flags.Enabled || !flags.EmailRequired {
 			return ErrRegistrationClosed
 		}
+
 		var taken bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE lower(email)=$1)`, email).Scan(&taken); err != nil {
 			return err
@@ -163,35 +164,53 @@ func (s *Store) FinishEmailCode(ctx context.Context, email, hash, status string,
 	return err
 }
 func (s *Store) RegisterUserWithEmail(ctx context.Context, username, passwordHash, email, code, sessionHash string, expires time.Time) error {
+	return s.RegisterUser(ctx, username, passwordHash, "", email, code, sessionHash, expires)
+}
+
+func (s *Store) RegisterUser(ctx context.Context, username, passwordHash, registrationCode, email, emailCode, sessionHash string, expires time.Time) error {
 	var validation error
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
-		var mode string
-		if err := tx.QueryRow(ctx, `SELECT COALESCE((SELECT value FROM settings WHERE key='registration_mode'),'manual')`).Scan(&mode); err != nil {
+		flags, err := registrationFlags(ctx, tx)
+		if err != nil {
 			return err
 		}
-		if mode != "email" {
+		if !flags.Enabled {
 			return ErrRegistrationClosed
 		}
-		var hash string
-		var exp time.Time
-		var attempts int
-		var pending string
-		if err := tx.QueryRow(ctx, `SELECT code_hash,expires_at,attempts,pending_hash FROM registration_emails WHERE email=$1 FOR UPDATE`, email).Scan(&hash, &exp, &attempts, &pending); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+		var codeID int64
+		if flags.CodeRequired {
+			if err := tx.QueryRow(ctx, `SELECT id FROM registration_codes WHERE code_hash=$1 AND used_at IS NULL AND revoked_at IS NULL FOR UPDATE`, registrationCodeHash(registrationCode)).Scan(&codeID); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return ErrInvalidRegistrationCode
+				}
+				return err
+			}
+		}
+		if flags.EmailRequired {
+			var hash, pending string
+			var exp time.Time
+			var attempts int
+			if err := tx.QueryRow(ctx, `SELECT code_hash,expires_at,attempts,pending_hash FROM registration_emails WHERE email=$1 FOR UPDATE`, email).Scan(&hash, &exp, &attempts, &pending); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return ErrEmailCode
+				}
+				return err
+			}
+			if pending != "" || hash == "" || time.Now().After(exp) || attempts >= 5 {
 				return ErrEmailCode
 			}
-			return err
+			if hash != EmailCodeHash(email, emailCode) {
+				_, err := tx.Exec(ctx, `UPDATE registration_emails SET attempts=attempts+1 WHERE email=$1`, email)
+				validation = ErrEmailCode
+				return err
+			}
 		}
-		if pending != "" || hash == "" || time.Now().After(exp) || attempts >= 5 {
-			return ErrEmailCode
-		}
-		if hash != EmailCodeHash(email, code) {
-			_, err := tx.Exec(ctx, `UPDATE registration_emails SET attempts=attempts+1 WHERE email=$1`, email)
-			validation = ErrEmailCode
-			return err
+		var userEmail any
+		if flags.EmailRequired {
+			userEmail = email
 		}
 		var id int64
-		if err := tx.QueryRow(ctx, `INSERT INTO users(username,password_hash,role,email) VALUES($1,$2,'user',$3) RETURNING id`, username, passwordHash, email).Scan(&id); err != nil {
+		if err := tx.QueryRow(ctx, `INSERT INTO users(username,password_hash,role,email) VALUES($1,$2,'user',$3) RETURNING id`, username, passwordHash, userEmail).Scan(&id); err != nil {
 			var pe *pgconn.PgError
 			if errors.As(err, &pe) && pe.Code == "23505" {
 				if strings.Contains(pe.ConstraintName, "email") {
@@ -208,8 +227,15 @@ func (s *Store) RegisterUserWithEmail(ctx context.Context, username, passwordHas
 		if tag.RowsAffected() != 1 {
 			return errors.New("默认用户分组不存在")
 		}
-		if _, err = tx.Exec(ctx, `DELETE FROM registration_emails WHERE email=$1`, email); err != nil {
-			return err
+		if flags.CodeRequired {
+			if _, err = tx.Exec(ctx, `UPDATE registration_codes SET used_by=$2,used_at=now() WHERE id=$1`, codeID, id); err != nil {
+				return err
+			}
+		}
+		if flags.EmailRequired {
+			if _, err = tx.Exec(ctx, `DELETE FROM registration_emails WHERE email=$1`, email); err != nil {
+				return err
+			}
 		}
 		after, err := takeSnapshot(ctx, tx, userEntity, id)
 		if err != nil {
