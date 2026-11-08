@@ -86,3 +86,12 @@ jobs:
           node tests/legal.browser.cjs
           node tests/channels.browser.cjs
           node tests/probes.browser.cjs
+
+  edge:
+    name: Caddy 隔离防护回归
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: 验证入口防护与流式转发
+        run: python3 scripts/test-caddy-security.py
