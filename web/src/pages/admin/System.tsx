@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Radio, Space, Switch, Table, Tabs, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, Checkbox, Form, Input, InputNumber, Modal, Radio, Space, Switch, Table, Tabs, Tag, Typography } from 'antd'
 import { useSearchParams } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { del, get, post, put } from '../../api'
@@ -7,13 +7,14 @@ import { useApp } from '../../app'
 import PaymentSettings from '../../components/PaymentSettings'
 import RedeemCodes from '../../components/RedeemCodes'
 import MailAccounts, { type MailAccount } from '../../components/MailAccounts'
+import { normalizeRegistration } from '../../registration'
 
 type RegistrationCode = { id: number; prefix: string; created_at: string; used_by: string; used_at: string | null; revoked_at: string | null }
 type GeneratedCode = { id: number; prefix: string; code: string }
 
 type FXStatus = { source: string; date?: string; rate?: string; checked_at?: string; error?: string }
 type CallLimits = { user_concurrency: number; user_rpm: number; reserve_output_tokens: number }
-type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string }
+type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; registration_enabled?: boolean; registration_code_required?: boolean; registration_email_required?: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string }
 
 export default function System() {
   const { t, reload, user } = useApp()
@@ -43,7 +44,7 @@ export default function System() {
   const [loading, setLoading] = useState(true)
   const [paymentEnabled, setPaymentEnabled] = useState(false)
   const [savingPayment, setSavingPayment] = useState(false)
-  const [registrationMode, setRegistrationMode] = useState<'manual' | 'code' | 'email'>('manual')
+  const [regFlags, setRegFlags] = useState({ enabled: false, code_required: false, email_required: false })
   const [savingRegistration, setSavingRegistration] = useState(false)
   const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([])
   const [loadingMailAccounts, setLoadingMailAccounts] = useState(false)
@@ -63,7 +64,7 @@ export default function System() {
     noticeForm.setFieldsValue({ announcement: s.announcement ?? '' })
     setDeploymentMode(s.deployment_mode === 'commercial_relay' ? s.deployment_mode : 'commercial_relay')
     setPaymentEnabled(s.payment_enabled)
-    setRegistrationMode(s.registration_mode === 'email' ? 'email' : s.registration_mode === 'code' ? 'code' : 'manual')
+    setRegFlags(normalizeRegistration({ enabled: s.registration_enabled, code_required: s.registration_code_required, email_required: s.registration_email_required, mode: s.registration_mode }))
   }
 
   useEffect(() => {
@@ -184,11 +185,12 @@ export default function System() {
     }
   }
 
-  const saveRegistrationMode = async () => {
+  const saveRegistration = async () => {
     setSavingRegistration(true)
     try {
-      await put('/api/admin/settings', { registration_mode: registrationMode })
-      message.success(t('注册方式已保存', 'Registration mode saved'))
+      // 关闭总开关只停掉自助入口，两个验证条件保留为偏好，下次开启时仍然生效。
+      await put('/api/admin/settings', { registration_enabled: regFlags.enabled, registration_code_required: regFlags.code_required, registration_email_required: regFlags.email_required })
+      message.success(t('注册方式已保存', 'Registration settings saved'))
     } catch (e) {
       message.error((e as Error).message)
     } finally {
@@ -360,23 +362,28 @@ export default function System() {
           ) },
           { key: 'registration', label: t('注册管理', 'Registration'), children: (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
-              <Card title={t('开放程度', 'Registration access')}>
-                <Radio.Group value={registrationMode} onChange={(e) => setRegistrationMode(e.target.value)}>
+              <Card title={t('注册方式', 'Registration')}>
+                <Typography.Text type="secondary">{t('管理员手动添加账号始终可用，在用户管理中创建。', 'Manual accounts are always available: admins create them in User Management.')}</Typography.Text>
+                <Space style={{ width: '100%', justifyContent: 'space-between', marginTop: 16 }}>
+                  <Typography.Text>{t('开放注册', 'Open registration')}</Typography.Text>
+                  <Switch aria-label={t('开放注册', 'Open registration')} checked={regFlags.enabled} onChange={(v) => setRegFlags((s) => ({ ...s, enabled: v }))} />
+                </Space>
+                {regFlags.enabled && <>
+                  <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+                    {t('两项都不勾选时，用户填写用户名和密码即可注册；勾选后作为注册时必须满足的条件，可以同时要求。', 'With neither selected, a username and password are enough. Selected items become required conditions and can apply together.')}
+                  </Typography.Paragraph>
                   <Space direction="vertical" size={12}>
-                    <Radio value="manual">
-                      {t('仅手动添加', 'Manual accounts only')} <Typography.Text type="secondary">{t('用户由管理员在用户管理中创建。', 'Admins create accounts in User Management.')}</Typography.Text>
-                    </Radio>
-                    <Radio value="code">
-                      {t('注册码注册', 'Registration code')} <Typography.Text type="secondary">{t('用户凭管理员发放的单次注册码创建账号。', 'Users create an account with a one-time code from an admin.')}</Typography.Text>
-                    </Radio>
-                    <Radio value="email" disabled={!mailReady && registrationMode !== 'email'}>
-                      {t('开放邮箱注册', 'Open email registration')} <Typography.Text type="secondary">{t('用户验证邮箱后创建账号，使用用户名和密码登录。', 'Users verify email to register and sign in with a username and password.')}</Typography.Text>
-                    </Radio>
+                    <Checkbox checked={regFlags.code_required} onChange={(e) => setRegFlags((s) => ({ ...s, code_required: e.target.checked }))}>
+                      {t('注册码验证', 'Require a registration code')} <Typography.Text type="secondary">{t('用户填写管理员发放的单次注册码。', 'Users enter a one-time code issued by an admin.')}</Typography.Text>
+                    </Checkbox>
+                    <Checkbox checked={regFlags.email_required} disabled={!mailReady && !regFlags.email_required} onChange={(e) => setRegFlags((s) => ({ ...s, email_required: e.target.checked }))}>
+                      {t('邮箱认证', 'Require email verification')} <Typography.Text type="secondary">{t('用户验证邮箱验证码后注册。', 'Users verify an email code before registering.')}</Typography.Text>
+                    </Checkbox>
                   </Space>
-                </Radio.Group>
-                {!mailReady && <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>{t('开启邮箱注册前，请由超级管理员添加发信账号并检查授权。', 'Ask a super admin to add a mail account and check authorization before enabling email registration.')}</Typography.Paragraph>}
+                  {!mailReady && <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>{t('开启邮箱认证前，请由超级管理员添加发信账号并检查授权。', 'Ask a super admin to add a mail account and check authorization before requiring email verification.')}</Typography.Paragraph>}
+                </>}
                 <div style={{ marginTop: 20 }}>
-                  <Button type="primary" loading={savingRegistration} disabled={loading || (registrationMode === 'email' && !mailReady)} onClick={saveRegistrationMode}>{t('保存', 'Save')}</Button>
+                  <Button type="primary" loading={savingRegistration} disabled={loading || (regFlags.enabled && regFlags.email_required && !mailReady)} onClick={saveRegistration}>{t('保存', 'Save')}</Button>
                 </div>
               </Card>
 

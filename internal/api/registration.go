@@ -15,15 +15,25 @@ import (
 )
 
 func (s *Server) registrationStatus(w http.ResponseWriter, r *http.Request) {
-	mode, err := s.Store.Setting(r.Context(), "registration_mode")
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
+	flags, err := s.Store.Registration(r.Context())
+	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	if mode == "" {
-		mode = "manual"
+	mode := "manual"
+	if flags.Enabled {
+		mode = "open"
+		if flags.CodeRequired {
+			mode = "code"
+		}
+		if flags.EmailRequired {
+			mode = "email"
+		}
+		if flags.CodeRequired && flags.EmailRequired {
+			mode = "both"
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"enabled": mode == "code" || mode == "email", "mode": mode})
+	writeJSON(w, 200, map[string]any{"enabled": flags.Enabled, "mode": mode, "code_required": flags.CodeRequired, "email_required": flags.EmailRequired})
 }
 
 func (s *Server) registerWithCode(w http.ResponseWriter, r *http.Request) {
@@ -42,16 +52,20 @@ func (s *Server) registerWithCode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "用户名不能为空且不能超过 64 个字符")
 		return
 	}
-	mode, err := s.Store.Setting(r.Context(), "registration_mode")
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
+	flags, err := s.Store.Registration(r.Context())
+	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	if mode == "email" && !s.emailRate(w, r, "register") {
+	if !flags.Enabled {
+		writeError(w, 403, "自助注册未开放，请联系管理员")
 		return
 	}
-	if mode != "email" && in.Code == "" {
-		writeError(w, http.StatusBadRequest, "请输入注册码")
+	if !s.emailRate(w, r, "register") {
+		return
+	}
+	if flags.CodeRequired && in.Code == "" {
+		writeError(w, 400, "请输入注册码")
 		return
 	}
 	hash, msg := hashPassword(in.Password)
@@ -61,18 +75,14 @@ func (s *Server) registerWithCode(w http.ResponseWriter, r *http.Request) {
 	}
 	token := rand.Text() + rand.Text()
 	expires := time.Now().Add(sessionTTL)
-	var registerErr error
-	if mode == "email" {
-		email, valid := validEmail(in.Email)
-		if !valid || len(in.EmailCode) != 6 {
+	email, emailValid := validEmail(in.Email)
+	if flags.EmailRequired {
+		if !emailValid || len(in.EmailCode) != 6 {
 			writeError(w, 400, "请输入有效邮箱与 6 位验证码")
 			return
 		}
-		registerErr = s.Store.RegisterUserWithEmail(r.Context(), in.Username, hash, email, in.EmailCode, auth.HashAPIKey(token), expires)
-	} else {
-		registerErr = s.Store.RegisterUserWithCode(r.Context(), in.Username, hash, in.Code, auth.HashAPIKey(token), expires)
 	}
-	err = registerErr
+	err = s.Store.RegisterUser(r.Context(), in.Username, hash, in.Code, email, in.EmailCode, auth.HashAPIKey(token), expires)
 	switch {
 	case err == nil:
 		http.SetCookie(w, &http.Cookie{
@@ -171,13 +181,13 @@ func (s *Server) emailRate(w http.ResponseWriter, r *http.Request, purpose strin
 	return true
 }
 func (s *Server) sendEmailCode(w http.ResponseWriter, r *http.Request) {
-	mode, err := s.Store.Setting(r.Context(), "registration_mode")
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
+	flags, err := s.Store.Registration(r.Context())
+	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	if mode != "email" {
-		writeError(w, 403, "邮箱注册未开放")
+	if !flags.Enabled || !flags.EmailRequired {
+		writeError(w, 403, "邮箱认证未开放")
 		return
 	}
 	if !s.emailRate(w, r, "send") {

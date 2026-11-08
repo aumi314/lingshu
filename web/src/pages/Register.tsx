@@ -5,13 +5,13 @@ import { ApiError, get, post } from '../api'
 import { useApp } from '../app'
 import Logo from '../components/Logo'
 import { solveCaptcha } from '../captcha'
+import { normalizeRegistration, type RegistrationFlags } from '../registration'
 
 export default function Register() {
   const { reload, t } = useApp()
   const { message } = App.useApp()
   const [form] = Form.useForm()
-  const [enabled, setEnabled] = useState(false)
-  const [mode, setMode] = useState('code')
+  const [flags, setFlags] = useState<RegistrationFlags>({ enabled: false, code_required: false, email_required: false })
   const [sending, setSending] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [retryAt, setRetryAt] = useState(0)
@@ -22,8 +22,8 @@ export default function Register() {
   const nav = useNavigate()
 
   useEffect(() => {
-    get<{ enabled: boolean; mode?: string }>('/api/auth/registration')
-      .then((status) => { setEnabled(status.enabled); setMode(status.mode ?? 'code') })
+    get<{ enabled?: boolean; code_required?: boolean; email_required?: boolean; mode?: string }>('/api/auth/registration')
+      .then((status) => setFlags(normalizeRegistration(status)))
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
   }, [])
@@ -55,11 +55,17 @@ export default function Register() {
     }
   }
 
+  // 只提交当前要求的方式对应字段，未勾选的限制即使表单里有残值也不发送。
   const register = async (values: { username: string; password: string; code?: string; email?: string; email_code?: string }) => {
     setSubmitting(true)
     setError('')
     try {
-      await post('/api/auth/register', values)
+      const body: Record<string, string> = {}
+      if (flags.email_required) { body.email = values.email ?? ''; body.email_code = values.email_code ?? '' }
+      if (flags.code_required) body.code = values.code ?? ''
+      body.username = values.username
+      body.password = values.password
+      await post('/api/auth/register', body)
       await reload()
       message.success(t('账号已创建', 'Account created'))
       nav('/console', { replace: true })
@@ -77,12 +83,12 @@ export default function Register() {
           <Logo size={32} />
           {t('创建账号', 'Create account')}
         </Typography.Title>
-        {loading ? <Spin /> : enabled ? (
+        {loading ? <Spin /> : flags.enabled ? (
           <>
-            <Typography.Paragraph type="secondary">{mode === 'email' ? t('验证邮箱后创建账号，日常使用用户名和密码登录。', 'Verify your email to create an account. Sign in with your username and password.') : t('使用管理员提供的注册码创建团队账号。', 'Use a registration code from your administrator to join the team.')}</Typography.Paragraph>
+            <Typography.Paragraph type="secondary">{t('创建账号后使用用户名和密码登录。', 'Create an account, then sign in with your username and password.')}</Typography.Paragraph>
             {error && <Alert type="error" title={error} showIcon style={{ marginBottom: 16 }} />}
             <Form form={form} layout="vertical" onFinish={register} requiredMark={false}>
-              {mode === 'email' ? <>
+              {flags.email_required && <>
                 <Form.Item name="email" label={t('邮箱', 'Email')} rules={[{ required: true, message: t('请输入邮箱', 'Enter your email') }, { type: 'email', message: t('请输入有效邮箱', 'Enter a valid email') }]}>
                   <Input size="large" type="email" autoComplete="email" />
                 </Form.Item>
@@ -94,7 +100,8 @@ export default function Register() {
                     {seconds > 0 ? `${seconds}s` : verifying ? t('验证中…', 'Verifying…') : t('发送验证码', 'Send code')}
                   </Button>
                 </div>
-              </> : <Form.Item name="code" label={t('注册码', 'Registration code')} rules={[{ required: true, message: t('请输入注册码', 'Enter your registration code') }]}>
+              </>}
+              {flags.code_required && <Form.Item name="code" label={t('注册码', 'Registration code')} rules={[{ required: true, message: t('请输入注册码', 'Enter your registration code') }]}>
                 <Input size="large" autoComplete="off" />
               </Form.Item>}
               <Form.Item name="username" label={t('用户名', 'Username')} rules={[{ required: true, whitespace: true, message: t('请输入用户名', 'Enter a username') }, { max: 64, message: t('最多 64 个字符', 'Maximum 64 characters') }]}>

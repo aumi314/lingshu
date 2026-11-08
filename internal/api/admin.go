@@ -728,6 +728,11 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	registration, err := s.Store.Registration(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	apiBaseURL, err := s.apiBaseURL(r.Context())
 	if err != nil {
 		writeStoreError(w, err)
@@ -740,7 +745,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"call_limits": limits,
-		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode, "api_base_url": apiBaseURL, "deployment_mode": deploymentMode,
+		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode, "registration_enabled": registration.Enabled, "registration_code_required": registration.CodeRequired, "registration_email_required": registration.EmailRequired, "api_base_url": apiBaseURL, "deployment_mode": deploymentMode,
 		"fx_mode": s.fxMode(r.Context()), "fx_status": s.fxStatus(r.Context()), "announcement": s.announcement(r.Context()),
 	})
 }
@@ -797,16 +802,19 @@ func validAPIBaseURL(raw string) (string, bool) {
 
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		CNYPerUSD        *decimal.Decimal `json:"cny_per_usd"`
-		PaymentEnabled   *bool            `json:"payment_enabled"`
-		RegistrationMode *string          `json:"registration_mode"`
-		APIBaseURL       *string          `json:"api_base_url"`
-		DeploymentMode   *string          `json:"deployment_mode"`
-		FXMode           *string          `json:"fx_mode"`
-		Concurrency      *int64           `json:"user_concurrency"`
-		RPM              *int64           `json:"user_rpm"`
-		ReserveOutput    *int64           `json:"reserve_output_tokens"`
-		Announcement     *string          `json:"announcement"`
+		CNYPerUSD                 *decimal.Decimal `json:"cny_per_usd"`
+		PaymentEnabled            *bool            `json:"payment_enabled"`
+		RegistrationMode          *string          `json:"registration_mode"`
+		RegistrationEnabled       *bool            `json:"registration_enabled"`
+		RegistrationCodeRequired  *bool            `json:"registration_code_required"`
+		RegistrationEmailRequired *bool            `json:"registration_email_required"`
+		APIBaseURL                *string          `json:"api_base_url"`
+		DeploymentMode            *string          `json:"deployment_mode"`
+		FXMode                    *string          `json:"fx_mode"`
+		Concurrency               *int64           `json:"user_concurrency"`
+		RPM                       *int64           `json:"user_rpm"`
+		ReserveOutput             *int64           `json:"reserve_output_tokens"`
+		Announcement              *string          `json:"announcement"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -833,24 +841,68 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "实时模式下汇率自动更新，要手动填写请先切到手动")
 		return
 	}
-	if in.RegistrationMode != nil && *in.RegistrationMode != "manual" && *in.RegistrationMode != "code" && *in.RegistrationMode != "email" {
-		writeError(w, http.StatusBadRequest, "注册方式只能是 manual、code 或 email")
-		return
-	}
-	if in.RegistrationMode != nil && *in.RegistrationMode == "email" {
-		ready, err := s.Store.MailReady(r.Context())
+	var registrationValues [][2]string
+	if in.RegistrationMode != nil || in.RegistrationEnabled != nil || in.RegistrationCodeRequired != nil || in.RegistrationEmailRequired != nil {
+		flags, err := s.Store.Registration(r.Context())
 		if err != nil {
 			writeStoreError(w, err)
 			return
 		}
-		if !ready {
-			writeError(w, 400, "请先启用并检查一个发信账号")
-			return
+		if in.RegistrationMode != nil {
+			if in.RegistrationEnabled != nil || in.RegistrationCodeRequired != nil || in.RegistrationEmailRequired != nil {
+				writeError(w, 400, "请只提交一种注册配置格式")
+				return
+			}
+			switch *in.RegistrationMode {
+			case "manual":
+				flags = store.RegistrationFlags{}
+			case "code":
+				flags = store.RegistrationFlags{Enabled: true, CodeRequired: true}
+			case "email":
+				flags = store.RegistrationFlags{Enabled: true, EmailRequired: true}
+			default:
+				writeError(w, 400, "注册方式无效")
+				return
+			}
 		}
-		if currentUser(r).Role != "super_admin" {
-			writeError(w, 403, "只有超级管理员能开启邮箱注册")
-			return
+		if in.RegistrationEnabled != nil {
+			flags.Enabled = *in.RegistrationEnabled
 		}
+		if in.RegistrationCodeRequired != nil {
+			flags.CodeRequired = *in.RegistrationCodeRequired
+		}
+		if in.RegistrationEmailRequired != nil {
+			flags.EmailRequired = *in.RegistrationEmailRequired
+		}
+		if flags.Enabled && flags.EmailRequired {
+			ready, err := s.Store.MailReady(r.Context())
+			if err != nil {
+				writeStoreError(w, err)
+				return
+			}
+			if !ready {
+				writeError(w, 400, "请先启用并检查一个发信账号")
+				return
+			}
+			if currentUser(r).Role != "super_admin" {
+				writeError(w, 403, "只有超级管理员能开启邮箱认证")
+				return
+			}
+		}
+		mode := "manual"
+		if flags.Enabled {
+			mode = "open"
+			if flags.CodeRequired {
+				mode = "code"
+			}
+			if flags.EmailRequired {
+				mode = "email"
+			}
+			if flags.CodeRequired && flags.EmailRequired {
+				mode = "both"
+			}
+		}
+		registrationValues = [][2]string{{"registration_mode", mode}, {"registration_enabled", strconv.FormatBool(flags.Enabled)}, {"registration_code_required", strconv.FormatBool(flags.CodeRequired)}, {"registration_email_required", strconv.FormatBool(flags.EmailRequired)}}
 	}
 	if in.DeploymentMode != nil && *in.DeploymentMode != "commercial_relay" {
 		writeError(w, http.StatusBadRequest, "当前只开放商业中转模式，公司团队网关还在开发")
@@ -890,9 +942,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	if in.PaymentEnabled != nil {
 		kv = append(kv, [2]string{"payment_enabled", strconv.FormatBool(*in.PaymentEnabled)})
 	}
-	if in.RegistrationMode != nil {
-		kv = append(kv, [2]string{"registration_mode", *in.RegistrationMode})
-	}
+	kv = append(kv, registrationValues...)
 	if in.APIBaseURL != nil {
 		kv = append(kv, [2]string{"api_base_url", *in.APIBaseURL})
 	}

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
@@ -131,56 +130,7 @@ func (s *Store) RevokeRegistrationCode(ctx context.Context, id int64) error {
 	})
 }
 
-// RegisterUserWithCode atomically redeems a code, creates a default-group user, and starts the session.
+// RegisterUserWithCode 保留旧调用入口，统一由注册事务校验当前限制。
 func (s *Store) RegisterUserWithCode(ctx context.Context, username, passwordHash, code, sessionHash string, expires time.Time) error {
-	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
-		var mode string
-		if err := tx.QueryRow(ctx, `SELECT COALESCE((SELECT value FROM settings WHERE key = 'registration_mode'), 'manual')`).Scan(&mode); err != nil {
-			return err
-		}
-		if mode != "code" {
-			return ErrRegistrationClosed
-		}
-
-		var codeID int64
-		if err := tx.QueryRow(ctx, `SELECT id FROM registration_codes
-			WHERE code_hash = $1 AND used_at IS NULL AND revoked_at IS NULL FOR UPDATE`, registrationCodeHash(code)).Scan(&codeID); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return ErrInvalidRegistrationCode
-			}
-			return err
-		}
-
-		var userID int64
-		if err := tx.QueryRow(ctx, `INSERT INTO users (username, password_hash, role)
-			VALUES ($1, $2, 'user') RETURNING id`, username, passwordHash).Scan(&userID); err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "users_username_key" {
-				return ErrUsernameTaken
-			}
-			return err
-		}
-		tag, err := tx.Exec(ctx, `INSERT INTO user_group_members (user_id, user_group_id)
-			SELECT $1, id FROM user_groups WHERE is_default`, userID)
-		if err != nil {
-			return err
-		}
-		if tag.RowsAffected() == 0 {
-			return fmt.Errorf("默认用户分组不存在")
-		}
-		if _, err := tx.Exec(ctx, `UPDATE registration_codes SET used_by = $2, used_at = now() WHERE id = $1`, codeID, userID); err != nil {
-			return err
-		}
-		// 自助注册：操作人就是新用户自己
-		after, err := takeSnapshot(ctx, tx, userEntity, userID)
-		if err != nil {
-			return err
-		}
-		if err := recordSnapshots(WithActor(ctx, userID), tx, userEntity, userID, userID, nil, after); err != nil {
-			return err
-		}
-		_, err = tx.Exec(ctx, `INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)`, sessionHash, userID, expires)
-		return err
-	})
-	return translate(err)
+	return s.RegisterUser(ctx, username, passwordHash, code, "", "", sessionHash, expires)
 }

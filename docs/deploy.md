@@ -105,12 +105,12 @@ GitHub 或自动发布不可用时使用。
 
 ## 邮箱注册与 Outlook 发信
 
-邮箱注册版本合并并完成自动发布后，先保持“仅手动添加”或“注册码注册”，导入和测试发信账号，再开放邮箱注册。操作使用超级管理员权限，入口为“系统设置 → 注册管理 → 发信账号”。
+邮箱注册版本合并并完成自动发布后，先保持邮箱注册关闭，导入和测试发信账号，再开放邮箱注册。操作使用超级管理员权限，入口为“系统设置 → 注册管理 → 发信账号”。
 
 1. 从项目外的私有配置导入五个 Outlook 账号：原始文件第 3 个为主发，第 4～7 个依次备用。每个账号填写邮箱、Client ID 和独立 Refresh Token；Client ID 可共用，新增窗口会预填已有账号的 Client ID。发件名称固定为 `Lingshu`。保存后只显示授权已配置，编辑时 Refresh Token 留空保留原值。
 2. 逐个点击“检查授权”。需要 Microsoft Graph `Mail.Send` 与 `offline_access` 授权。修改邮箱、Client ID 或 Refresh Token 后重新检查。按上移、下移调整主备顺序；停用账号不参与发送。
 3. 逐个点击“测试邮件”，收件地址默认 `support@piqode.com`。此操作会实际发送邮件。五个账号分别确认提交结果并核对收件箱；Graph `202` 和后台“已提交发送”表示微软已接受请求，实际收件由收件端验收，发件账号的“已发送”记录可辅助核对。
-4. 授权和收件验证完成后，在“开放程度”选择“邮箱注册”并保存。至少有一个启用且授权检查通过的账号时才允许保存。用受控收件箱验证收码、注册、默认分组、自动登录，再退出并用用户名和密码登录。切回手动或注册码模式只影响后续注册，已有账号正常使用。
+4. 授权和收件验证完成后，打开“开放注册”，勾选“邮箱认证”并保存。至少有一个启用且授权检查通过的账号时才允许保存。用受控收件箱验证收码、注册、默认分组、自动登录，再退出并用用户名和密码登录。需要邀请码限制时同时勾选“注册码验证”；两项都选时注册必须同时验证。关闭开放注册仅影响后续注册，已有账号正常使用。
 
 批量导入也可使用同一管理接口：先 `GET /api/admin/mail-accounts` 核对现有账号，逐个 `POST /api/admin/mail-accounts`，请求字段为 `email`、`client_id`、`refresh_token`、`enabled`、`sort_order`（主发为 0，备用依次为 1～4）。私有配置在本地进程内读取并作为 HTTPS 请求体发送，不将凭据放入命令行参数、终端输出或日志。后续按返回的 id 操作：
 
@@ -120,9 +120,10 @@ GitHub 或自动发布不可用时使用。
 | 调整全部账号顺序 | `PUT /api/admin/mail-accounts/order`，请求 `{"ids":[...]}` |
 | 检查授权 | `POST /api/admin/mail-accounts/{id}/check` |
 | 实际发送测试邮件 | `POST /api/admin/mail-accounts/{id}/test`，请求 `{"recipient":"support@piqode.com"}` |
-| 开放邮箱注册 | `PUT /api/admin/settings`，请求 `{"registration_mode":"email"}` |
+| 要求注册码验证 | `PUT /api/admin/settings`，请求 `{"registration_enabled":true,"registration_code_required":true}` |
+| 要求邮箱认证 | `PUT /api/admin/settings`，请求 `{"registration_enabled":true,"registration_email_required":true}` |
 
-日常发送从首个启用账号开始，仅账号授权失效或微软明确返回账号故障时按顺序切备用。收到 `429` 时按 `Retry-After` 等待；超时、连接中断或服务端结果不明时先检查收件箱，再决定重试。需要暂停公开注册时，将模式切回 `manual`；用户登录保持原样。
+日常发送从首个启用账号开始，仅账号授权失效或微软明确返回账号故障时按顺序切备用。收到 `429` 时按 `Retry-After` 等待；超时、连接中断或服务端结果不明时先检查收件箱，再决定重试。需要暂停公开注册时，将 `registration_enabled` 设为 `false`；用户登录保持原样。
 
 Refresh Token 保存在数据库中，微软轮换后会自动写回。数据库备份也包含这些凭据，沿用下节的 root 私有目录和恢复流程；导出或传输备份时按凭据文件处理。恢复旧备份可能恢复旧授权，恢复后逐个检查授权并发送测试邮件，通过后再开放邮箱注册。
 
