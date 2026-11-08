@@ -291,6 +291,12 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 系统设置去掉“兑换码”标签，兑换码收成一张卡片放在“支付设置”第二张（第一张为“在线支付”）；旧链接 `?tab=redeem` 落到支付设置并滚到兑换码卡片。开关“开放用户充值”改名“开放在线支付”并注明不影响兑换码；兑换码说明加“可以放到第三方发卡平台售卖（例如 wzyp.cn）”。只改前端和文档，无接口或数据库变更。测试：`redeem.browser.cjs`（合并后的两张卡片、旧链接、第三方平台说明，原有生成和兑换流程）。
 
+### 分词固定偏移与 none 降档（2026-11-08）
+
+- 超超 claude 检测 62 分词 5/12 判不通过，逐段看是 5 段一致、7 段恰好 +28：分词器一致，是部分请求被固定注入，属误报。对照所有分词不通过的记录，只有它是“0 和固定数”两种，其余（kinght、咔咔、codezhongzhuan、zoowyoo 等）零散不一致。新增 `fixedOffset`，这种情况记需关注。
+- pikaqiu gpt 测 astra（检测 59）指纹 444 题全部 HTTP 400“Unsupported value: 'none'”，原重试条件只认报错里的 reasoning 字样，没重试；aresai gpt 测 astra（检测 60）上游把 Chat 转成 Responses，none 时回空流（对方后台显示 0 token）。改为两种都换 low 重试、按规则决定是否整次降档，指纹大部分降档时只作参考。测试：`TestTokensFixedOffsetIsInjection`、`TestProbeChatRetriesUnsupportedNone`、`TestProbeChatRetriesNoneOnEmptyStream`、`TestFingerprintLoweredEffortIsOnlyAdvisory`。
+- 本轮复核四个 GPT 渠道：超超 gpt 100（未挂分组，没生效）；pikaqiu 100、93、79（一次会话像 luna，偶发混池）；aresai 93、79、86、93、93（指纹一直离官方 0.46–0.60，两次有会话像 terra）；code 86、86、86、93（指纹稳定是 sol，推理常 3/4）。aresai、pikaqiu 是官方 API 环境（基准 11 token），和 Codex 环境的官方样本有环境差，需要补官方 API 环境样本（渠道 16 OpenAI Platform）。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 改为自动发布前的手动发布记录
@@ -496,6 +502,11 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 前端类型检查与构建通过；users、channels、activity-logs 三项浏览器回归通过，覆盖用户分组与服务分组区分、启停及确认取消、失败状态、按行加载、权限、点击开关不打开编辑、中英文、手机布局，以及刷新请求保持模型、状态、日期与页码。既有 Vite 包体积提示保留。
 - 按 neat-freak 核对受影响决策与代码；基于 main `8d0a876` 的独立分支 `codex/user-list-controls`，只交付 PR，生产保持现状，复核工作区保留。此前四处点击行编辑已通过 PR #59 发布为 `8d0a876` 并完成线上验收。
 
+## 2026-11-08：模型检测并发上限调整
+
+- 按用户要求，全站同时运行的模型检测任务上限由 2 个调整为 5 个；达到上限仍拒绝新任务，现有任务执行方式不变。
+- 同步现行决策与计划状态；`git diff --check`、`go test ./internal/probe ./internal/api` 通过，待 PR 合并发布。
+
 ## 2026-11-09：首轮安全加固（PR #63，未发布）
 
 - 独立工作区 `~/worktrees/lingshu-security-first`、分支 `codex/security-first`，基于 main `7cb680f`。登录与 challenge 分别使用每 IP 30 次/分钟、突发 10 的令牌桶，在查询数据库与 bcrypt 前拦截；429 包含 Retry-After 和等待提示。闲置 IP 桶和已消费 PoW 按期清理，现有失败锁定保留。
@@ -504,4 +515,6 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 本地专用 PostgreSQL 库全量 `go test -count=1 -p 1 ./...`、`go vet ./...` 和相关 race 测试通过；覆盖限流、冷却恢复、独立 IP、清理、来源校验、登录、注册、后台操作与支付。首次共用测试库遇到并行重建 schema，改用本任务独占库后通过。
 - 前端类型检查与生产构建、登录限流提示、注册、用户、协议浏览器回归通过；新增回归确认 429 提示显示后不密集重试。现有 Vite 包体积提示保留。应用提交 `c6d732c` 的 CI Go / 前端及全部浏览器回归通过。
 - `python3 scripts/test-caddy-security.py` 使用固定 `caddy:2.11.9-alpine` 与本地模拟上游通过：模板 validate、真实连接来源允许/拒绝、伪造头拒绝、X-Real-IP 覆盖、安全头、扫描路径、HTTP 308、SSE 即时首事件、WS 101 及数据帧；已加入独立 CI job。不消耗真实模型额度。
-- 按 neat-freak 核对 decisions、plan、deploy 与实现；PR #63 单独交付，不合并 #58 / #62。应用未发布、现役 Caddy 未修改；Caddy 的备份、候选校验、原位更新、平滑 reload、低频检查及回退步骤见 deploy。工作区和独立测试库保留复核，未修改规则或用户记忆。
+- 按 neat-freak 核对 decisions、plan、deploy 与实现；初始 PR #63 单独交付，应用未发布、现役 Caddy 未修改；Caddy 的备份、候选校验、原位更新、平滑 reload、低频检查及回退步骤见 deploy。工作区和独立测试库保留复核，未修改规则或用户记忆。
+
+- 后续用户授权处理全部未合并 PR：#62 已合并，#58 与 #63 分别完成集成检查后合并发布，保留各自验收证据。

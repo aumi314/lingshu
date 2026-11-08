@@ -39,6 +39,8 @@ type Call struct {
 	System          string     `json:"system,omitempty"`
 	Prompt          string     `json:"prompt"`
 	Effort          string     `json:"effort,omitempty"`
+	EffortSent      string     `json:"effort_sent,omitempty"` // 实际发出的推理强度（上游不支持 none 时改成 low）；空表示和 Effort 相同
+	NoneRejectedBy  string     `json:"-"`                     // none 被拒的方式：400（明确不支持）或 empty（空流）；只在检测进行中用来决定后面的请求要不要直接用 low
 	Text            string     `json:"text"`
 	ToolCalls       []ToolCall `json:"tool_calls,omitempty"`
 	HTTPStatus      int        `json:"http_status"`
@@ -421,6 +423,7 @@ func (p *plan) judgeTokens(cs []Call, base *Baseline) Item {
 	it := Item{Key: "tokens", Title: "分词指纹"}
 	anchor := cs[2].InputTokens
 	deltas, match, total := map[string]int64{}, 0, 0
+	var offsets []int64 // 和官方差值的偏差
 	for i, name := range p.tokenNames {
 		c := cs[3+i]
 		if !c.UsageReported || anchor == 0 {
@@ -429,22 +432,63 @@ func (p *plan) judgeTokens(cs []Call, base *Baseline) Item {
 		d := c.InputTokens - anchor
 		deltas[name] = d
 		total++
-		if ref, ok := base.TokenDeltas[name]; ok && abs(d-int64(ref)) <= 1 {
-			match++
+		if ref, ok := base.TokenDeltas[name]; ok {
+			offsets = append(offsets, d-int64(ref))
+			if abs(d-int64(ref)) <= 1 {
+				match++
+			}
 		}
 	}
 	it.Details = map[string]any{"deltas": deltas, "baseline_deltas": base.TokenDeltas, "matched": match, "total": total}
+	extra, shifted := fixedOffset(offsets)
 	switch {
 	case total == 0:
 		it.Status, it.Summary = Warn, "上游没有返回输入用量，无法比对分词"
 	case match*6 >= total*5:
 		it.Status, it.Summary = Pass, fmt.Sprintf("%d / %d 段探针文本的 token 数和官方一致，分词器同属一个家族", match, total)
+	case extra != 0:
+		// 偏差只有 0 和一个固定数：分词器一致，是部分请求被上游固定多塞了一段（2026-11-08 超超 claude：7 段 +28）
+		it.Details["extra_tokens"] = extra
+		it.Status, it.Summary = Warn, fmt.Sprintf("分词器和官方一致；%d / %d 个请求多出固定的 %d 个 token：上游有不固定的注入，这部分也会计费", shifted, total, extra)
 	case match*2 >= total:
 		it.Status, it.Summary = Warn, fmt.Sprintf("只有 %d / %d 段和官方一致", match, total)
 	default:
 		it.Status, it.Summary = Fail, fmt.Sprintf("只有 %d / %d 段和官方一致，分词器很可能不是这个家族", match, total)
 	}
 	return it
+}
+
+// fixedOffset 判断偏差是否只有“0 附近”和“某一个固定数附近”两种（允许 ±1）：是的话返回那个固定数和它出现的次数，否则返回 0。
+// 换了分词器时偏差各不相同（kinght claude：-47 到 +4），被固定注入时整整齐齐。
+func fixedOffset(offsets []int64) (int64, int) {
+	var c int64
+	n := 0
+	for _, o := range offsets {
+		switch {
+		case abs(o) <= 1:
+		case c == 0:
+			c, n = o, 1
+		case abs(o-c) <= 1:
+			n++
+		default:
+			return 0, 0
+		}
+	}
+	if n < 2 { // 只有一段偏了，说明不了是固定注入
+		return 0, 0
+	}
+	return c, n
+}
+
+// effortLowered 统计推理强度被从 none 降成 low 的成功请求数。
+func effortLowered(cs []Call) int {
+	n := 0
+	for _, c := range cs {
+		if c.Error == "" && c.Effort == "none" && c.EffortSent == "low" {
+			n++
+		}
+	}
+	return n
 }
 
 func answersOf(cs []Call) map[string][]string {
@@ -474,6 +518,22 @@ type sessionRank struct {
 // judgeFingerprint 先看全部答案，再逐个会话看：号池混用时，只有部分会话会打到掺水的上游。
 // 返回检测项、写进总结论的提示（空表示没有）、各会话最像的型号（给“上游混用”用）。
 func (p *plan) judgeFingerprint(cs []Call) (Item, string, []string) {
+	it, hint, nearest := p.judgeFingerprintRaw(cs)
+	// 官方样本按 none 采；上游不支持 none 时改用了 low，答案分布会偏：大部分题被降档时只作参考，不判不通过、不写进总结论
+	if lowered := effortLowered(cs); lowered*2 > len(cs) {
+		if it.Details == nil {
+			it.Details = map[string]any{}
+		}
+		it.Details["effort_lowered"] = lowered
+		if it.Status == Fail {
+			it.Status, hint = Warn, ""
+		}
+		it.Summary += fmt.Sprintf("（上游不支持推理强度 none，%d / %d 题改用 low，和官方样本条件不同，仅供参考）", lowered, len(cs))
+	}
+	return it, hint, nearest
+}
+
+func (p *plan) judgeFingerprintRaw(cs []Call) (Item, string, []string) {
 	if it, bad := errorItem("fingerprint", "单词指纹", cs); bad {
 		return it, "", nil
 	}
