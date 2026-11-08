@@ -51,6 +51,16 @@ func newEnv(t *testing.T) *env {
 	if err := s.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
+	// 测试里的渠道照旧把 key 写在 channels.api_key（等于只有一把 key）：插入时自动同步成 channel_keys 的一把（迁移 0030 起 key 都在那里）
+	if _, err := s.Pool.Exec(ctx, `
+		CREATE FUNCTION test_channel_key() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN
+			IF NEW.api_key <> '' THEN INSERT INTO channel_keys (channel_id, api_key) VALUES (NEW.id, NEW.api_key); END IF;
+			RETURN NEW;
+		END $$;
+		CREATE TRIGGER test_channel_key AFTER INSERT ON channels FOR EACH ROW EXECUTE FUNCTION test_channel_key();`); err != nil {
+		t.Fatal(err)
+	}
 
 	e := &env{t: t, store: s}
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { e.upstream(w, r) }))
