@@ -145,3 +145,47 @@ func TestProbeHungStreamIsError(t *testing.T) {
 		t.Errorf("Messages 断流应记成失败: %+v", c)
 	}
 }
+
+// 官方 API 环境的 astra 不支持推理强度 none，报错里没有 reasoning 字样（2026-11-08 检测 59）：换成 low 重试。
+func TestProbeChatRetriesUnsupportedNone(t *testing.T) {
+	var efforts []string
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		e, _ := body["reasoning_effort"].(string)
+		efforts = append(efforts, e)
+		if e == "none" {
+			w.WriteHeader(http.StatusBadRequest)
+			io.WriteString(w, `{"error":{"message":"Unsupported value: 'none' is not supported with the 'gpt-6-astra' model. Supported values are: 'low', 'medium', 'high' and 'xhigh'."}}`)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"id\":\"chatcmpl-1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"mango\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+	}))
+	defer up.Close()
+	h := &Handler{Client: up.Client()}
+	c := h.ProbeChat(context.Background(), &store.Channel{BaseURLChat: up.URL, APIKey: "k"}, "gpt-6-astra", "s", probe.Request{Prompt: "fruit?", Effort: "none"})
+	if c.Error != "" || c.Text != "mango" || strings.Join(efforts, ",") != "none,low" || c.EffortSent != "low" || c.NoneRejectedBy != "400" {
+		t.Errorf("应换成 low 重试并成功: %+v，推理强度依次 %v", c, efforts)
+	}
+}
+
+// 有的中转把 Chat 转成 Responses 后，上游不支持 none 时什么都不回（aresai，2026-11-08 检测 60：0 token、流没有结束标记）：也换 low 重试。
+func TestProbeChatRetriesNoneOnEmptyStream(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		if body["reasoning_effort"] == "none" {
+			io.WriteString(w, "data: {\"id\":\"chatcmpl-1\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"}}]}\n\n")
+			return
+		}
+		io.WriteString(w, "data: {\"id\":\"chatcmpl-1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"mango\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+	}))
+	defer up.Close()
+	h := &Handler{Client: up.Client()}
+	c := h.ProbeChat(context.Background(), &store.Channel{BaseURLChat: up.URL, APIKey: "k"}, "gpt-6-astra", "s", probe.Request{Prompt: "fruit?", Effort: "none"})
+	if c.Error != "" || c.Text != "mango" || c.EffortSent != "low" || c.NoneRejectedBy != "empty" {
+		t.Errorf("空流应换成 low 重试并成功: %+v", c)
+	}
+}
