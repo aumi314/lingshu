@@ -20,7 +20,7 @@ import (
 
 // 模型检测（docs/decisions.md「模型检测」）：选渠道和模型发起检测，后台运行，结果存进 probe_runs。
 
-const maxRunningProbes = 2
+const maxRunningProbes = 5
 
 type probeView struct {
 	store.ProbeRun
