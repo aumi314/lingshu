@@ -271,6 +271,10 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 模型定价加厂商筛选（`vendorOf`，`?vendor=`）；运营设置加公告（`announcement` 设置项，`/api/me/endpoints` 返回，概览页顶部显示，邮箱可点）；支付设置加 USDT（BEpusdt）“规划中”占位。测试：`TestAnnouncement`（默认空、去空白、成员可读、超 500 字拒绝、成员不能改、留空不显示），`models.browser.cjs` 加厂商筛选，`overview.browser.cjs` 加公告。
 
+### 模型定价筛选改为搜索框加厂商下拉（2026-11-07）
+
+厂商分段按钮在十几个厂商时出横向滚动条，改成工具栏：搜索框（模型名或厂商名）、厂商下拉（图标 + 数量，`?vendor=` 保留）、添加模型按钮靠右。`models.browser.cjs` 改为验证搜索、下拉选项顺序和数量、网址保留、清空恢复。
+
 ### 渠道多 key 与渠道备注（2026-11-07）
 
 迁移 0030 新建 `channel_keys`（现有 key 搬成第一把，`channels.api_key` 保留不删）、`channels.note`、`request_logs.channel_key_id / failed_key_ids`。网关按“灵枢 key + 会话编号”做最高随机权重哈希固定 key（`relay/keys.go`），`previous_response_id` 回原 key；`router.KeyHealth` 管单把 key 的冷却（429，按 Retry-After，最多 10 分钟）和失效（401 / 402 / 403，30 分钟后再试），5xx / 超时仍是渠道级、跳过同渠道其余 key；原 `router.Order` 由 `orderAttempts` 取代后删除。OpenCode 免费模型会话按 key 区分。管理端 key 列表（掩码、状态、24 小时次数、备注、启停），批量添加分追加 / 覆盖，服务端自动去重（覆盖时相同 key 沿用原记录），上限 50；冒烟测试可选 key；渠道备注显示在列表名称下方。测试：`TestKeyHealth`、`TestMultiKey*`（会话固定、429 本渠道换 key、401 标失效、5xx 跳过渠道、续接回原 key）、`TestChannelKeysSave`、`channels.browser.cjs`；测试环境加触发器把 `channels.api_key` 同步成一把 key。期间 WSL 重启清空 `/tmp`，未提交的改动丢失后重做，`AGENTS.md` 改为工作区放 `~/worktrees/`。
