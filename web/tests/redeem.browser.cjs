@@ -27,6 +27,7 @@ const path = require('node:path')
         return json([{ id: 1, prefix: 'ABCDEFGHIJ', code: 'ABCDE-FGHIJ-KLMNO-PQRST-UVWXY-Z2' }], 201)
       }
       if (p === '/api/admin/redeem-codes') return json(state.codes)
+      if (p === '/api/admin/payments') return json({ services: [], public_url: 'https://gateway.example.com' })
       if (p === '/api/me/redeem') {
         state.redeemed = req.postDataJSON()
         if (state.redeemed.code.trim() !== 'ABCDE-FGHIJ-KLMNO-PQRST-UVWXY-Z2') return json({ error: '兑换码无效、已使用、已撤销或已过期，请检查是否输入完整' }, 400)
@@ -39,9 +40,17 @@ const path = require('node:path')
       return json([])
     })
 
-    // 管理员生成：数量、面额、备注提交；明文在弹窗里只显示一次
+    // 兑换码并入支付设置，作为第二张卡片；旧链接 ?tab=redeem 落到支付设置
     await page.goto('http://127.0.0.1:25188/console/admin/system?tab=redeem')
-    await page.getByText('生成兑换码', { exact: true }).waitFor()
+    await page.getByRole('tab', { name: '支付设置', selected: true }).waitFor()
+    await page.locator('#redeem-codes').getByText('兑换码', { exact: true }).waitFor()
+    await page.goto('http://127.0.0.1:25188/console/admin/system?tab=payments')
+    await page.getByText('在线支付', { exact: true }).waitFor()
+    await page.getByText('开放在线支付', { exact: true }).waitFor()
+    assert.equal(await page.getByRole('tab', { name: '兑换码' }).count(), 0)
+    assert.equal(await page.locator('#redeem-codes a[href="https://wzyp.cn"]').count(), 1)
+    await page.locator('#redeem-codes').getByText(/不受上面“开放在线支付”开关影响/).waitFor()
+    // 管理员生成：数量、面额、备注提交；明文在弹窗里只显示一次
     await page.locator('#amount').fill('5')
     await page.locator('#note').fill('11 月活动')
     await page.getByRole('button', { name: /^生\s*成$/ }).click()
@@ -64,7 +73,7 @@ const path = require('node:path')
     await page.getByText('兑换成功，到账 $5.0000', { exact: true }).waitFor()
     await page.getByText('$6.0000', { exact: true }).first().waitFor()
     assert.equal(await input.inputValue(), '')
-    console.log('PASS: admin generates codes shown once with CSV, member redeems with error and success, balance refreshes')
+    console.log('PASS: redeem codes merged into payments as the second card with third-party selling note, legacy ?tab=redeem lands there, admin generates codes shown once with CSV, member redeems with error and success, balance refreshes')
   } finally {
     await browser.close()
     server.kill()

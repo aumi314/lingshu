@@ -59,11 +59,15 @@ export default function RedeemCodes() {
       : c.expires_at && dayjs(c.expires_at).isBefore(dayjs()) ? <Tag>{t('已过期', 'Expired')}</Tag>
         : <Tag color="blue">{t('未使用', 'Unused')}</Tag>
 
+  // 放在「系统设置 → 支付设置」的第二张卡片（2026-11-07 从单独的标签页合并过来），id 供旧链接 ?tab=redeem 定位
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card title={t('生成兑换码', 'Generate codes')}>
+    <Card id="redeem-codes" title={t('兑换码', 'Redeem codes')}>
         <Typography.Paragraph type="secondary">
-          {t('用户在「钱包充值」输入兑换码，面额立即到账。每个码只能用一次；完整的码只在生成后显示一次，请马上复制或下载保存。', 'Users enter a code under Wallet and the amount is credited at once. Each code works once; full codes are shown only right after generation, so copy or download them now.')}
+          {t('用户在「钱包充值」输入兑换码，面额立即到账；不受上面“开放在线支付”开关影响，没接支付通道也能用。', 'Users enter a code under Wallet and the amount is credited at once. Works regardless of the online payment switch above, even without any payment service.')}
+          {t('可以把兑换码放到第三方发卡平台售卖（例如 ', 'You can sell codes on third-party card-selling platforms (e.g. ')}
+          <a href="https://wzyp.cn" target="_blank" rel="noopener noreferrer">wzyp.cn</a>
+          {t('），用户买到后自己兑换。', '); buyers redeem them themselves.')}
+          {t('每个码只能用一次；完整的码只在生成后显示一次，请马上复制或下载保存。', 'Each code works once; full codes are shown only right after generation, so copy or download them now.')}
         </Typography.Paragraph>
         <Form form={form} layout="inline" initialValues={{ count: 1, currency: currency === 'CNY' ? 'CNY' : 'USD' }} onFinish={generate} style={{ rowGap: 12 }}>
           <Form.Item name="count" label={t('数量', 'Count')} rules={[{ required: true }]}>
@@ -83,8 +87,8 @@ export default function RedeemCodes() {
           </Form.Item>
           <Button type="primary" htmlType="submit" loading={generating}>{t('生成', 'Generate')}</Button>
         </Form>
-      </Card>
       <Table<RedeemCode>
+        style={{ marginTop: 16 }}
         rowKey="id"
         size="small"
         loading={loading}
@@ -125,6 +129,6 @@ export default function RedeemCodes() {
         </Typography.Paragraph>
         <Button onClick={download}>{t('下载 CSV', 'Download CSV')}</Button>
       </Modal>
-    </Space>
+    </Card>
   )
 }
