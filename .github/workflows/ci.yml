@@ -82,6 +82,7 @@ jobs:
           node tests/models.browser.cjs
           node tests/redeem.browser.cjs
           node tests/registration.browser.cjs
+          node tests/auth-security.browser.cjs
           node tests/legal.browser.cjs
           node tests/channels.browser.cjs
           node tests/probes.browser.cjs

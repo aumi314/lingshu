@@ -38,15 +38,24 @@ type loginGuard struct {
 	secret    []byte
 	lastSweep time.Time
 	now       func() time.Time
+
+	loginLimit     *rateLimiter // 登录接口的令牌桶
+	challengeLimit *rateLimiter // 人机验证题接口的令牌桶
 }
 
 func newLoginGuard() *loginGuard {
-	return &loginGuard{
+	g := &loginGuard{
 		fails:   map[string]*failRecord{},
 		usedPow: map[string]time.Time{},
 		secret:  []byte(rand.Text()),
 		now:     time.Now,
 	}
+	g.loginLimit = newRateLimiter(limitPerMinute, limitBurst)
+	g.challengeLimit = newRateLimiter(limitPerMinute, limitBurst)
+	// 令牌桶跟着 guard 的时钟走，测试可以一起控制。
+	g.loginLimit.now = func() time.Time { return g.now() }
+	g.challengeLimit.now = func() time.Time { return g.now() }
+	return g
 }
 
 func userKey(username string) string { return "u:" + strings.ToLower(username) }
@@ -92,7 +101,7 @@ func (g *loginGuard) needCaptcha(username, ip string) bool {
 func (g *loginGuard) fail(username, ip string) bool {
 	g.mu.Lock()
 	now := g.now()
-	g.sweep(now)
+	g.sweepLocked(now)
 	for _, k := range []string{userKey(username), ipKey(ip)} {
 		r := g.record(k)
 		if r == nil {
@@ -121,8 +130,8 @@ func (g *loginGuard) succeed(username string) {
 	delete(g.fails, userKey(username))
 }
 
-// sweep 每分钟最多清理一次过期记录，防止内存一直涨。调用方持有锁。
-func (g *loginGuard) sweep(now time.Time) {
+// sweepLocked 每分钟最多清理一次过期记录，防止内存一直涨。调用方持有锁。
+func (g *loginGuard) sweepLocked(now time.Time) {
 	if now.Sub(g.lastSweep) < time.Minute {
 		return
 	}
@@ -137,6 +146,13 @@ func (g *loginGuard) sweep(now time.Time) {
 	}
 }
 
+// sweep 清理过期记录（自己加锁）。
+func (g *loginGuard) sweep() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.sweepLocked(g.now())
+}
+
 // ---- 工作量证明 ----
 // 题目是 "随机串.过期时间.签名"。浏览器找一个数字 nonce，让 sha256(题目 + ":" + nonce)
 // 的前 powDifficulty 位都是 0。服务端不用存题目，靠签名确认是自己发的。
@@ -148,6 +164,7 @@ func (g *loginGuard) sign(payload string) string {
 }
 
 func (g *loginGuard) newChallenge() string {
+	g.sweep() // 顺手清掉过期的已消费题目，别让 usedPow 一直涨
 	b := make([]byte, 12)
 	rand.Read(b)
 	payload := base64.RawURLEncoding.EncodeToString(b) + "." + strconv.FormatInt(g.now().Add(powTTL).Unix(), 10)
@@ -173,6 +190,7 @@ func (g *loginGuard) checkPow(challenge, nonce string) bool {
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.sweepLocked(g.now())
 	if _, used := g.usedPow[challenge]; used {
 		return false
 	}
