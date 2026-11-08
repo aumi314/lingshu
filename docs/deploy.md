@@ -50,6 +50,27 @@ ssh -i ~/.ssh/dmit_lax_ed25519 -o IdentitiesOnly=yes root@136.175.178.126
 - HTTPS 使用 Cloudflare → 现有 Caddy 容器 → 应用。站点保留流式刷新和真实客户端 IP 转发，访问日志为 Caddy 容器内 `/var/log/caddy/lingshu-access.log`。修改 Caddyfile 前保存原文件，校验通过后平滑 reload。
 - PiQode 原有 PostgreSQL 15、Redis 及其他容器继续使用各自数据和配置。Lingshu 的数据库操作只针对 `lingshu-postgres`，不操作 `newapi-postgres`。上游渠道使用 DMIT 直连。OpenRouter 预设仍预填 `socks5://127.0.0.1:10808`；新建渠道采用直连时在表单中清空代理地址。
 
+## Lingshu 站点防护（2026-11-09，模板待发布）
+
+应用与 Caddy 分别发布验收。模板仅限制 gateway.piqode.com，按 remote_ip 连接来源放行 Cloudflare，其他来源 HTTPS 返回 403；不使用客户端转发头提供准入资格。旧站与全局防火墙不变。
+
+- 官方网段来自 https://www.cloudflare.com/ips-v4 和 https://www.cloudflare.com/ips-v6，2026-11-09 核对为 IPv4 15 条、IPv6 7 条。更新时验证两份列表每行 CIDR，将同一列表同时用于站点 @not_cloudflare 和现有全局 servers.trusted_proxies static；保留其他全局选项。列表与现役相同则无需改全局块。
+- remote_ip 决定准入，client_ip 解析可信代理传来的真实用户地址并覆盖 X-Real-IP。生产名单不加入回环或整个内网；运维健康检查访问 http://172.18.0.1:8300/healthz。
+- HSTS 仅作用本域名，不含 includeSubDomains；CSP 仅设 frame-ancestors 'none'，保留现有脚本、样式与支付跳转。
+- HTTP 自动重定向保留。活动 HTTP-01 挑战在用户路由之前处理，见 [Caddy v2.11.9 server.go](https://github.com/caddyserver/caddy/blob/v2.11.9/modules/caddyhttp/server.go#L708) 和 [tls.go](https://github.com/caddyserver/caddy/blob/v2.11.9/modules/caddytls/tls.go#L806)；TLS-ALPN 在握手层处理。无需放开任意伪造 challenge 路径。隔离测试验证跳转，真实证书续期在上线时检查日志。
+
+获准发布后的 Caddy 操作：
+
+1. 记录 docker exec newapi-caddy caddy version，备份 /opt/newapi/Caddyfile 为同目录带 UTC 时间戳副本。候选文件只替换 gateway 站点块，按上述步骤核对全局 trusted_proxies；逐段 diff，旧站块保持原样。
+2. 候选配置复制到容器临时路径，执行 caddy validate --config <容器候选路径> --adapter caddyfile。校验通过后才替换现役配置。
+3. 将候选内容原位写入宿主 /opt/newapi/Caddyfile，保持 bind mount 的原 inode；核对容器挂载路径后执行 docker exec newapi-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile，采用平滑 reload。
+4. 低频验证公开 HTTPS、HTTP 308、内部 healthz、匿名管理 401、安全头；外部 curl --resolve gateway.piqode.com:443:<源站IP> https://gateway.piqode.com/healthz 应为 403，伪造转发头仍为 403。公开域名扫描路径为 404；核对旧站、SSH 正常及证书日志。
+5. 异常时将备份内容原位写回并 reload，再确认健康；应用二进制按既有发布流程回退。不改数据库、不重启其他服务。
+
+隔离回归：在 WSL/Linux、Docker 环境运行 python3 scripts/test-caddy-security.py，默认镜像 caddy:2.11.9-alpine，可用 CADDY_TEST_IMAGE 指定与生产相同镜像。只使用随机本地端口、临时 Caddy 容器与模拟上游，结束移除该容器；覆盖来源允许/拒绝、伪造头、安全头、扫描路径、HTTP 跳转、SSE 和 WS 帧数据。
+
+应用兼容约定：登录和 challenge 各限 30 次/分钟、突发 10，429 以 Retry-After 为准。带请求体的写接口要求 application/json；无来源头 CLI 和无体 DELETE 可用。生产 LINGSHU_PUBLIC_URL 设置公开 HTTPS 地址；本地 Vite 开发可不设置，若显式设置须和前端 origin 一致。模型 API 与支付通知不套浏览器来源检查。
+
 ## 发布
 
 ### 自动发布（默认，2026-11-05 起）

@@ -42,12 +42,12 @@ func (s *Server) Register(mux *http.ServeMux) {
 	}
 	s.registerPayments(mux)
 	s.registerMail(mux)
-	mux.HandleFunc("POST /api/auth/login", s.login)
+	mux.HandleFunc("POST /api/auth/login", s.guardWrite(s.login))
 	mux.HandleFunc("GET /api/auth/registration", s.registrationStatus)
 	mux.HandleFunc("GET /api/auth/legal", s.legalDocs)
-	mux.HandleFunc("POST /api/auth/register", s.registerWithCode)
+	mux.HandleFunc("POST /api/auth/register", s.guardWrite(s.registerWithCode))
 	mux.HandleFunc("POST /api/auth/challenge", s.challenge)
-	mux.HandleFunc("POST /api/auth/logout", s.logout)
+	mux.HandleFunc("POST /api/auth/logout", s.guardWrite(s.logout))
 
 	// 当前用户
 	mux.HandleFunc("GET /api/me", s.user(s.me))
@@ -135,6 +135,10 @@ type handler func(w http.ResponseWriter, r *http.Request)
 // user 要求已登录。
 func (s *Server) user(next handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// 登录态下的写操作也要查来源，防止别的站点借用户的 cookie 改数据。
+		if isWriteMethod(r.Method) && !s.allowWrite(w, r) {
+			return
+		}
 		u, err := s.sessionUser(r)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "请先登录")

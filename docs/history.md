@@ -516,8 +516,19 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 前端类型检查与构建通过；users、channels、activity-logs 三项浏览器回归通过，覆盖用户分组与服务分组区分、启停及确认取消、失败状态、按行加载、权限、点击开关不打开编辑、中英文、手机布局，以及刷新请求保持模型、状态、日期与页码。既有 Vite 包体积提示保留。
 - 按 neat-freak 核对受影响决策与代码；基于 main `8d0a876` 的独立分支 `codex/user-list-controls`，只交付 PR，生产保持现状，复核工作区保留。此前四处点击行编辑已通过 PR #59 发布为 `8d0a876` 并完成线上验收。
 
-
 ## 2026-11-08：模型检测并发上限调整
 
 - 按用户要求，全站同时运行的模型检测任务上限由 2 个调整为 5 个；达到上限仍拒绝新任务，现有任务执行方式不变。
 - 同步现行决策与计划状态；`git diff --check`、`go test ./internal/probe ./internal/api` 通过，待 PR 合并发布。
+
+## 2026-11-09：首轮安全加固（PR #63，未发布）
+
+- 独立工作区 `~/worktrees/lingshu-security-first`、分支 `codex/security-first`，基于 main `7cb680f`。登录与 challenge 分别使用每 IP 30 次/分钟、突发 10 的令牌桶，在查询数据库与 bcrypt 前拦截；429 包含 Retry-After 和等待提示。闲置 IP 桶和已消费 PoW 按期清理，现有失败锁定保留。
+- 登录、注册、发码、登出和会话写接口检查 Origin / Referer / Fetch Metadata，带请求体时要求 JSON；无来源头 CLI、无体动作、模型 API 和支付通知保持原有使用方式。登出 Cookie 补齐 Secure 和 SameSite=Lax。
+- Caddy 模板仅处理 gateway 站点：remote_ip 放行 Cloudflare 官方 IPv4 15 条、IPv6 7 条（2026-11-09 核对），直连与伪造转发头拒绝；添加五项安全头及旧站扫描路径规则，保留 SSE 和 WS。官方 v2.11.9 源码确认活动 HTTP-01 挑战在用户路由前处理，TLS-ALPN 位于握手层；真实证书续期留待获准发布时核对。
+- 本地专用 PostgreSQL 库全量 `go test -count=1 -p 1 ./...`、`go vet ./...` 和相关 race 测试通过；覆盖限流、冷却恢复、独立 IP、清理、来源校验、登录、注册、后台操作与支付。首次共用测试库遇到并行重建 schema，改用本任务独占库后通过。
+- 前端类型检查与生产构建、登录限流提示、注册、用户、协议浏览器回归通过；新增回归确认 429 提示显示后不密集重试。现有 Vite 包体积提示保留。应用提交 `c6d732c` 的 CI Go / 前端及全部浏览器回归通过。
+- `python3 scripts/test-caddy-security.py` 使用固定 `caddy:2.11.9-alpine` 与本地模拟上游通过：模板 validate、真实连接来源允许/拒绝、伪造头拒绝、X-Real-IP 覆盖、安全头、扫描路径、HTTP 308、SSE 即时首事件、WS 101 及数据帧；已加入独立 CI job。不消耗真实模型额度。
+- 按 neat-freak 核对 decisions、plan、deploy 与实现；初始 PR #63 单独交付，应用未发布、现役 Caddy 未修改；Caddy 的备份、候选校验、原位更新、平滑 reload、低频检查及回退步骤见 deploy。工作区和独立测试库保留复核，未修改规则或用户记忆。
+
+- 后续用户授权处理全部未合并 PR：#62 已合并，#58 与 #63 分别完成集成检查后合并发布，保留各自验收证据。

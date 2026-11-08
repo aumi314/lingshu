@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -39,6 +40,18 @@ func secureRequest(r *http.Request) bool {
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("lingshu-dummy-password"), bcrypt.DefaultCost)
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
+	ip := auth.ClientIP(r)
+	// 限流放在查库和 bcrypt 之前，所有请求都计数。
+	if ok, wait := s.guard.loginLimit.allow(ip); !ok {
+		seconds := int(math.Ceil(wait.Seconds()))
+		if seconds < 1 {
+			seconds = 1
+		}
+		slog.Warn("登录请求过于频繁", "ip", ip)
+		w.Header().Set("Retry-After", strconv.Itoa(seconds))
+		writeError(w, http.StatusTooManyRequests, fmt.Sprintf("请求过于频繁，请 %d 秒后再试", seconds))
+		return
+	}
 	var in struct {
 		Username     string `json:"username"`
 		Password     string `json:"password"`
@@ -48,7 +61,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &in) {
 		return
 	}
-	username, ip := strings.TrimSpace(in.Username), auth.ClientIP(r)
+	username := strings.TrimSpace(in.Username)
 	if wait := s.guard.lockedFor(username, ip); wait > 0 {
 		minutes := int(wait.Minutes()) + 1
 		slog.Warn("登录被锁定", "username", logName(username), "ip", ip)
@@ -102,6 +115,17 @@ func logName(s string) string {
 
 // challenge 发一道人机验证题，浏览器算出答案后随登录请求一起提交。
 func (s *Server) challenge(w http.ResponseWriter, r *http.Request) {
+	ip := auth.ClientIP(r)
+	if ok, wait := s.guard.challengeLimit.allow(ip); !ok {
+		seconds := int(math.Ceil(wait.Seconds()))
+		if seconds < 1 {
+			seconds = 1
+		}
+		slog.Warn("人机验证请求过于频繁", "ip", ip)
+		w.Header().Set("Retry-After", strconv.Itoa(seconds))
+		writeError(w, http.StatusTooManyRequests, fmt.Sprintf("请求过于频繁，请 %d 秒后再试", seconds))
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"token": s.guard.newChallenge(), "difficulty": powDifficulty})
 }
 
@@ -109,7 +133,10 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		s.Store.DeleteSession(r.Context(), auth.HashAPIKey(c.Value))
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true})
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookie, Value: "", Path: "/", MaxAge: -1,
+		HttpOnly: true, Secure: secureRequest(r), SameSite: http.SameSiteLaxMode,
+	})
 	ok(w)
 }
 

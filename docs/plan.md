@@ -110,9 +110,9 @@ lingshu/
 - 上游错误响应里如果出现渠道 key，替换成 `***` 再返回给用户和写日志。
 - 带 `previous_response_id` 的请求：按日志里的 `upstream_response_id` 找到原渠道，只发往原渠道。
 
-## 5. 当前状态（2026-11-08）
+## 5. 当前状态（2026-11-09）
 
-线上 `https://gateway.piqode.com`（DMIT）已支持开放注册及协议同意，用户列表、渠道协议标签、日志刷新和 Agent 配置提示词已发布，模型检测全站并发上限调整为 5 个；当前分支实现 Responses → Messages、显式压缩和客户端 WebSocket，已通过 Codex 工具、压缩及续接验收，待 PR 合并。
+线上 `https://gateway.piqode.com`（DMIT）已支持开放注册及协议同意，用户列表、渠道协议标签、日志刷新和 Agent 配置提示词已发布，模型检测全站并发上限调整为 5 个，首轮安全加固已通过 PR #63 合并；当前分支实现 Responses → Messages、显式压缩和客户端 WebSocket，已通过 Codex 工具、压缩及续接验收，待 PR 合并。
 
 | 模块 | 现在有什么 |
 |---|---|
