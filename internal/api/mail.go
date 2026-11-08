@@ -214,7 +214,7 @@ func (s *Server) registerMail(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/admin/mail-accounts/order", s.superAdmin(s.orderMailAccounts))
 	mux.HandleFunc("POST /api/admin/mail-accounts/{id}/check", s.superAdmin(s.checkMailAccount))
 	mux.HandleFunc("POST /api/admin/mail-accounts/{id}/test", s.superAdmin(s.testMailAccount))
-	mux.HandleFunc("POST /api/auth/email-code", s.sendEmailCode)
+	mux.HandleFunc("POST /api/auth/email-code", s.guardWrite(s.sendEmailCode))
 }
 func (s *Server) listMailAccounts(w http.ResponseWriter, r *http.Request) {
 	a, err := s.Store.MailAccounts(r.Context())

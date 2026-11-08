@@ -220,6 +220,13 @@
 - 管理端分工（2026-10-20）：「渠道」负责拿到算力，「定价」负责怎么分发。模型标价和分组（倍率、谁能用）合并为「定价」页（`/console/admin/pricing`，标签「模型定价」「分组设置」，`?tab=groups`）；以后的阶梯计价、分时段计价也在这里加标签。旧地址 `/console/admin/models`、`/console/admin/groups` 自动跳转。
 - 管理员可直接调整成员余额；在线充值按「钱包与支付」的规则提供。
 
+### 首轮安全加固（2026-11-09，已实现，待合并发布）
+
+- 仅加固 Lingshu：gateway 站点按连接来源放行 Cloudflare IPv4/IPv6，源站直连返回 403；保留自动证书管理和其他站点入口。添加 HSTS、nosniff、Referrer-Policy、DENY 与 frame-ancestors 防嵌入，以及旧站敏感路径和扫描路径拦截。
+- 登录和 challenge 各自按真实 IP 使用令牌桶，每分钟 30 次、突发 10 次，在数据库与 bcrypt 前限制；返回 429 与 Retry-After，定期淘汰闲置桶及过期 PoW 消费记录。
+- 浏览器写请求按 PublicURL 精确校验 Origin，其次 Referer；拒绝 null、异源及 Fetch Metadata 跨站。无来源头的命令行请求保留；JSON 写请求要求 application/json。会话写接口和认证接口覆盖，模型 API 和支付通知保持独立鉴权。Cookie 保留现有名称与 Lax，登出属性一致。
+- 独立 PR 交付，应用与 Caddy 分开发布验收；本轮不调整检测预算、MFA 或引入 WAF。
+
 ### 登录防护（2026-10-19）
 
 用户提出加自己维护的人机验证。结论：验证码只是补充，主防线是频率限制加锁定。
