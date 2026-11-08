@@ -50,9 +50,9 @@ ssh -i ~/.ssh/dmit_lax_ed25519 -o IdentitiesOnly=yes root@136.175.178.126
 - HTTPS 使用 Cloudflare → 现有 Caddy 容器 → 应用。站点保留流式刷新和真实客户端 IP 转发，访问日志为 Caddy 容器内 `/var/log/caddy/lingshu-access.log`。修改 Caddyfile 前保存原文件，校验通过后平滑 reload。
 - PiQode 原有 PostgreSQL 15、Redis 及其他容器继续使用各自数据和配置。Lingshu 的数据库操作只针对 `lingshu-postgres`，不操作 `newapi-postgres`。上游渠道使用 DMIT 直连。OpenRouter 预设仍预填 `socks5://127.0.0.1:10808`；新建渠道采用直连时在表单中清空代理地址。
 
-## Lingshu 站点防护（2026-11-09，模板待发布）
+## Lingshu 站点防护（2026-11-09，已发布）
 
-应用与 Caddy 分别发布验收。模板仅限制 gateway.piqode.com，按 remote_ip 连接来源放行 Cloudflare，其他来源 HTTPS 返回 403；不使用客户端转发头提供准入资格。旧站与全局防火墙不变。
+2026-11-09 已分别发布应用 `eba864f`（北京时间 02:02）和 Caddy 站点防护（02:13），版本、备份、哈希与验收证据见 `docs/history.md`「三个 PR 合并发布与转接产物复验」。模板仅限制 gateway.piqode.com，按 remote_ip 连接来源放行 Cloudflare，其他来源 HTTPS 返回 403；旧站与全局防火墙不变。现役 Caddy 2.11.4 的即时 SSE、WS 与客户端断开取消已在隔离模拟上游验证。
 
 - 官方网段来自 https://www.cloudflare.com/ips-v4 和 https://www.cloudflare.com/ips-v6，2026-11-09 核对为 IPv4 15 条、IPv6 7 条。更新时验证两份列表每行 CIDR，将同一列表同时用于站点 @not_cloudflare 和现有全局 servers.trusted_proxies static；保留其他全局选项。列表与现役相同则无需改全局块。
 - remote_ip 决定准入，client_ip 解析可信代理传来的真实用户地址并覆盖 X-Real-IP。生产名单不加入回环或整个内网；运维健康检查访问 http://172.18.0.1:8300/healthz。
