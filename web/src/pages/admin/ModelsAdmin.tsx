@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { App, Button, Card, Divider, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
-import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { del, get, post, put, type Model, type PriceRule } from '../../api'
 import { priceText, useApp } from '../../app'
 import ModelIcon, { byVendor, vendorOf } from '../../components/ModelIcon'
@@ -104,14 +104,18 @@ export default function ModelsAdmin() {
   const price = (v: string) => priceText(money, v)
   const symbol = inputCurrency === 'CNY' ? '¥' : '$'
 
-  // 厂商筛选：只列出现有模型里出现的厂商（按列表顺序），带数量；选择记在网址 ?vendor= 上，刷新保留
+  // 筛选：搜索框按模型名或厂商名匹配；厂商下拉只列出现有模型里出现的厂商（按列表顺序），带数量。厂商记在网址 ?vendor= 上，刷新保留
   const [params, setParams] = useSearchParams()
+  const [keyword, setKeyword] = useState('')
   const sorted = [...models].sort(byVendor)
   const vendorList = [...new Set(sorted.map((m) => vendorOf(m.name)))]
   const vendor = params.get('vendor') ?? ''
   const active = vendor && vendorList.includes(vendor === 'other' ? '' : vendor) ? vendor : ''
-  const shown = active ? sorted.filter((m) => vendorOf(m.name) === (active === 'other' ? '' : active)) : sorted
-  const pickVendor = (v: string) => {
+  const kw = keyword.trim().toLowerCase()
+  const shown = sorted.filter(
+    (m) => (!active || vendorOf(m.name) === (active === 'other' ? '' : active)) && (!kw || m.name.toLowerCase().includes(kw) || vendorOf(m.name).toLowerCase().includes(kw)),
+  )
+  const pickVendor = (v?: string) => {
     const next = new URLSearchParams(params)
     if (v) next.set('vendor', v)
     else next.delete('vendor')
@@ -120,31 +124,42 @@ export default function ModelsAdmin() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 12 }}>
-        <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
-          {t(
-            '这里是站内标准模型名和标价（每百万 tokens），用户看到和调用的都是这些名字。渠道里的上游模型名在「渠道」页映射到这里。价格建议填厂商国际站的美元价。',
-            'Site-wide model names and list prices (per 1M tokens). Users only see and call these names; upstream names are mapped to them on the Channels page. Use the vendor\'s international USD price where possible.',
-          )}
-        </Typography.Paragraph>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => open('new')}>
+      <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+        {t(
+          '这里是站内标准模型名和标价（每百万 tokens），用户看到和调用的都是这些名字。渠道里的上游模型名在「渠道」页映射到这里。价格建议填厂商国际站的美元价。',
+          'Site-wide model names and list prices (per 1M tokens). Users only see and call these names; upstream names are mapped to them on the Channels page. Use the vendor\'s international USD price where possible.',
+        )}
+      </Typography.Paragraph>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        <Input allowClear prefix={<SearchOutlined className="muted" />} placeholder={t('搜索模型名', 'Search models')} value={keyword} onChange={(e) => setKeyword(e.target.value)} style={{ width: 240 }} />
+        {vendorList.length > 1 && (
+          <Select
+            allowClear
+            aria-label={t('厂商', 'Vendor')}
+            placeholder={`${t('全部厂商', 'All vendors')} · ${models.length}`}
+            value={active || undefined}
+            onChange={(v) => pickVendor(v)}
+            style={{ width: 200 }}
+            popupMatchSelectWidth={false}
+            options={vendorList.map((name) => {
+              const own = sorted.filter((m) => vendorOf(m.name) === name)
+              return {
+                value: name || 'other',
+                label: (
+                  <span className="model-name" style={{ width: '100%' }}>
+                    {name ? <ModelIcon name={own[0].name} /> : <span style={{ width: 18 }} />}
+                    <span style={{ flex: 1 }}>{name || t('其他', 'Other')}</span>
+                    <span className="muted">{own.length}</span>
+                  </span>
+                ),
+              }
+            })}
+          />
+        )}
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => open('new')} style={{ marginLeft: 'auto' }}>
           {t('添加模型', 'Add model')}
         </Button>
       </div>
-      {vendorList.length > 1 && (
-        <Segmented
-          style={{ marginBottom: 12, maxWidth: '100%', overflowX: 'auto' }}
-          value={active}
-          onChange={(v) => pickVendor(v as string)}
-          options={[
-            { value: '', label: `${t('全部', 'All')} ${models.length}` },
-            ...vendorList.map((name) => ({
-              value: name || 'other',
-              label: `${name || t('其他', 'Other')} ${sorted.filter((m) => vendorOf(m.name) === name).length}`,
-            })),
-          ]}
-        />
-      )}
       <Table
         rowKey="id"
         loading={loading}
