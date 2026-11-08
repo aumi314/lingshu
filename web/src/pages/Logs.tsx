@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, Card, Col, DatePicker, Descriptions, Drawer, Row, Select, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
+import { Alert, Card, Col, DatePicker, Descriptions, Drawer, Row, Segmented, Select, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useSearchParams } from 'react-router-dom'
 import { get, type LogEntry, type ActivityLogsResponse, type OperationLogsResponse, type RequestActivity, type User } from '../api'
@@ -11,6 +11,21 @@ type Tab = 'calls' | 'operations'
 type Filter = { range: [Dayjs, Dayjs]; model?: string; status?: string; user_id?: number; target?: string }
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`
+// 汇总卡片的数字：6 张排一行时“448.80M / 1.22M”这类也不折行
+const statValue = { fontSize: 20, whiteSpace: 'nowrap' as const }
+
+// 日志的快捷时间段：今日、本周、本月、近 7 天、近 30 天（都截到今天结束）
+type Translate = (zh: string, en: string) => string
+const quickRanges = (): { key: string; label: (t: Translate) => string; range: [Dayjs, Dayjs] }[] => {
+  const end = dayjs().endOf('day')
+  return [
+    { key: 'today', label: (t) => t('今日', 'Today'), range: [dayjs().startOf('day'), end] },
+    { key: 'week', label: (t) => t('本周', 'This week'), range: [dayjs().startOf('week'), end] },
+    { key: 'month', label: (t) => t('本月', 'This month'), range: [dayjs().startOf('month'), end] },
+    { key: '7d', label: (t) => t('近 7 天', 'Last 7 days'), range: [dayjs().subtract(6, 'day').startOf('day'), end] },
+    { key: '30d', label: (t) => t('近 30 天', 'Last 30 days'), range: [dayjs().subtract(29, 'day').startOf('day'), end] },
+  ]
+}
 const secs2 = (ms: number) => `${(ms / 1000).toFixed(2)}s`
 const protocolLabel: Record<string, string> = { chat: 'Chat', messages: 'Messages', responses: 'Responses', systemone: 'System One' }
 // 缓存命中率 = 缓存读 ÷（输入 + 缓存读 + 缓存写），向下取整，避免没全中却显示 100%
@@ -34,6 +49,8 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
   // 只有调用日志和操作日志两类（2026-11-06）：充值并入操作日志，旧链接 ?tab=orders 落到操作日志
   const tab: Tab = params.get('tab') === 'operations' || params.get('tab') === 'orders' ? 'operations' : 'calls'
   const [filter, setFilter] = useState<Filter>({ range: [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')] })
+  // 当前高亮的快捷时间段：点了哪个亮哪个（本月和近 7 天在月初几天可能是同一段，不能靠日期反推）；手动改日期时再按日期匹配
+  const [quick, setQuick] = useState('7d')
   const [page, setPage] = useState(1)
   const [data, setData] = useState<ActivityLogsResponse | null>(null)
   const [ops, setOps] = useState<OperationLogsResponse | null>(null)
@@ -111,19 +128,39 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
   const calls = (
     <>
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={12} md={6}><Card size="small"><Statistic title={t('花费', 'Cost')} value={s ? money(s.cost) : '-'} /></Card></Col>
-        <Col xs={12} md={6}>
+        <Col xs={12} md={8} xl={4}><Card size="small"><Statistic styles={{ content: statValue }} title={t('花费', 'Cost')} value={s ? money(s.cost) : '-'} /></Card></Col>
+        <Col xs={12} md={8} xl={4}>
           <Card size="small">
-            <Statistic title={t('请求数', 'Requests')} value={s?.requests ?? '-'} suffix={s?.failed ? <Typography.Text type="danger" style={{ fontSize: 14 }}>{s.failed} {t('失败', 'failed')}</Typography.Text> : null} />
+            <Statistic styles={{ content: statValue }} title={t('请求数', 'Requests')} value={s?.requests ?? '-'} suffix={s?.failed ? <Typography.Text type="danger" style={{ fontSize: 14 }}>{s.failed} {t('失败', 'failed')}</Typography.Text> : null} />
           </Card>
         </Col>
-        <Col xs={12} md={6}>
-          <Card size="small"><Statistic title={t('输入 / 输出 tokens', 'Input / output tokens')} value={s ? `${tokens(s.input_tokens)} / ${tokens(s.output_tokens)}` : '-'} /></Card>
+        <Col xs={12} md={8} xl={4}>
+          <Card size="small"><Statistic styles={{ content: statValue }} title={t('输入 / 输出 tokens', 'Input / output tokens')} value={s ? `${tokens(s.input_tokens)} / ${tokens(s.output_tokens)}` : '-'} /></Card>
         </Col>
-        <Col xs={12} md={6}>
+        <Col xs={12} md={8} xl={4}>
           <Card size="small">
             <Tooltip title={t('缓存命中的输入占全部输入的比例，越高越省钱', 'Share of input tokens served from cache; higher means cheaper')}>
-              <Statistic title={t('缓存命中率', 'Cache hit rate')} value={s ? cacheRate(s.cache_read_tokens, s.input_tokens) : '-'} />
+              <Statistic styles={{ content: statValue }} title={t('缓存命中率', 'Cache hit rate')} value={s ? cacheRate(s.cache_read_tokens, s.input_tokens) : '-'} />
+            </Tooltip>
+          </Card>
+        </Col>
+        <Col xs={12} md={8} xl={4}>
+          <Card size="small">
+            <Tooltip title={
+              <>
+                {t('这段时间里最忙的那一分钟：请求数 / tokens（输入含缓存 + 输出）。用来对照上游的限流额度；按整段时间平均没有意义。', 'The busiest minute in this range: requests / tokens (input incl. cache + output). Compare with upstream rate limits; a range average is meaningless.')}
+                {s?.peak_rpm_at && <div>{t('请求峰值', 'Request peak')}：{dayjs(s.peak_rpm_at).format('MM-DD HH:mm')}</div>}
+                {s?.peak_tpm_at && <div>{t('token 峰值', 'Token peak')}：{dayjs(s.peak_tpm_at).format('MM-DD HH:mm')}</div>}
+              </>
+            }>
+              <Statistic styles={{ content: statValue }} title={t('峰值 RPM / TPM', 'Peak RPM / TPM')} value={s ? `${s.peak_rpm ?? 0} / ${tokens(s.peak_tpm ?? 0)}` : '-'} />
+            </Tooltip>
+          </Card>
+        </Col>
+        <Col xs={12} md={8} xl={4}>
+          <Card size="small">
+            <Tooltip title={t('成功请求的中位数：首字从发给上游算起（只算流式），总耗时是整个请求。用中位数是因为推理请求偶尔几分钟，平均值会被少数长请求拉高。', 'Medians of successful requests: first token from sending upstream (streaming only), and total time. Medians, because occasional minutes-long reasoning requests skew the mean.')}>
+              <Statistic styles={{ content: statValue }} title={t('首字 · 总耗时（中位数）', 'First token · total (median)')} value={s ? `${s.median_first_token_ms != null ? seconds(s.median_first_token_ms) : '—'} · ${s.median_total_ms != null ? seconds(s.median_total_ms) : '—'}` : '-'} />
             </Tooltip>
           </Card>
         </Col>
@@ -223,13 +260,25 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
         <DatePicker.RangePicker
           value={filter.range}
           allowClear={false}
-          onChange={(v) => v && v[0] && v[1] && update({ range: [v[0].startOf('day'), v[1].endOf('day')] })}
-          presets={[
-            { label: t('今天', 'Today'), value: [dayjs().startOf('day'), dayjs().endOf('day')] },
-            { label: t('最近 7 天', 'Last 7 days'), value: [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')] },
-            { label: t('本月', 'This month'), value: [dayjs().startOf('month'), dayjs().endOf('day')] },
-            { label: t('最近 30 天', 'Last 30 days'), value: [dayjs().subtract(29, 'day').startOf('day'), dayjs().endOf('day')] },
-          ]}
+          onChange={(v) => {
+            if (!v || !v[0] || !v[1]) return
+            const range: [Dayjs, Dayjs] = [v[0].startOf('day'), v[1].endOf('day')]
+            setQuick(quickRanges().find((q) => q.range[0].isSame(range[0], 'minute') && q.range[1].isSame(range[1], 'minute'))?.key ?? '')
+            update({ range })
+          }}
+        />
+        {/* 快捷时间段放在日期旁边直接可见；选了别的日期时高亮自动取消。本周从周一算起（中文界面 dayjs 的周起始） */}
+        <Segmented
+          style={{ maxWidth: '100%', overflowX: 'auto' }}
+          value={quick}
+          onChange={(k) => {
+            const q = quickRanges().find((x) => x.key === k)
+            if (q) {
+              setQuick(q.key)
+              update({ range: q.range })
+            }
+          }}
+          options={quickRanges().map((q) => ({ value: q.key, label: q.label(t) }))}
         />
         {admin && (
           <Select

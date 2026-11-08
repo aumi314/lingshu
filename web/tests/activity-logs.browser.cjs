@@ -32,7 +32,7 @@ const fs = require('node:fs')
       const topupStart = { ...op, id: 5, actor_id: 2, actor: 'member-fixture', action: 'topup.create', target_type: 'topup', target_id: 'order-pending-fixture', target_name: 'order-pending-fixture', changes: [{ field: 'credit_usd', to: '2' }, { field: 'pay_amount', to: '13.4 CNY' }, { field: 'provider', to: 'epay' }, { field: 'method', to: 'alipay' }], order: { id: 'order-pending-fixture', provider: 'epay', method: 'alipay', currency: 'CNY', amount: '13.40', tax: '0', total: '0', completed_at: null, status: 'pending' } }
       const adjustment = { ...op, id: 2, actor_id: 1, actor: 'admin-fixture', action: 'balance.adjust', target_type: 'balance', changes: [{ field: 'balance', from: '6', to: '5.5' }], note: 'manual fixture', amount: '-0.5' }
       const channelOp = { ...op, id: 3, actor_id: 1, actor: 'admin-fixture', user_id: null, action: 'channel.update', target_type: 'channel', target_id: '7', target_name: 'channel-fixture', changes: [{ field: 'api_key', secret: true }, { field: 'enabled', from: true, to: false }] }
-      const summary = { requests: 2, failed: 0, cost: '0.5', input_tokens: 500, cache_read_tokens: 300, output_tokens: 220, topup_total: '1', adjustment_net: '-0.5' }
+      const summary = { requests: 2, failed: 0, cost: '0.5', input_tokens: 500, cache_read_tokens: 300, output_tokens: 220, topup_total: '1', adjustment_net: '-0.5', peak_rpm: 3, peak_rpm_at: '2026-11-07T04:00:00Z', peak_tpm: 12345, peak_tpm_at: '2026-11-07T04:05:00Z', median_first_token_ms: 1500, median_total_ms: 9200 }
       let hold = false
       let fail = false
       let emptyBalance = false
@@ -72,6 +72,18 @@ const fs = require('node:fs')
       await page.getByText(text('缓存 75%', 'Cache 75%'), { exact: true }).waitFor()
       await page.getByText(text('缓存 0%', 'Cache 0%'), { exact: true }).first().waitFor()
       await page.getByText('60%', { exact: true }).waitFor() // 汇总卡片：缓存读 300 ÷ 输入 500
+      // 负载与响应：峰值 RPM / TPM、首字 · 总耗时中位数
+      await page.getByText('3 / 12.3K', { exact: true }).waitFor()
+      await page.getByText('1.5s · 9.2s', { exact: true }).waitFor()
+      // 快捷时间段：默认近 7 天高亮；点“今日”后按今天查询，再点回近 7 天
+      const seg = (zh, english) => page.locator('.ant-segmented-item').filter({ hasText: text(zh, english) })
+      assert.ok(await seg('近 7 天', 'Last 7 days').evaluate((el) => el.classList.contains('ant-segmented-item-selected')))
+      await seg('今日', 'Today').click()
+      for (let i = 0; i < 100 && new Date(queries.at(-1).get('from')).getTime() !== new Date(new Date().setHours(0, 0, 0, 0)).getTime(); i++) await page.waitForTimeout(30)
+      assert.equal(new Date(queries.at(-1).get('from')).getTime(), new Date(new Date().setHours(0, 0, 0, 0)).getTime())
+      await page.locator('.ant-segmented-item-selected').filter({ hasText: text('今日', 'Today') }).waitFor() // 选中样式在滑块动画结束后才加上
+      await seg('近 7 天', 'Last 7 days').click()
+      await page.getByText('fixture-model', { exact: true }).waitFor()
       await page.getByText('fixture-model', { exact: true }).click()
       await page.getByText('req-fixture', { exact: true }).waitFor()
       await page.locator('.ant-drawer').getByText('203.0.113.9', { exact: true }).waitFor()
@@ -156,6 +168,6 @@ const fs = require('node:fs')
       }
       await page.close()
     }
-    console.log('PASS: admin/member call/operation tabs, cache rate, first token and speed, operation labels and secret masking, system actor, target filter, details, order currency, tab in URL, top-up orders merged into operations with live status, empty/error states, delayed responses, Chinese/English, mobile')
+    console.log('PASS: peak RPM/TPM and median response cards, quick date ranges next to the picker, admin/member call/operation tabs, cache rate, first token and speed, operation labels and secret masking, system actor, target filter, details, order currency, tab in URL, top-up orders merged into operations with live status, empty/error states, delayed responses, Chinese/English, mobile')
   } finally { await browser.close(); server.kill() }
 })().catch((error) => { console.error(error); process.exitCode = 1 })
