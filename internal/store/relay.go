@@ -23,6 +23,7 @@ type KeyOwner struct {
 	UserEnabled  bool
 	GroupAllowed bool // 公开分组，或用户被授权了这个特殊分组
 	GroupRatio   decimal.Decimal
+	GroupRetries int // 渠道级失败后最多重试几次（服务分组设置）
 	Balance      decimal.Decimal
 	Reserved     decimal.Decimal  // 进行中请求冻结的额度，可用余额 = Balance - Reserved
 	QuotaLimit   *decimal.Decimal // nil 表示不限额
@@ -41,13 +42,13 @@ func (s *Store) LookupKey(ctx context.Context, keyHash string) (*KeyOwner, error
 			       JOIN user_group_members ugm ON ugm.user_group_id = gug.user_group_id
 			       WHERE gug.group_id = g.id AND ugm.user_id = u.id
 		       )),
-		       g.ratio::text, u.balance::text, u.reserved::text, k.quota_limit::text, k.quota_used::text
+		       g.ratio::text, g.retry_count, u.balance::text, u.reserved::text, k.quota_limit::text, k.quota_used::text
 		FROM api_keys k
 		JOIN users u ON u.id = k.user_id
 		JOIN groups g ON g.id = k.group_id
 		WHERE k.key_hash = $1`, keyHash,
 	).Scan(&o.KeyID, &o.KeyName, &o.UserID, &o.GroupID, &o.GroupName, &o.KeyEnabled, &o.UserEnabled, &o.GroupAllowed,
-		&ratio, &balance, &reserved, &limit, &used)
+		&ratio, &o.GroupRetries, &balance, &reserved, &limit, &used)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

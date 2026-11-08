@@ -363,6 +363,10 @@ func (s *Server) saveGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "分组名不能为空")
 		return
 	}
+	if g.RetryCount != nil && (*g.RetryCount < 0 || *g.RetryCount > 4) {
+		writeError(w, http.StatusBadRequest, "失败重试次数只能是 0 到 4")
+		return
+	}
 	if g.Ratio.IsNegative() {
 		writeError(w, http.StatusBadRequest, "倍率不能是负数")
 		return
