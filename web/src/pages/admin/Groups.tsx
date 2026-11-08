@@ -3,6 +3,7 @@ import { App, Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space
 import { PlusOutlined } from '@ant-design/icons'
 import { del, get, post, put, type Group, type UserGroup } from '../../api'
 import { useApp } from '../../app'
+import { rowEditing } from '../../rowEditing'
 import UserGroupManager from '../../components/UserGroupManager'
 import { DragHandle, SortableBody, SortableRow } from '../../components/SortableRows'
 import { arrayMove } from '@dnd-kit/sortable'
@@ -97,6 +98,7 @@ export default function Groups() {
         rowKey="id"
         loading={loading}
         dataSource={groups}
+        onRow={(g) => rowEditing(() => { form.setFieldsValue({ ...g, ratio: Number(g.ratio) }); setEditing(g) }, `${t('编辑服务分组', 'Edit service group')} · ${g.name}`)}
         pagination={false}
         components={{ body: { row: SortableRow } }}
         columns={[
@@ -125,9 +127,6 @@ export default function Groups() {
             align: 'right',
             render: (_, g) => (
               <Space>
-                <Button size="small" type="link" onClick={() => { form.setFieldsValue({ ...g, ratio: Number(g.ratio) }); setEditing(g) }}>
-                  {t('编辑', 'Edit')}
-                </Button>
                 <Popconfirm title={t('确定删除这个服务分组？', 'Delete this service group?')} onConfirm={() => remove(g)}>
                   <Button size="small" type="link" danger>
                     {t('删除', 'Delete')}

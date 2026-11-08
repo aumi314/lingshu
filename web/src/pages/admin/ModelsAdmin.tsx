@@ -4,6 +4,7 @@ import { App, Button, Card, Divider, Form, Input, InputNumber, Modal, Popconfirm
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { del, get, post, put, type Model, type PriceRule } from '../../api'
 import { priceText, useApp } from '../../app'
+import { rowEditing } from '../../rowEditing'
 import ModelIcon, { byVendor, vendorOf } from '../../components/ModelIcon'
 
 const priceFields = ['input_price', 'output_price', 'cache_read_price', 'cache_write_price'] as const
@@ -164,6 +165,7 @@ export default function ModelsAdmin() {
         rowKey="id"
         loading={loading}
         dataSource={shown}
+        onRow={(m) => rowEditing(() => open(m), `${t('编辑模型', 'Edit model')} · ${m.name}`)}
         pagination={false}
         columns={[
           { title: 'ID', dataIndex: 'id', width: 48, render: (v) => <span className="muted">{v}</span> },
@@ -196,9 +198,6 @@ export default function ModelsAdmin() {
             align: 'right',
             render: (_, m) => (
               <Space>
-                <Button size="small" type="link" onClick={() => open(m)}>
-                  {t('编辑', 'Edit')}
-                </Button>
                 <Popconfirm title={t('删除后各渠道里对这个模型的映射也会一起删除，确定？', 'Channel mappings to this model will be removed too. Delete?')} onConfirm={() => remove(m)}>
                   <Button size="small" type="link" danger>
                     {t('删除', 'Delete')}

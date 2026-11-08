@@ -5,6 +5,7 @@ import dayjs from 'dayjs'
 import { useSearchParams } from 'react-router-dom'
 import { get, patch, post, type Group, type User, type UserGroup } from '../../api'
 import { useApp } from '../../app'
+import { rowEditing } from '../../rowEditing'
 
 export default function Users() {
   const { user: me, money, t, currency, reload } = useApp()
@@ -87,6 +88,7 @@ export default function Users() {
   }
 
   const openEdit = (u: User) => {
+    if (u.role === 'super_admin' && !isSuper) return
     ++editSession.current
     setSubmitting(false)
     editForm.setFieldsValue({ username: u.username, password: '', note: u.note ?? '', role: u.role, user_group_ids: u.user_group_ids ?? [], enabled: u.enabled })
@@ -163,6 +165,9 @@ export default function Users() {
       <Table
         rowKey="id"
         loading={loading}
+        onRow={(u) => u.role === 'super_admin' && !isSuper
+          ? { 'aria-disabled': true, title: t('只有超级管理员能修改超级管理员的账号', 'Only super admins can edit a super admin') }
+          : rowEditing(() => openEdit(u), `${t('编辑用户', 'Edit user')} · ${u.username}`)}
         dataSource={status === 'all' ? users : users.filter((u) => u.enabled === (status === 'enabled'))}
         locale={{ emptyText: status === 'disabled' ? t('没有停用的用户', 'No disabled users') : status === 'enabled' ? t('没有启用的用户', 'No enabled users') : undefined }}
         pagination={false}
@@ -191,15 +196,6 @@ export default function Users() {
             title: t('状态', 'Status'),
             dataIndex: 'enabled',
             render: (v) => <Tag color={v ? 'green' : undefined}>{v ? t('已启用', 'Enabled') : t('已停用', 'Disabled')}</Tag>,
-          },
-          {
-            title: '',
-            align: 'right',
-            render: (_, u) => (
-              u.role === 'super_admin' && !isSuper
-                ? <Tooltip title={t('只有超级管理员能修改超级管理员的账号', 'Only super admins can edit a super admin')}><Button size="small" type="link" disabled>{t('编辑', 'Edit')}</Button></Tooltip>
-                : <Button size="small" type="link" onClick={() => openEdit(u)}>{t('编辑', 'Edit')}</Button>
-            ),
           },
         ]}
       />

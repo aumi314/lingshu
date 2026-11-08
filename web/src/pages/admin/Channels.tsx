@@ -23,6 +23,7 @@ import {
 import { CheckCircleFilled, CloseCircleFilled, DeleteOutlined, PlusOutlined, WarningFilled } from '@ant-design/icons'
 import { del, get, post, put, type Channel, type ChannelTemplate, type Group, type Model, type ProbeResult } from '../../api'
 import { useApp } from '../../app'
+import { rowEditing } from '../../rowEditing'
 import VendorIcon from '../../components/VendorIcon'
 import ChannelStatus from '../../components/ChannelStatus'
 import { BalanceCell, BalanceModal } from '../../components/ChannelBalance'
@@ -368,6 +369,7 @@ export default function Channels() {
         rowKey="id"
         loading={loading}
         dataSource={channels}
+        onRow={(c) => rowEditing(() => openEdit(c), `${t('编辑渠道', 'Edit channel')} · ${c.name}`)}
         pagination={false}
         components={{ body: { row: SortableRow } }}
         columns={[
@@ -430,7 +432,7 @@ export default function Channels() {
                 {t('额度', 'Balance')}
               </Tooltip>
             ),
-            render: (_, c) => <BalanceCell channel={c} onOpen={() => setBalanceOf(c)} />,
+            render: (_, c) => <span data-row-action onClick={(event) => event.stopPropagation()}><BalanceCell channel={c} onOpen={() => setBalanceOf(c)} /></span>,
           },
           {
             title: '',
@@ -439,9 +441,6 @@ export default function Channels() {
               <Space>
                 <Button size="small" type="link" onClick={() => openProbe({ id: c.id, template: c.template, api_key: '', keys: c.keys, base_url_chat: c.base_url_chat, base_url_messages: c.base_url_messages, base_url_responses: c.base_url_responses, base_url_systemone: c.base_url_systemone, proxy_url: c.proxy_url }, c.models.map((m) => m.upstream_name || m.model_name))}>
                   {t('测试', 'Test')}
-                </Button>
-                <Button size="small" type="link" onClick={() => openEdit(c)}>
-                  {t('编辑', 'Edit')}
                 </Button>
                 <Popconfirm title={t('删除后经过这个渠道的请求会换到其他渠道，没有其他渠道的模型将不可用。确定？', 'Requests will move to other channels; models with no other channel become unavailable. Delete?')} onConfirm={() => remove(c)}>
                   <Button size="small" type="link" danger>
