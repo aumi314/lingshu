@@ -25,6 +25,9 @@ type Server struct {
 	Payments  *payments.Gateway
 	FXURL     string // 实时汇率接口，测试时替换；空表示 fx.URL
 
+	mail          *mailGateway
+	emailLimitMu  sync.Mutex
+	emailLimits   map[string][]time.Time
 	guard         *loginGuard
 	redeemGuard   *redeemGuard
 	probeProgress sync.Map // 进行中的检测：id → [已完成, 总请求数]
@@ -38,6 +41,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 		s.Payments = payments.NewGateway()
 	}
 	s.registerPayments(mux)
+	s.registerMail(mux)
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.HandleFunc("GET /api/auth/registration", s.registrationStatus)
 	mux.HandleFunc("POST /api/auth/register", s.registerWithCode)

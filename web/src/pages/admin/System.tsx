@@ -6,6 +6,7 @@ import { del, get, post, put } from '../../api'
 import { useApp } from '../../app'
 import PaymentSettings from '../../components/PaymentSettings'
 import RedeemCodes from '../../components/RedeemCodes'
+import MailAccounts, { type MailAccount } from '../../components/MailAccounts'
 
 type RegistrationCode = { id: number; prefix: string; created_at: string; used_by: string; used_at: string | null; revoked_at: string | null }
 type GeneratedCode = { id: number; prefix: string; code: string }
@@ -15,7 +16,7 @@ type CallLimits = { user_concurrency: number; user_rpm: number; reserve_output_t
 type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string }
 
 export default function System() {
-  const { t, reload } = useApp()
+  const { t, reload, user } = useApp()
   const { message } = App.useApp()
   const [params, setParams] = useSearchParams()
   const [fxMode, setFXMode] = useState<'manual' | 'live'>('manual')
@@ -42,8 +43,11 @@ export default function System() {
   const [loading, setLoading] = useState(true)
   const [paymentEnabled, setPaymentEnabled] = useState(false)
   const [savingPayment, setSavingPayment] = useState(false)
-  const [registrationMode, setRegistrationMode] = useState<'manual' | 'code'>('manual')
+  const [registrationMode, setRegistrationMode] = useState<'manual' | 'code' | 'email'>('manual')
   const [savingRegistration, setSavingRegistration] = useState(false)
+  const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([])
+  const [loadingMailAccounts, setLoadingMailAccounts] = useState(false)
+  const mailReady = mailAccounts.some((account) => account.enabled && account.checked_at)
   const [codes, setCodes] = useState<RegistrationCode[]>([])
   const [loadingCodes, setLoadingCodes] = useState(false)
   const [codeCount, setCodeCount] = useState(1)
@@ -59,7 +63,7 @@ export default function System() {
     noticeForm.setFieldsValue({ announcement: s.announcement ?? '' })
     setDeploymentMode(s.deployment_mode === 'commercial_relay' ? s.deployment_mode : 'commercial_relay')
     setPaymentEnabled(s.payment_enabled)
-    setRegistrationMode(s.registration_mode === 'code' ? 'code' : 'manual')
+    setRegistrationMode(s.registration_mode === 'email' ? 'email' : s.registration_mode === 'code' ? 'code' : 'manual')
   }
 
   useEffect(() => {
@@ -78,6 +82,12 @@ export default function System() {
       .catch((e) => message.error(e.message))
       .finally(() => setLoadingCodes(false))
   }, [tab, message])
+
+  useEffect(() => {
+    if (tab !== 'registration' || user?.role !== 'super_admin') return
+    setLoadingMailAccounts(true)
+    get<MailAccount[]>('/api/admin/mail-accounts').then(setMailAccounts).catch((e) => message.error(e.message)).finally(() => setLoadingMailAccounts(false))
+  }, [tab, user?.role, message])
 
   // 切换汇率模式立即生效；切到实时会马上拉一次，再把最新汇率和状态取回来
   const saveFXMode = async (mode: 'manual' | 'live') => {
@@ -359,15 +369,18 @@ export default function System() {
                     <Radio value="code">
                       {t('注册码注册', 'Registration code')} <Typography.Text type="secondary">{t('用户凭管理员发放的单次注册码创建账号。', 'Users create an account with a one-time code from an admin.')}</Typography.Text>
                     </Radio>
-                    <Radio value="email" disabled>
-                      {t('开放邮箱注册', 'Open email registration')} <Tag>{t('暂未开放', 'Coming later')}</Tag>
+                    <Radio value="email" disabled={!mailReady && registrationMode !== 'email'}>
+                      {t('开放邮箱注册', 'Open email registration')} <Typography.Text type="secondary">{t('用户验证邮箱后创建账号，使用用户名和密码登录。', 'Users verify email to register and sign in with a username and password.')}</Typography.Text>
                     </Radio>
                   </Space>
                 </Radio.Group>
+                {!mailReady && <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>{t('开启邮箱注册前，请由超级管理员添加发信账号并检查授权。', 'Ask a super admin to add a mail account and check authorization before enabling email registration.')}</Typography.Paragraph>}
                 <div style={{ marginTop: 20 }}>
-                  <Button type="primary" loading={savingRegistration} disabled={loading} onClick={saveRegistrationMode}>{t('保存', 'Save')}</Button>
+                  <Button type="primary" loading={savingRegistration} disabled={loading || (registrationMode === 'email' && !mailReady)} onClick={saveRegistrationMode}>{t('保存', 'Save')}</Button>
                 </div>
               </Card>
+
+              {user?.role === 'super_admin' && <MailAccounts accounts={mailAccounts} loading={loadingMailAccounts} onChange={setMailAccounts} />}
 
               <Card title={t('注册码', 'Registration codes')}>
                 <Typography.Paragraph type="secondary">

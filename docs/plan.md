@@ -108,9 +108,9 @@ lingshu/
 - 上游错误响应里如果出现渠道 key，替换成 `***` 再返回给用户和写日志。
 - 带 `previous_response_id` 的请求：按日志里的 `upstream_response_id` 找到原渠道，只发往原渠道。
 
-## 5. 当前状态（2026-11-07）
+## 5. 当前状态（2026-11-08）
 
-线上 `https://gateway.piqode.com`（DMIT），部署模式为「商业中转」，schema `0029_probe_runs`。MVP 五个阶段已于 2026-10-23 完成验收，之后的工作全部已发布。
+线上 `https://gateway.piqode.com`（DMIT），部署模式为「商业中转」，schema `0029_probe_runs`。MVP 五个阶段已于 2026-10-23 完成验收；邮箱注册与 Outlook 一主四备发信已在独立分支完成开发和验收，待 PR 合并、发布后导入生产凭据并开放。
 
 | 模块 | 现在有什么 |
 |---|---|
