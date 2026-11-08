@@ -21,7 +21,14 @@ export default function System() {
   const [fxMode, setFXMode] = useState<'manual' | 'live'>('manual')
   const [fxStatus, setFXStatus] = useState<FXStatus>({ source: 'Frankfurter' })
   const [savingFXMode, setSavingFXMode] = useState(false)
-  const tab = ['payments', 'registration', 'redeem'].includes(params.get('tab') ?? '') ? params.get('tab')! : 'operations'
+  // 兑换码 2026-11-07 并入支付设置：旧链接 ?tab=redeem 落到支付设置并滚到兑换码卡片
+  const rawTab = params.get('tab') ?? ''
+  const tab = rawTab === 'redeem' ? 'payments' : ['payments', 'registration'].includes(rawTab) ? rawTab : 'operations'
+  useEffect(() => {
+    if (rawTab !== 'redeem') return
+    const timer = setTimeout(() => document.getElementById('redeem-codes')?.scrollIntoView({ block: 'start' }), 300)
+    return () => clearTimeout(timer)
+  }, [rawTab])
   const [form] = Form.useForm<{ cny_per_usd: number }>()
   const [apiURLForm] = Form.useForm<{ api_base_url: string }>()
   const [limitsForm] = Form.useForm<CallLimits>()
@@ -327,18 +334,20 @@ export default function System() {
             </Space>
           ) },
           { key: 'payments', label: t('支付设置', 'Payments'), children: (
-            <Card>
+            <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Card title={t('在线支付', 'Online payments')}>
               <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 12 }}>
-                <Typography.Text>{t('开放用户充值', 'Enable user top-ups')}</Typography.Text>
+                <Typography.Text>{t('开放在线支付', 'Enable online payments')}</Typography.Text>
                 <Switch checked={paymentEnabled} loading={savingPayment} disabled={loading} onChange={savePayment} />
               </Space>
               <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                {t('开启后，用户可使用下方已配置且启用的生产支付服务充值；关闭后已有订单仍会正常到账。', 'When enabled, users can top up through configured production payment services below. Existing payments continue to settle when disabled.')}
+                {t('开启后，用户可使用下方已配置且启用的生产支付服务充值；关闭后已有订单仍会正常到账。不影响兑换码。', 'When enabled, users can top up through configured production payment services below. Existing payments continue to settle when disabled. Does not affect redeem codes.')}
               </Typography.Paragraph>
               <PaymentSettings />
             </Card>
+            <RedeemCodes />
+            </Space>
           ) },
-          { key: 'redeem', label: t('兑换码', 'Redeem codes'), children: <RedeemCodes /> },
           { key: 'registration', label: t('注册管理', 'Registration'), children: (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
               <Card title={t('开放程度', 'Registration access')}>

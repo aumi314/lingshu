@@ -283,6 +283,10 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 迁移 0031 给 `groups` 加 `retry_count`（0–4，默认 2，原行为不变；保存不带字段时保留原值，接口返回数据库里的实际值）。`relay.attemptAll` 改为按失败原因走：key 级失败换 key 不占次数（后面还有渠道时同渠道最多 10 把，最后一个渠道不限），渠道级失败占次数、换渠道或等 1 秒同渠道再试；所有 key 限流冷却时直接回 429 + Retry-After（`router.KeyHealth.MinCooldown`）。删除不再使用的 `router.MaxAttempts`。服务分组页加“失败重试”列和编辑项。用户指出最初“同渠道最多 2 把 key”的设计会坑免费 key 聚合渠道，改为上面的规则。测试：`TestLastChannelRotatesAllKeysThenRetryAfter`、`TestKeyRotationCapWhenOtherChannelExists`、`TestGroupRetryCountZero`、`TestSingleChannel5xxRetriesSameChannel`、`TestGroupRetryCount`、`models.browser.cjs`。
 
+### 兑换码并入支付设置（2026-11-07）
+
+系统设置去掉“兑换码”标签，兑换码收成一张卡片放在“支付设置”第二张（第一张为“在线支付”）；旧链接 `?tab=redeem` 落到支付设置并滚到兑换码卡片。开关“开放用户充值”改名“开放在线支付”并注明不影响兑换码；兑换码说明加“可以放到第三方发卡平台售卖（例如 wzyp.cn）”。只改前端和文档，无接口或数据库变更。测试：`redeem.browser.cjs`（合并后的两张卡片、旧链接、第三方平台说明，原有生成和兑换流程）。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 改为自动发布前的手动发布记录
