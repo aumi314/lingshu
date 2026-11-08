@@ -367,6 +367,9 @@ type Group struct {
 	IsPublic     bool            `json:"is_public"`
 	UserGroupIDs []int64         `json:"user_group_ids"`
 	Description  string          `json:"description"`
+	// RetryCount 是渠道级失败（5xx、超时、断流）后最多重试几次，0–4；换 key 不占次数。
+	// 保存时 nil 表示不改（旧客户端不带这个字段），新建时默认 2
+	RetryCount *int `json:"retry_count"`
 }
 
 func scanGroups(rows pgx.Rows, err error) ([]Group, error) {
@@ -376,7 +379,8 @@ func scanGroups(rows pgx.Rows, err error) ([]Group, error) {
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Group, error) {
 		var g Group
 		var ratio string
-		err := r.Scan(&g.ID, &g.Name, &ratio, &g.Enabled, &g.IsPublic, &g.UserGroupIDs, &g.Description)
+		g.RetryCount = new(int)
+		err := r.Scan(&g.ID, &g.Name, &ratio, &g.Enabled, &g.IsPublic, &g.UserGroupIDs, &g.Description, g.RetryCount)
 		g.Ratio = mustDecimal(ratio)
 		return g, err
 	})
@@ -385,7 +389,7 @@ func scanGroups(rows pgx.Rows, err error) ([]Group, error) {
 func (s *Store) ListGroups(ctx context.Context) ([]Group, error) {
 	return scanGroups(s.Pool.Query(ctx, `SELECT g.id, g.name, g.ratio::text, g.enabled, g.is_public,
 		COALESCE((SELECT array_agg(gug.user_group_id ORDER BY gug.user_group_id) FROM group_user_groups gug WHERE gug.group_id = g.id), '{}'),
-		g.description FROM groups g ORDER BY g.sort_order, g.id`))
+		g.description, g.retry_count FROM groups g ORDER BY g.sort_order, g.id`))
 }
 
 // AccessibleGroups 返回用户能用的启用服务分组。
@@ -393,7 +397,7 @@ func (s *Store) AccessibleGroups(ctx context.Context, userID int64) ([]Group, er
 	return scanGroups(s.Pool.Query(ctx, `
 		SELECT g.id, g.name, g.ratio::text, g.enabled, g.is_public,
 		       COALESCE((SELECT array_agg(gug.user_group_id ORDER BY gug.user_group_id) FROM group_user_groups gug WHERE gug.group_id = g.id), '{}'),
-		       g.description FROM groups g
+		       g.description, g.retry_count FROM groups g
 		WHERE g.enabled AND (g.is_public OR EXISTS (
 			SELECT 1 FROM group_user_groups gug
 			JOIN user_group_members ugm ON ugm.user_group_id = gug.user_group_id
@@ -409,17 +413,21 @@ func (s *Store) SaveGroup(ctx context.Context, g *Group) error {
 }
 
 func saveGroup(ctx context.Context, tx pgx.Tx, g *Group) error {
+	var retries int
 	if g.ID == 0 {
-		err := tx.QueryRow(ctx, `INSERT INTO groups (name, ratio, enabled, is_public, description, sort_order)
-			VALUES ($1, $2::numeric, $3, $4, $5, (SELECT COALESCE(max(sort_order), 0) + 1 FROM groups)) RETURNING id`,
-			g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description).Scan(&g.ID)
+		err := tx.QueryRow(ctx, `INSERT INTO groups (name, ratio, enabled, is_public, description, retry_count, sort_order)
+			VALUES ($1, $2::numeric, $3, $4, $5, COALESCE($6, 2), (SELECT COALESCE(max(sort_order), 0) + 1 FROM groups)) RETURNING id, retry_count`,
+			g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description, g.RetryCount).Scan(&g.ID, &retries)
 		if err != nil {
 			return translate(err)
 		}
-	} else if err := execOne(ctx, tx, `UPDATE groups SET name = $2, ratio = $3::numeric, enabled = $4, is_public = $5, description = $6 WHERE id = $1`,
-		g.ID, g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description); err != nil {
-		return err
+		g.RetryCount = &retries
+	} else if err := tx.QueryRow(ctx, `UPDATE groups SET name = $2, ratio = $3::numeric, enabled = $4, is_public = $5, description = $6,
+		retry_count = COALESCE($7, retry_count) WHERE id = $1 RETURNING retry_count`,
+		g.ID, g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description, g.RetryCount).Scan(&retries); err != nil {
+		return translate(err)
 	}
+	g.RetryCount = &retries // 返回数据库里的实际值（新建默认 2、不带字段时保留原值）
 	if _, err := tx.Exec(ctx, `DELETE FROM group_user_groups WHERE group_id = $1`, g.ID); err != nil {
 		return err
 	}

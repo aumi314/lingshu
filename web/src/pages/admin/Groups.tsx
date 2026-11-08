@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography } from 'antd'
+import { App, Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Tooltip, Typography } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import { del, get, post, put, type Group, type UserGroup } from '../../api'
 import { useApp } from '../../app'
@@ -84,7 +84,7 @@ export default function Groups() {
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => {
-              form.setFieldsValue({ name: '', ratio: 1, enabled: true, is_public: true, user_group_ids: [], description: '' })
+              form.setFieldsValue({ name: '', ratio: 1, enabled: true, is_public: true, user_group_ids: [], description: '', retry_count: 2 })
               setEditing('new')
             }}
           >
@@ -104,6 +104,11 @@ export default function Groups() {
           { title: 'ID', dataIndex: 'id', width: 48, render: (v) => <span className="muted">{v}</span> },
           { title: t('名称', 'Name'), dataIndex: 'name' },
           { title: t('倍率', 'Ratio'), dataIndex: 'ratio', render: (v) => `×${Number(v)}` },
+          {
+            title: <Tooltip title={t('渠道出故障（5xx、超时、断流）后最多换几次渠道重试；key 限流换 key 不算次数', 'How many times to retry on channel failures (5xx, timeouts, broken streams); switching keys on rate limits does not count')}>{t('失败重试', 'Retries')}</Tooltip>,
+            dataIndex: 'retry_count',
+            render: (v?: number) => t(`${v ?? 2} 次`, `${v ?? 2}`),
+          },
           { title: t('适用范围', 'Availability'), dataIndex: 'is_public', render: (v, g) => v
             ? <Tag color="green">{t('所有用户', 'All users')}</Tag>
             : <Space wrap><Tag color="gold">{t('指定用户分组', 'Selected user groups')}</Tag>{g.user_group_ids.map((id) => <Tag key={id}>{userGroups.find((u) => u.id === id)?.name ?? id}</Tag>)}</Space> },
@@ -141,6 +146,17 @@ export default function Groups() {
           </Form.Item>
           <Form.Item name="ratio" label={t('倍率', 'Ratio')} rules={[{ required: true }]} extra={t('1 表示按标价收费，0.5 表示半价', '1 = list price, 0.5 = half price')}>
             <InputNumber min={0} step={0.1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            name="retry_count"
+            label={t('失败重试次数', 'Retries on failure')}
+            rules={[{ required: true }]}
+            extra={t(
+              '渠道出故障（5xx、超时、断流）时换下一个渠道重试几次；没有别的渠道时等 1 秒同渠道再试。key 被限流或失效时换同渠道的其他 key，不占次数。只在还没给用户返回内容之前能重试，整个请求最多 60 秒。',
+              'Retries on channel failures (5xx, timeouts, broken streams), moving to the next channel, or retrying the same one after 1s when it is the only one. Switching keys on rate limits or invalid keys does not count. Retries happen only before any output reaches the user, within 60s per request.',
+            )}
+          >
+            <InputNumber min={0} max={4} precision={0} style={{ width: 120 }} />
           </Form.Item>
           <Form.Item name="enabled" label={t('启用', 'Enabled')} valuePropName="checked">
             <Switch />

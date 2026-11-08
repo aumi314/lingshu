@@ -15,8 +15,8 @@ const fs = require('node:fs')
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
     const groups = [
-      { id: 1, name: 'Official API', ratio: '1', enabled: true, is_public: true, user_group_ids: [], description: '官方渠道，稳定' },
-      { id: 8, name: 'Third-party Relay', ratio: '0.5', enabled: true, is_public: true, user_group_ids: [], description: '' },
+      { id: 1, name: 'Official API', ratio: '1', enabled: true, is_public: true, user_group_ids: [], description: '官方渠道，稳定', retry_count: 1 },
+      { id: 8, name: 'Third-party Relay', ratio: '0.5', enabled: true, is_public: true, user_group_ids: [], description: '', retry_count: 3 },
     ]
     const priced = (group_id, name) => ({ group_id, name, protocols: ['chat'], input_price: '1', output_price: '2', cache_read_price: '0', cache_write_price: '0', price_rules: [] })
     // 故意打乱：期望按厂商（Anthropic → OpenAI → DeepSeek → 智谱 → 未识别）排列，同厂商内自然排序
@@ -24,6 +24,7 @@ const fs = require('node:fs')
     const longRule = { name: '长上下文', input_above: 272000, input_price: '4', output_price: '15', cache_read_price: '0.4', cache_write_price: '0' }
     const models = [...names.map((n) => priced(1, n)), { ...priced(8, 'gpt-6-sol'), price_rules: [longRule], fast_multiplier: '2' }]
     let savedModel = null
+    let savedGroup = null
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
     await page.route('**/api/**', (route) => {
       const p = new URL(route.request().url()).pathname
@@ -32,6 +33,7 @@ const fs = require('node:fs')
       if (p === '/api/me/models') return json({ groups, models })
       if (p.startsWith('/api/admin/models/') && route.request().method() === 'PUT') { savedModel = route.request().postDataJSON(); return json(savedModel) }
       if (p === '/api/admin/models') return json(names.map((n, i) => ({ id: i + 1, name: n, input_price: '1', output_price: '2', cache_read_price: '0', cache_write_price: '0', price_rules: [], fast_multiplier: n === 'gpt-6-sol' ? '2.0000' : null })))
+      if (p.startsWith('/api/admin/groups/') && route.request().method() === 'PUT') { savedGroup = route.request().postDataJSON(); return json(savedGroup) }
       if (p === '/api/admin/groups') return json(groups)
       if (p === '/api/admin/user-groups') return json([{ id: 1, name: 'default', is_default: true }])
       return json([])
@@ -96,13 +98,22 @@ const fs = require('node:fs')
     await page.goto('http://127.0.0.1:25186/console/admin/pricing?tab=groups')
     await page.getByText('Third-party Relay', { exact: true }).waitFor()
     assert.equal(await page.locator('tbody tr').filter({ hasText: 'Official API' }).getByRole('button').first().getAttribute('title'), '拖动排序（成员看到的分组顺序也随之改变）')
+    // 失败重试：列表显示次数，编辑后提交新值
+    await page.locator('tbody tr').filter({ hasText: 'Official API' }).getByText('1 次', { exact: true }).waitFor()
+    const relayRow = page.locator('tbody tr').filter({ hasText: 'Third-party Relay' })
+    await relayRow.getByText('3 次', { exact: true }).waitFor()
+    await relayRow.getByRole('button', { name: /编\s*辑/ }).click()
+    await page.locator('#retry_count').fill('4')
+    await page.getByRole('dialog').getByRole('button', { name: /保\s*存|确\s*定/ }).click()
+    for (let i = 0; i < 100 && !savedGroup; i++) await page.waitForTimeout(30)
+    assert.equal(savedGroup.retry_count, 4)
     if (process.env.MODELS_SCREENSHOT_DIR) {
       await page.screenshot({ path: path.join(process.env.MODELS_SCREENSHOT_DIR, 'groups.png') })
       await page.goto('http://127.0.0.1:25186/console/models')
       await page.getByText('claude-sonnet-5-5', { exact: true }).waitFor()
       await page.screenshot({ path: path.join(process.env.MODELS_SCREENSHOT_DIR, 'models.png') })
     }
-    console.log('PASS: vendor filter with counts kept in the URL, group selector label, ratio tag only when not 1, model counts, group in URL, vendor order on member and admin pages, GPT Fast prices incl. long context, admin Fast multiplier cleared to null, group drag handle')
+    console.log('PASS: vendor filter with counts kept in the URL, group selector label, ratio tag only when not 1, model counts, group in URL, vendor order on member and admin pages, GPT Fast prices incl. long context, admin Fast multiplier cleared to null, group drag handle, group retry count shown and saved')
   } finally {
     await browser.close()
     server.kill()

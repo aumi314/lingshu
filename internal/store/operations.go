@@ -65,7 +65,7 @@ var (
 		       'quota_limit', k.quota_limit::text)
 		FROM api_keys k JOIN groups g ON g.id = k.group_id WHERE k.id = $1`, nil}
 	groupEntity = entity{"group", "name", `
-		SELECT jsonb_build_object('name', g.name, 'ratio', g.ratio::text, 'enabled', g.enabled, 'is_public', g.is_public,
+		SELECT jsonb_build_object('name', g.name, 'ratio', g.ratio::text, 'enabled', g.enabled, 'is_public', g.is_public, 'retry_count', g.retry_count,
 		       'description', g.description,
 		       'user_groups', COALESCE((SELECT jsonb_agg(ug.name ORDER BY ug.name) FROM group_user_groups x
 		                                JOIN user_groups ug ON ug.id = x.user_group_id WHERE x.group_id = g.id), '[]'))

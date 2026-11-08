@@ -87,6 +87,7 @@ type call struct {
 	log     store.RequestLog
 	tracker *usage.Tracker
 	body    []byte // 客户端原始请求体，上游没给 usage 时用来估算输入
+	retries int    // 渠道级失败后最多重试几次（服务分组设置）
 	gotResp bool   // 是否收到了上游的响应头（收到才说明上游开始处理了）
 
 	basePrices billing.Prices // 模型基础价，结算时按价格规则换成实际单价
@@ -180,7 +181,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		c.reject(w, http.StatusServiceUnavailable, "这轮对话接着的上一次响应来自一个现在不可用的渠道或 key，没法继续，请开启新对话")
 		return
 	}
-	c.log.GroupRatio = owner.GroupRatio
+	c.log.GroupRatio, c.retries = owner.GroupRatio, owner.GroupRetries
 
 	// GPT 的 Fast（docs/decisions.md「GPT Fast 计费」）：只看 OpenAI 协议的 service_tier。
 	// 模型开放了 Fast 就原样转发、按倍率计费；没开放（或要的是 Ultrafast）就去掉档位，按标准处理，不让上游按高价收费而我们按标准价扣
@@ -304,18 +305,64 @@ func (f *failure) write(w http.ResponseWriter, proto usage.Protocol) {
 	writeError(w, proto, f.status, f.msg)
 }
 
-// attemptAll 按顺序尝试渠道，直到有一个给客户端写出了响应。
-// 只在还没给客户端写任何字节之前换渠道；失败的尝试不收钱。
+// 重试规则（docs/decisions.md「路由与重试」）
+const (
+	maxKeysPerChannel     = 10              // 后面还有别的渠道时，同一渠道一次请求最多连换几把 key
+	sameChannelRetryDelay = 1 * time.Second // 没有别的渠道可换时，渠道级失败后等多久同渠道再试
+)
+
+// attemptAll 按顺序尝试“渠道 + key”，直到有一个给客户端写出了响应。只在还没给客户端写任何字节之前换；失败的尝试不收钱。
+//   - key 自己的问题（429、401 / 402 / 403）：换下一把 key，不占重试次数。同一渠道最多连换 maxKeysPerChannel 把，
+//     后面还有别的渠道时去下一个渠道；是最后一个渠道时一直换到可用的 key 用完（免费 key 聚合类渠道，限流是常态）。
+//     冷却中、失效的 key 不碰。
+//   - 渠道级失败（5xx、超时、断流）：占一次重试（服务分组设置，默认 2 次），换下一个渠道；没有别的渠道可换时等 1 秒同渠道再试。
+//   - 整个请求最多 router.RetryBudget。
 func (h *Handler) attemptAll(w http.ResponseWriter, r *http.Request, c *call, req *request, routes []store.Route) {
+	fallback := false // true：没有可用的 key，只剩失效的，照样试（可能已经恢复，比如刚充值）
+	var usable []store.Route
+	for _, rt := range routes {
+		if h.Keys.Usable(rt.KeyID) {
+			usable = append(usable, rt)
+		}
+	}
+	if len(usable) == 0 {
+		ids := make([]int64, len(routes))
+		for i, rt := range routes {
+			ids[i] = rt.KeyID
+		}
+		if wait, ok := h.Keys.MinCooldown(ids); ok {
+			// 所有 key 都在限流冷却：直接告诉客户端多久后再试（客户端按 Retry-After 退避），不去上游白挨 429
+			secs := max(int((wait+time.Second-1)/time.Second), 1)
+			w.Header().Set("Retry-After", strconv.Itoa(secs))
+			c.reject(w, http.StatusTooManyRequests, fmt.Sprintf("这个模型可用渠道的 key 都在限流，约 %d 秒后恢复，请稍后重试", secs))
+			return
+		}
+		usable, fallback = routes, true
+	}
+	alive := func(rt store.Route) bool { return fallback || h.Keys.Usable(rt.KeyID) }
+	skip := map[int64]bool{} // 渠道级失败、不再试的渠道
+	otherChannel := func(rest []store.Route, ch int64) bool {
+		for _, rt := range rest {
+			if rt.ChannelID != ch && !skip[rt.ChannelID] && alive(rt) {
+				return true
+			}
+		}
+		return false
+	}
+
 	var last *failure
 	var reasons []string
-	skip := map[int64]bool{} // 整体失败的渠道（5xx、超时），它后面的 key 不再试
-	n := 0
-	for _, route := range routes {
-		if skip[route.ChannelID] {
+	keysTried := map[int64]int{}
+	chFails, n := 0, 0
+	for i := 0; i < len(usable); i++ {
+		route := usable[i]
+		if skip[route.ChannelID] || !alive(route) {
 			continue
 		}
-		if n >= router.MaxAttempts || (n > 0 && time.Since(c.start) > router.RetryBudget) {
+		if keysTried[route.ChannelID] >= maxKeysPerChannel && otherChannel(usable[i+1:], route.ChannelID) {
+			continue
+		}
+		if n > 0 && time.Since(c.start) > router.RetryBudget {
 			break
 		}
 		n++
@@ -329,11 +376,32 @@ func (h *Handler) attemptAll(w http.ResponseWriter, r *http.Request, c *call, re
 		c.log.FailedChannelIDs = append(c.log.FailedChannelIDs, route.ChannelID)
 		c.log.FailedKeyIDs = append(c.log.FailedKeyIDs, route.KeyID)
 		if router.KeyFailure(f.status) {
+			keysTried[route.ChannelID]++
 			slog.Warn("key 失败，换下一把", "request_id", c.log.RequestID, "channel", route.ChannelName, "key_id", route.KeyID, "reason", f.reason)
-			continue // 限流、失效、欠费是这把 key 的问题，同渠道还有别的 key 就接着试
+			continue
+		}
+		chFails++
+		if chFails > c.retries {
+			break
+		}
+		if !otherChannel(usable[i+1:], route.ChannelID) {
+			// 没有别的渠道可换：等一下同渠道（同一把 key）再试，偶发的 524、抖动常常过一下就好
+			slog.Warn("渠道失败，稍后同渠道再试", "request_id", c.log.RequestID, "channel", route.ChannelName, "reason", f.reason)
+			select {
+			case <-r.Context().Done():
+				c.log.Status = "client_cancelled"
+				return
+			case <-time.After(sameChannelRetryDelay):
+			}
+			i--
+			continue
 		}
 		skip[route.ChannelID] = true
 		slog.Warn("渠道失败，换下一个", "request_id", c.log.RequestID, "channel", route.ChannelName, "reason", f.reason)
+	}
+	if last == nil {
+		c.reject(w, http.StatusServiceUnavailable, "没有可用的渠道，请稍后重试")
+		return
 	}
 	c.log.Status, c.log.HTTPStatus = "upstream_error", last.status
 	c.log.Error = truncate(strings.Join(reasons, "; "), 1000)
