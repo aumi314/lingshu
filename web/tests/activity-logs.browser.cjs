@@ -97,6 +97,37 @@ const fs = require('node:fs')
       }
       await page.locator('.ant-drawer-close').click()
 
+      // 刷新：按钮在状态筛选右边；带筛选刷新保留筛选和页码，只发一次请求
+      // antd 给两个汉字的按钮文字中间插空格，可访问名是“刷 新”
+      await page.locator('.ant-drawer-mask').waitFor({ state: 'hidden' })
+      const refresh = page.getByRole('button', { name: en ? /Refresh/ : /刷\s*新/ })
+      await refresh.waitFor()
+      const statusSelect = page.locator('.ant-select').filter({ has: page.getByText(text('全部状态', 'All statuses'), { exact: true }) })
+      // 窄屏时筛选行会换行，用 DOM 顺序判断按钮就跟在状态筛选后面
+      assert.equal(await statusSelect.evaluate((el) => el.nextElementSibling?.tagName), 'BUTTON', '刷新按钮要紧跟在状态筛选后面')
+      const modelSelect = page.locator('.ant-select').filter({ has: page.getByText(text('全部模型', 'All models'), { exact: true }) })
+      await modelSelect.locator('input[role="combobox"]').click()
+      await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content').filter({ hasText: 'fixture-model' }).click()
+      await page.keyboard.press('Escape')
+      await statusSelect.locator('input[role="combobox"]').click()
+      await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content').filter({ hasText: text('成功', 'Success') }).click()
+      await page.keyboard.press('Escape')
+      for (let i = 0; i < 100 && queries.at(-1).get('status') !== 'success'; i++) await page.waitForTimeout(30)
+      assert.equal(queries.at(-1).get('status'), 'success')
+      assert.equal(queries.at(-1).get('model'), 'fixture-model')
+      const before = queries.length
+      const last = queries.at(-1)
+      await refresh.click()
+      for (let i = 0; i < 100 && queries.length !== before + 1; i++) await page.waitForTimeout(30)
+      assert.equal(queries.length, before + 1, '刷新只发一次请求')
+      const now = queries.at(-1)
+      assert.equal(now.get('status'), 'success', '刷新保留状态筛选')
+      assert.equal(now.get('model'), 'fixture-model', '刷新保留模型筛选')
+      assert.equal(now.get('from'), last.get('from'), '刷新保留时间范围')
+      assert.equal(now.get('to'), last.get('to'), '刷新保留时间范围')
+      assert.equal(now.get('page'), last.get('page'), '刷新保留页码')
+      await page.getByText('fixture-model', { exact: true }).first().waitFor()
+
       // 操作日志：充值到账记为系统；余额类显示金额；改渠道 key 只显示“已更换”
       await tab('操作日志', 'Operation logs')
       await page.getByText(text('额度调整', 'Balance adjustment'), { exact: true }).waitFor()
@@ -168,6 +199,6 @@ const fs = require('node:fs')
       }
       await page.close()
     }
-    console.log('PASS: peak RPM/TPM and median response cards, quick date ranges next to the picker, admin/member call/operation tabs, cache rate, first token and speed, operation labels and secret masking, system actor, target filter, details, order currency, tab in URL, top-up orders merged into operations with live status, empty/error states, delayed responses, Chinese/English, mobile')
+    console.log('PASS: peak RPM/TPM and median response cards, quick date ranges next to the picker, refresh button next to the status filter keeping filters and page, admin/member call/operation tabs, cache rate, first token and speed, operation labels and secret masking, system actor, target filter, details, order currency, tab in URL, top-up orders merged into operations with live status, empty/error states, delayed responses, Chinese/English, mobile')
   } finally { await browser.close(); server.kill() }
 })().catch((error) => { console.error(error); process.exitCode = 1 })
