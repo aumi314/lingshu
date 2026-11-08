@@ -42,8 +42,14 @@ const fs = require('node:fs')
     await page.getByText('已有 1 个 key', { exact: true }).waitFor()
 
     // 默认是 Agent 配置：提示词带两个地址、不含 key
-    await page.getByRole('tabpanel').getByText(/Configure this coding agent to use my Lingshu API gateway/).waitFor()
-    await page.getByRole('tabpanel').getByText(/ANTHROPIC_BASE_URL to https:\/\/gateway\.example\.com and ANTHROPIC_AUTH_TOKEN/).waitFor()
+    await page.getByRole('tabpanel').getByText(/Switch this agent's model provider to my Lingshu API gateway/).waitFor()
+    await page.getByRole('tabpanel').getByText(/ANTHROPIC_BASE_URL=https:\/\/gateway\.example\.com and ANTHROPIC_AUTH_TOKEN=<key>/).waitFor()
+    const prompt = await page.getByRole('tabpanel').locator('pre').innerText()
+    assert.ok(prompt.includes('automatically pick the cheapest suitable model'))
+    assert.ok(prompt.includes('Then stop and wait for me to fix it.'))
+    assert.ok(prompt.includes('Codex, Claude Code, OpenClaw, OpenCode, ZCode, WorkBuddy'))
+    assert.ok(prompt.indexOf('1. Test first:') < prompt.indexOf('2. Ask which agent to configure'))
+    assert.ok(prompt.includes('4. Tell me how to reload the agent'))
     assert.equal(await page.getByText(/sk-ls-你的key/).count(), 0)
 
     // Magpie 一键导入：三个协议地址，Anthropic 用根地址，不带 key
