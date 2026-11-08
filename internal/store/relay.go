@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -66,12 +67,21 @@ func mustDecimal(s string) decimal.Decimal {
 	return decimal.RequireFromString(s)
 }
 
-// Route 是一个可用的上游渠道，带上模型的站内标价。
+// RouteKey 是渠道里一把启用的 key。
+type RouteKey struct {
+	ID  int64  `json:"id"`
+	Key string `json:"key"`
+}
+
+// Route 是一个可用的上游渠道，带上模型的站内标价。Keys 是渠道里启用的 key（至少一把）；
+// 网关按会话从中选一把，选中的填在 KeyID / APIKey 上再发请求。
 type Route struct {
 	ChannelID     int64
 	ChannelName   string
 	Template      string
 	BaseURL       string
+	Keys          []RouteKey
+	KeyID         int64
 	APIKey        string
 	ProxyURL      string // 空表示直连
 	UpstreamModel string
@@ -96,7 +106,10 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 		return nil, fmt.Errorf("未知协议 %q", protocol)
 	}
 	rows, err := s.Pool.Query(ctx, fmt.Sprintf(`
-		SELECT c.id, c.name, c.template, c.%[1]s, c.api_key, c.proxy_url, COALESCE(NULLIF(cm.upstream_name, ''), m.name),
+		SELECT c.id, c.name, c.template, c.%[1]s,
+		       (SELECT json_agg(json_build_object('id', k.id, 'key', k.api_key) ORDER BY k.sort_order, k.id)
+		        FROM channel_keys k WHERE k.channel_id = c.id AND k.enabled),
+		       c.proxy_url, COALESCE(NULLIF(cm.upstream_name, ''), m.name),
 		       m.input_price::text, m.output_price::text, m.cache_read_price::text, m.cache_write_price::text, m.price_rules,
 		       m.fast_multiplier::text
 		FROM models m
@@ -104,6 +117,7 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 		JOIN channels c ON c.id = cm.channel_id
 		JOIN channel_groups cg ON cg.channel_id = c.id AND cg.group_id = $1
 		WHERE m.name = $2 AND c.enabled AND c.%[1]s <> ''
+		  AND EXISTS (SELECT 1 FROM channel_keys k WHERE k.channel_id = c.id AND k.enabled)
 		ORDER BY c.priority DESC, random()`, col), groupID, model)
 	if err != nil {
 		return nil, err
@@ -112,9 +126,13 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 		var rt Route
 		var in, out, cr, cw string
 		var fast *string
-		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.Template, &rt.BaseURL, &rt.APIKey, &rt.ProxyURL, &rt.UpstreamModel, &in, &out, &cr, &cw,
+		var keys []byte
+		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.Template, &rt.BaseURL, &keys, &rt.ProxyURL, &rt.UpstreamModel, &in, &out, &cr, &cw,
 			&rt.PriceRules, &fast); err != nil {
 			return rt, err
+		}
+		if err := json.Unmarshal(keys, &rt.Keys); err != nil {
+			return rt, fmt.Errorf("解析渠道 %d 的 key: %w", rt.ChannelID, err)
 		}
 		rt.FastMultiplier = optDecimal(fast)
 		rt.Prices = billing.Prices{Input: mustDecimal(in), Output: mustDecimal(out), CacheRead: mustDecimal(cr), CacheWrite: mustDecimal(cw)}
@@ -144,16 +162,20 @@ func (s *Store) ModelProtocols(ctx context.Context, groupID int64, model string)
 }
 
 // ChannelForResponse 查 responses 协议的某次响应是哪个渠道处理的，只查这个用户自己的记录。找不到返回 0。
-func (s *Store) ChannelForResponse(ctx context.Context, userID int64, responseID string) (int64, error) {
-	var id *int64
+// 同时返回当时用的 key（旧日志没有记 key，返回 0，表示同渠道哪把都行）。
+func (s *Store) ChannelForResponse(ctx context.Context, userID int64, responseID string) (int64, int64, error) {
+	var id, keyID *int64
 	err := s.Pool.QueryRow(ctx, `
-		SELECT channel_id FROM request_logs
+		SELECT channel_id, channel_key_id FROM request_logs
 		WHERE upstream_response_id = $1 AND user_id = $2
-		ORDER BY id DESC LIMIT 1`, responseID, userID).Scan(&id)
+		ORDER BY id DESC LIMIT 1`, responseID, userID).Scan(&id, &keyID)
 	if errors.Is(err, pgx.ErrNoRows) || id == nil {
-		return 0, nil
+		return 0, 0, nil
 	}
-	return *id, err
+	if keyID == nil {
+		return *id, 0, err
+	}
+	return *id, *keyID, err
 }
 
 // GroupModels 返回分组内可用的模型名，给 /v1/models 用。
@@ -188,6 +210,8 @@ type RequestLog struct {
 	UpstreamModel      string
 	ChannelID          int64 // 0 表示没选到渠道
 	ChannelName        string
+	ChannelKeyID       int64   // 最终用的渠道 key，0 表示没选到
+	FailedKeyIDs       []int64 // 失败过的渠道 key（按尝试顺序），按 key 统计失败
 	Stream             bool
 	Status             string
 	HTTPStatus         int
@@ -222,9 +246,12 @@ func failedIDs(ids []int64) []int64 {
 // SettleRequest 在一个事务里写日志、扣用户余额、加 key 的已用额度，并更新 key 最后使用时间。
 // 一个请求只调用一次。
 func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
-	var channelID *int64
+	var channelID, channelKeyID *int64
 	if l.ChannelID != 0 {
 		channelID = &l.ChannelID
+	}
+	if l.ChannelKeyID != 0 {
+		channelKeyID = &l.ChannelKeyID
 	}
 	ratio := l.GroupRatio
 	if ratio.IsZero() && l.Cost.IsZero() {
@@ -238,16 +265,16 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 				input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, reasoning_tokens, usage_estimated,
 				input_price, output_price, cache_read_price, cache_write_price, group_ratio, cost,
 				attempts, first_byte_ms, total_ms, upstream_response_id, channel_name, key_name, price_rule, group_name, client_ip, reasoning_effort,
-				service_tier, read_ms, upstream_start_ms, failed_channel_ids
+				service_tier, read_ms, upstream_start_ms, failed_channel_ids, channel_key_id, failed_key_ids
 			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38)`,
+			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40)`,
 			l.RequestID, l.UserID, l.APIKeyID, l.GroupID, l.Protocol, l.Model, l.UpstreamModel, channelID,
 			l.Stream, l.Status, l.HTTPStatus, l.Error,
 			l.InputTokens, l.CacheReadTokens, l.CacheWriteTokens, l.OutputTokens, l.ReasoningTokens, l.UsageEstimated,
 			l.Prices.Input.String(), l.Prices.Output.String(), l.Prices.CacheRead.String(), l.Prices.CacheWrite.String(),
 			ratio.String(), l.Cost.String(),
 			l.Attempts, l.FirstByteMS, l.TotalMS, l.UpstreamResponseID, l.ChannelName, l.KeyName, l.PriceRule, l.GroupName, l.ClientIP, l.ReasoningEffort,
-			l.ServiceTier, l.ReadMS, l.UpstreamStartMS, failedIDs(l.FailedChannelIDs),
+			l.ServiceTier, l.ReadMS, l.UpstreamStartMS, failedIDs(l.FailedChannelIDs), channelKeyID, failedIDs(l.FailedKeyIDs),
 		); err != nil {
 			return fmt.Errorf("写请求日志: %w", err)
 		}

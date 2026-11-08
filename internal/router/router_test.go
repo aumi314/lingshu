@@ -1,6 +1,7 @@
 package router
 
 import (
+	"net/http"
 	"testing"
 	"time"
 )
@@ -69,16 +70,38 @@ func TestCooldown(t *testing.T) {
 	}
 }
 
-func TestOrderMovesCoolingToEnd(t *testing.T) {
-	h := NewHealth()
-	h.Record(1, Unhealthy)
-	got := Order(h, []int64{1, 2, 3}, func(id int64) int64 { return id })
-	if got[0] != 2 || got[1] != 3 || got[2] != 1 {
-		t.Errorf("顺序 = %v，期望 [2 3 1]", got)
+// 单把 key：429 按 Retry-After 冷却（有上限、没给按默认），失效 30 分钟后自动再试，成功清零。
+func TestKeyHealth(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	k := NewKeyHealth()
+	k.now = func() time.Time { return now }
+	k.Fail(1, http.StatusTooManyRequests, 0, "限流")
+	if k.Usable(1) || k.Status(1).State != "cooling" || !k.Usable(2) {
+		t.Fatal("429 后这把 key 应冷却，别的 key 不受影响")
 	}
-	h.Record(2, Unhealthy)
-	h.Record(3, Unhealthy)
-	if got := Order(h, []int64{1, 2, 3}, func(id int64) int64 { return id }); len(got) != 3 {
-		t.Errorf("全部冷却时也要保留所有渠道，实际 %v", got)
+	now = now.Add(KeyLimitDefault)
+	if !k.Usable(1) || k.Status(1).State != "ok" {
+		t.Fatal("没给 Retry-After 时默认冷却到期后恢复")
+	}
+	k.Fail(1, http.StatusTooManyRequests, time.Hour, "限流")
+	now = now.Add(KeyLimitMax)
+	if !k.Usable(1) {
+		t.Fatal("Retry-After 再长也最多冷却 KeyLimitMax")
+	}
+	k.Fail(2, http.StatusUnauthorized, 0, "key 无效")
+	if k.Usable(2) || k.Status(2).State != "invalid" {
+		t.Fatal("401 标为失效")
+	}
+	now = now.Add(KeyInvalidRecheck)
+	if !k.Usable(2) {
+		t.Fatal("失效 30 分钟后自动再试")
+	}
+	k.Fail(3, http.StatusForbidden, 0, "欠费")
+	k.OK(3)
+	if !k.Usable(3) || k.Status(3).State != "ok" {
+		t.Fatal("成功后清掉失效标记")
+	}
+	if !KeyFailure(429) || !KeyFailure(401) || !KeyFailure(402) || !KeyFailure(403) || KeyFailure(500) || KeyFailure(404) || KeyFailure(400) {
+		t.Fatal("只有限流、失效、欠费算 key 自己的问题")
 	}
 }

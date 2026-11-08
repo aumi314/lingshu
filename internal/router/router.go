@@ -90,17 +90,89 @@ func (h *Health) Cooling(channelID int64) bool {
 	return s != nil && h.now().Before(s.until)
 }
 
-// Order 把冷却中的渠道挪到最后，其余保持原顺序（数据库已按优先级排好、同档随机）。
-// 冷却中的渠道不直接剔除：所有渠道都在冷却时仍然要试，否则故障恢复后还要白等 5 分钟。
-func Order[T any](h *Health, routes []T, id func(T) int64) []T {
-	out := make([]T, 0, len(routes))
-	var cooling []T
-	for _, r := range routes {
-		if h.Cooling(id(r)) {
-			cooling = append(cooling, r)
-		} else {
-			out = append(out, r)
-		}
+// ---- 渠道内的单把 key（docs/decisions.md「渠道多 key 与渠道备注」） ----
+
+const (
+	KeyLimitDefault   = 60 * time.Second // 429 没给 Retry-After 时这把 key 冷却多久
+	KeyLimitMax       = 10 * time.Minute // Retry-After 的上限：上游给得再长也最多冷却这么久，到点再试
+	KeyInvalidRecheck = 30 * time.Minute // 401 / 402 / 403 标为失效，多久后自动再试一次
+)
+
+// KeyFailure 判断这个上游状态是不是这把 key 自己的问题（限流、失效、欠费）：是的话同渠道换一把 key 重试，不算渠道失败。
+func KeyFailure(status int) bool {
+	switch status {
+	case http.StatusTooManyRequests, http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusForbidden:
+		return true
 	}
-	return append(out, cooling...)
+	return false
+}
+
+type keyState struct {
+	until   time.Time
+	invalid bool
+	reason  string
+}
+
+// KeyHealth 记录每把 key 的冷却和失效状态，只放内存（单实例部署，重启清零）。
+type KeyHealth struct {
+	mu    sync.Mutex
+	state map[int64]*keyState
+	now   func() time.Time
+}
+
+func NewKeyHealth() *KeyHealth {
+	return &KeyHealth{state: map[int64]*keyState{}, now: time.Now}
+}
+
+// Fail 记一次这把 key 自己的失败：429 冷却 retryAfter（0 表示没给，按默认），其余标为失效。
+func (k *KeyHealth) Fail(id int64, status int, retryAfter time.Duration, reason string) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	s := &keyState{reason: reason}
+	if status == http.StatusTooManyRequests {
+		if retryAfter <= 0 {
+			retryAfter = KeyLimitDefault
+		}
+		s.until = k.now().Add(min(retryAfter, KeyLimitMax))
+	} else {
+		s.invalid = true
+		s.until = k.now().Add(KeyInvalidRecheck)
+	}
+	k.state[id] = s
+}
+
+// OK 这把 key 刚成功过：清掉冷却和失效标记。
+func (k *KeyHealth) OK(id int64) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	delete(k.state, id)
+}
+
+// Usable 表示这把 key 现在可以用（没在冷却，失效的也已到复查时间）。
+func (k *KeyHealth) Usable(id int64) bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	s := k.state[id]
+	return s == nil || !k.now().Before(s.until)
+}
+
+// KeyStatus 是给管理端看的单把 key 状态。
+type KeyStatus struct {
+	State  string     `json:"state"` // ok、cooling（限流冷却中）、invalid（失效，到点自动再试）
+	Until  *time.Time `json:"until,omitempty"`
+	Reason string     `json:"reason,omitempty"`
+}
+
+func (k *KeyHealth) Status(id int64) KeyStatus {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	s := k.state[id]
+	if s == nil || !k.now().Before(s.until) {
+		return KeyStatus{State: "ok"}
+	}
+	st := KeyStatus{State: "cooling", Until: &s.until, Reason: s.reason}
+	if s.invalid {
+		st.State = "invalid"
+	}
+	return st
 }
