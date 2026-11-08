@@ -543,3 +543,12 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 最终低频线上检查：公开 health 与登录页 200、匿名管理接口 401；跨域、null origin、其他子域和 cross-site 请求 403，表单请求 415，同源与无来源 CLI 的损坏 JSON 400（到达解析器，未实际登录）；`/v1/responses` 带恶意 Origin 但无 key 返回 401，仍走独立鉴权。外部 curl `--noproxy '*' --resolve` 到源站 IP 为 403，附加 X-Forwarded-For、X-Real-IP、CF-Connecting-IP 伪造 Cloudflare 来源仍 403；`/.env`、`/.git/config`、`/wp-login.php`、`/actuator/health` 路径 404，HTTP 308，五项安全头取值与模板一致。运行中的二进制 SHA 与清单一致（`50b0bc0c…`），eba864f 发布前 dump 校验通过，四个服务与 timer 均 active，Caddy 配置 SHA `fbc78bd7…`，旧站 200，SSH 正常。
 - 保留的既有提示：Caddy 模板校验通过但仍有一条格式 warn（Caddyfile 未按 `caddy fmt` 排版），未额外格式化配置；既有的 Vite 单包超 1600 kB 体积提示保持不变。
 - 生产路由的真实模型调用未在本轮验收，本轮只做入口与鉴权的低频检查。
+
+
+## 2026-11-09：渠道协议列表头与转接标签弱化
+
+- 用户调整：渠道列表的“原生协议”列改回“协议”，转接的 Responses 保留但显示更浅。列头改为「协议 / Protocols」，只有 Messages 地址的渠道继续标出「Responses（转接）」，去掉 cyan 强调色，改为浅底细边加三级文字色（跟随明暗主题）；模型页和调用日志的转接说明不变，网关行为不变。
+- 浏览器回归同步：渠道列表断言列头为「协议」、转接标签存在、标签文字色等于三级文字色且不同于原生协议标签；英文界面断言列头 Protocols 与 Responses (bridged)；浅色主题下复验同一颜色规则。
+- 基于 main `7a07de7` 的独立分支 `codex/channel-protocol-label`，交付 PR 待合并；生产未改动。
+
+- 验证：npm run build、bridge.browser.cjs（中文/英文、深色/浅色）和 channels.browser.cjs 均通过；保留既有 Vite 单包体积提示。

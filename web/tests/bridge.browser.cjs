@@ -44,7 +44,8 @@ const path = require('node:path')
     }
     const summary = { requests: 1, failed: 0, cost: '0.25', input_tokens: 100, cache_read_tokens: 0, output_tokens: 20, topup_total: '0', adjustment_net: '0' }
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
-    const user = { id: 2, username: 'member-fixture', role: 'admin', balance: '8', enabled: true, user_group_ids: [1], preferences: { language: 'zh', theme: 'dark' }, created_at: new Date().toISOString() }
+    const prefs = { language: 'zh', theme: 'dark' }
+    const user = { id: 2, username: 'member-fixture', role: 'admin', balance: '8', enabled: true, user_group_ids: [1], preferences: prefs, created_at: new Date().toISOString() }
     await page.route('**/api/**', (route) => {
       const p = new URL(route.request().url()).pathname
       const json = (b) => route.fulfill({ json: b })
@@ -70,15 +71,52 @@ const path = require('node:path')
     const nativeRow = page.locator('tbody tr').filter({ hasText: 'gpt-native' })
     assert.equal(await nativeRow.getByText('Responses（转接）', { exact: true }).count(), 0)
 
-    // 渠道页：只有 Messages 地址的渠道标出 Responses 转接
+    // 渠道页：表头是「协议」；转接标签保留，但视觉比原生协议弱一档
     await page.goto('http://127.0.0.1:25187/console/admin/channels')
     await page.getByText('anthropic-bridge', { exact: true }).waitFor()
     const bridgeRow = page.locator('tbody tr').filter({ hasText: 'anthropic-bridge' })
-    await bridgeRow.getByText('Responses（转接）', { exact: true }).waitFor()
+    const bridgedTag = bridgeRow.getByText('Responses（转接）', { exact: true })
+    await bridgedTag.waitFor()
     await bridgeRow.getByText('messages', { exact: true }).waitFor()
     const nativeChannel = page.locator('tbody tr').filter({ hasText: 'openai-native' })
     assert.equal(await nativeChannel.getByText('Responses（转接）', { exact: true }).count(), 0)
+    assert.equal(await page.locator('th').filter({ hasText: /^协议$/ }).count(), 1)
+    assert.equal(await page.locator('th').filter({ hasText: /^原生协议$/ }).count(), 0)
 
+    // 转接标签用三级文字色（跟随主题），且比原生协议标签更弱
+    const tertiaryColor = async () => page.locator('.bridged-tag').first().evaluate((tag) => {
+      const probe = document.createElement('span')
+      probe.style.color = 'var(--ant-color-text-tertiary)'
+      tag.parentElement.appendChild(probe)
+      const value = getComputedStyle(probe).color
+      probe.remove()
+      return value
+    })
+    const tagColor = await bridgedTag.evaluate((el) => getComputedStyle(el).color)
+    const nativeTagColor = await bridgeRow.getByText('messages', { exact: true }).evaluate((el) => getComputedStyle(el).color)
+    assert.equal(tagColor, await tertiaryColor(), 'dark theme: bridged tag should use the tertiary text color')
+    assert.notEqual(tagColor, nativeTagColor, 'bridged tag should look weaker than the native protocol tag')
+
+    // 英文界面：表头和转接标签都换成英文
+    prefs.language = 'en'
+    await page.reload()
+    await page.getByText('anthropic-bridge', { exact: true }).waitFor()
+    const enRow = page.locator('tbody tr').filter({ hasText: 'anthropic-bridge' })
+    await enRow.getByText('Responses (bridged)', { exact: true }).waitFor()
+    assert.equal(await page.locator('th').filter({ hasText: /^Protocols$/ }).count(), 1)
+    const enTagColor = await enRow.getByText('Responses (bridged)', { exact: true }).evaluate((el) => getComputedStyle(el).color)
+    assert.equal(enTagColor, await tertiaryColor(), 'english UI: bridged tag should use the tertiary text color')
+
+    // 浅色主题下同样是三级文字色
+    prefs.theme = 'light'
+    await page.reload()
+    await page.getByText('anthropic-bridge', { exact: true }).waitFor()
+    const lightRow = page.locator('tbody tr').filter({ hasText: 'anthropic-bridge' })
+    const lightTagColor = await lightRow.getByText('Responses (bridged)', { exact: true }).evaluate((el) => getComputedStyle(el).color)
+    assert.equal(lightTagColor, await tertiaryColor(), 'light theme: bridged tag should use the tertiary text color')
+
+    prefs.language = 'zh'
+    prefs.theme = 'dark'
     // 调用日志：标出入口 → 上游协议、压缩用途；详情里有转接诊断
     await page.goto('http://127.0.0.1:25187/console/logs')
     await page.getByText('claude-bridge', { exact: true }).waitFor()
@@ -90,7 +128,7 @@ const path = require('node:path')
     await drawer.getByText(/input\[0\]\.content/).waitFor()
     await drawer.getByText('转接', { exact: true }).waitFor()
 
-    console.log('PASS: models and channels mark bridged Responses entries, call logs show protocol->upstream, compaction purpose and conversion diagnostics')
+    console.log('PASS: models and channels mark bridged Responses entries with a weaker tag under the Protocols column, call logs show protocol->upstream, compaction purpose and conversion diagnostics')
   } finally {
     await browser.close()
     server.kill()
