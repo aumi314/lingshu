@@ -29,15 +29,16 @@ import { BalanceCell, BalanceModal } from '../../components/ChannelBalance'
 import { DragHandle, SortableBody, SortableRow } from '../../components/SortableRows'
 import { arrayMove } from '@dnd-kit/sortable'
 import { parseStandardRoot, recoverStandardRoot, standardBases } from '../../channelUrls'
+import ChannelKeys, { toPayload, toRows, type KeyRow } from '../../components/ChannelKeys'
 
 
 type Row = { key: number; upstream: string; model_id?: number }
-type ProbeDraft = Pick<Channel, 'id' | 'template' | 'base_url_chat' | 'base_url_messages' | 'base_url_responses' | 'base_url_systemone' | 'proxy_url'> & { api_key: string }
+type ProbeDraft = Pick<Channel, 'id' | 'template' | 'base_url_chat' | 'base_url_messages' | 'base_url_responses' | 'base_url_systemone' | 'proxy_url'> & { api_key: string; keys?: Channel['keys'] }
 type FormValues = {
   template: string
   root_url: string
   name: string
-  api_key: string
+  note: string
   base_url_chat: string
   base_url_messages: string
   base_url_responses: string
@@ -64,6 +65,8 @@ export default function Channels() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Channel | 'new' | null>(null)
   const [rows, setRows] = useState<Row[]>([])
+  const [keyRows, setKeyRows] = useState<KeyRow[]>([])
+  const [probeKeyID, setProbeKeyID] = useState<number | undefined>()
   const [fetched, setFetched] = useState<string[] | null>(null)
   const [picked, setPicked] = useState<string[]>([])
   const [modelSearch, setModelSearch] = useState('')
@@ -125,12 +128,14 @@ export default function Channels() {
       group_ids: groups.filter((g) => g.name === 'default' && g.enabled).map((g) => g.id),
     })
     setRows([])
+    setKeyRows([])
     setEditing('new')
   }
 
   const openEdit = (c: Channel) => {
     form.resetFields()
-    form.setFieldsValue({ ...c, api_key: '', root_url: c.template === 'standard' ? c.base_url_messages : '' })
+    form.setFieldsValue({ ...c, root_url: c.template === 'standard' ? c.base_url_messages : '' })
+    setKeyRows(toRows(c.keys))
     setRows(c.models.map((m) => ({ key: rowSeq++, upstream: m.upstream_name || m.model_name, model_id: m.model_id })))
     setEditing(c)
   }
@@ -180,7 +185,9 @@ export default function Channels() {
     return {
       id: editing && editing !== 'new' ? editing.id : 0,
       template: v.template ?? (editing !== 'new' ? editing?.template : '') ?? '',
-      api_key: v.api_key ?? '',
+      // 还没保存的新渠道用第一把新加的 key 拉模型、测试；已保存的渠道由服务端用第一把启用的 key
+      api_key: editing === 'new' ? keyRows.find((k) => k.enabled && k.api_key)?.api_key ?? '' : '',
+      keys: editing && editing !== 'new' ? editing.keys : undefined,
       base_url_chat: bases.base_url_chat ?? '',
       base_url_messages: bases.base_url_messages ?? '',
       base_url_responses: bases.base_url_responses ?? '',
@@ -221,6 +228,7 @@ export default function Channels() {
       return
     }
     setProbeDraft(d)
+    setProbeKeyID(undefined)
     setProbeModels(names)
     setProbeProtocol(protocols[0])
     setProbe([])
@@ -241,7 +249,7 @@ export default function Channels() {
     setProbeBatch(batch)
     setProbingModel(batch ? '' : upstreams[0])
     try {
-      const results = await post<ProbeResult[]>('/api/admin/channels/probe', { ...probeDraft, targets })
+      const results = await post<ProbeResult[]>('/api/admin/channels/probe', { ...probeDraft, keys: undefined, test_key_id: probeKeyID, targets })
       setProbe((current) => [
         ...current.filter((item) => !targets.some((target) => target.protocol === item.protocol && target.model === item.model)),
         ...results,
@@ -264,6 +272,10 @@ export default function Channels() {
       message.error(t(`第 ${missing + 1} 行模型没填完整：上游模型名和站内模型都要填`, `Row ${missing + 1} is incomplete`))
       return
     }
+    if (!keyRows.length) {
+      message.error(t('至少要有一把 API key', 'Add at least one API key'))
+      return
+    }
     const ids = rows.map((r) => r.model_id)
     if (new Set(ids).size !== ids.length) {
       message.error(t('同一个站内模型在这个渠道里只能映射一次', 'Each site model can only be mapped once per channel'))
@@ -272,6 +284,9 @@ export default function Channels() {
     const body = {
       ...d,
       name: v.name,
+      note: v.note ?? '',
+      api_key: undefined,
+      keys: toPayload(keyRows),
       priority: v.priority,
       enabled: v.enabled,
       group_ids: v.group_ids,
@@ -279,10 +294,10 @@ export default function Channels() {
     }
     setSaving(true)
     try {
-      if (editing === 'new') await post('/api/admin/channels', body)
-      else if (editing) await put(`/api/admin/channels/${editing.id}`, body)
+      const res = editing === 'new' ? await post<{ keys_deduped?: number }>('/api/admin/channels', body) : editing ? await put<{ keys_deduped?: number }>(`/api/admin/channels/${editing.id}`, body) : null
       setEditing(null)
-      message.success(t('渠道已保存', 'Channel saved'))
+      const dedup = res?.keys_deduped ?? 0
+      message.success(dedup ? t(`渠道已保存，自动去掉了 ${dedup} 把重复的 key`, `Saved; ${dedup} duplicate key(s) removed`) : t('渠道已保存', 'Channel saved'))
       load()
     } catch (e) {
       message.error((e as Error).message)
@@ -377,7 +392,19 @@ export default function Channels() {
                     <VendorIcon template={c.template} />
                   </span>
                 </Tooltip>
-                {v}
+                <span>
+                  <span>{v}</span>
+                  {c.note && <div className="muted" style={{ fontSize: 12, whiteSpace: 'normal', maxWidth: 260 }}>{c.note}</div>}
+                </span>
+                {c.keys.length > 1 && (() => {
+                  const bad = c.keys.filter((k) => k.enabled && k.status && k.status.state !== 'ok').length
+                  const invalid = c.keys.some((k) => k.enabled && k.status?.state === 'invalid')
+                  return (
+                    <Tooltip title={t(`${c.keys.filter((k) => k.enabled).length} 把启用${bad ? `，${bad} 把冷却中或失效` : ''}`, `${c.keys.filter((k) => k.enabled).length} enabled${bad ? `, ${bad} cooling or invalid` : ''}`)}>
+                      <Tag color={invalid ? 'red' : bad ? 'orange' : undefined}>{t(`${c.keys.length} 把 key`, `${c.keys.length} keys`)}</Tag>
+                    </Tooltip>
+                  )
+                })()}
                 {c.proxy_url && (
                   <Tooltip title={`${t('经代理', 'Via proxy')} ${c.proxy_url}`}>
                     <Tag color="geekblue">{t('代理', 'Proxy')}</Tag>
@@ -410,7 +437,7 @@ export default function Channels() {
             align: 'right',
             render: (_, c) => (
               <Space>
-                <Button size="small" type="link" onClick={() => openProbe({ id: c.id, template: c.template, api_key: '', base_url_chat: c.base_url_chat, base_url_messages: c.base_url_messages, base_url_responses: c.base_url_responses, base_url_systemone: c.base_url_systemone, proxy_url: c.proxy_url }, c.models.map((m) => m.upstream_name || m.model_name))}>
+                <Button size="small" type="link" onClick={() => openProbe({ id: c.id, template: c.template, api_key: '', keys: c.keys, base_url_chat: c.base_url_chat, base_url_messages: c.base_url_messages, base_url_responses: c.base_url_responses, base_url_systemone: c.base_url_systemone, proxy_url: c.proxy_url }, c.models.map((m) => m.upstream_name || m.model_name))}>
                   {t('测试', 'Test')}
                 </Button>
                 <Button size="small" type="link" onClick={() => openEdit(c)}>
@@ -494,13 +521,11 @@ export default function Channels() {
               <Switch />
             </Form.Item>
           </Space>
-          <Form.Item
-            name="api_key"
-            label="API key"
-            rules={editing === 'new' ? [{ required: true, message: t('填写上游的 API key', 'Enter the upstream API key') }] : []}
-            extra={editing && editing !== 'new' ? t(`留空表示不修改（当前 ${editing.api_key_masked}）`, `Leave empty to keep the current key (${editing.api_key_masked})`) : undefined}
-          >
-            <Input.Password autoComplete="new-password" className="mono" />
+          <Form.Item name="note" label={t('备注', 'Note')} extra={t('质量结论、价格、来源等，显示在渠道列表名称下方', 'Quality notes, price, source; shown under the name in the list')}>
+            <Input.TextArea rows={2} maxLength={500} showCount />
+          </Form.Item>
+          <Form.Item label="API key" required>
+            <ChannelKeys value={keyRows} onChange={setKeyRows} />
           </Form.Item>
           <Typography.Text type="secondary">
             {templateID === 'standard'
@@ -696,6 +721,20 @@ export default function Channels() {
                 options={probeDraft ? configuredProtocols(probeDraft).map((protocol) => ({ value: protocol, label: protocolLabel[protocol] })) : []}
                 onChange={setProbeProtocol}
               />
+              {(probeDraft?.keys?.length ?? 0) > 1 && (
+                <>
+                  <Typography.Text>Key</Typography.Text>
+                  <Select
+                    allowClear
+                    value={probeKeyID}
+                    disabled={probing}
+                    style={{ width: 240 }}
+                    placeholder={t('第一把启用的', 'First enabled')}
+                    options={(probeDraft?.keys ?? []).filter((k) => k.id).map((k) => ({ value: k.id!, label: `${k.masked}${k.note ? ` · ${k.note}` : ''}${k.enabled ? '' : t('（停用）', ' (off)')}` }))}
+                    onChange={setProbeKeyID}
+                  />
+                </>
+              )}
             </Space>
             <Button
               type="primary"

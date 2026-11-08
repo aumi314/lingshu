@@ -116,7 +116,7 @@ lingshu/
 |---|---|
 | 网关 | chat / messages / responses / systemone 四个入口透传；优先级分档、换渠道重试、冷却；预扣费、按用户的并发和频率限制；GPT Fast 档位计费 |
 | 计费 | 模型四项单价 + 价格规则（长上下文、日期、时段、周末）× 分组倍率；汇率手动或实时（Frankfurter） |
-| 渠道 | 标准模板与各厂商官方模板（含 OpenRouter、Gemini、Anthropic、TypeSafe / Nace、OpenCode Zen、NVIDIA）、渠道代理、按需余额查询、24 小时连接状态、冒烟测试 |
+| 渠道 | 标准模板与各厂商官方模板（含 OpenRouter、Gemini、Anthropic、TypeSafe / Nace、OpenCode Zen、NVIDIA）、渠道代理、按需余额查询、24 小时连接状态、冒烟测试 ；一个渠道多把 key（上限 50，会话固定、限流 / 失效自动换 key）、渠道备注 |
 | 用户 | 超级管理员 / 管理员 / 成员；用户分组控制服务分组可见范围；注册码注册；登录防护（频率限制 + 工作量证明） |
 | 钱包 | 五家支付适配（EPay 已真实开放）、兑换码、用 API key 查余额（`/v1/usage`） |
 | 日志 | 调用日志（耗时拆分、IP、推理强度、换渠道失败记录）+ 操作日志（同事务写入、改前改后对比） |

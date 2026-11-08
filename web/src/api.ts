@@ -186,12 +186,25 @@ export type OperationLogsResponse = { logs: OperationEntry[]; total: number; sum
 
 export type ChannelModel = { model_id: number; model_name: string; upstream_name: string }
 
+// 渠道里的一把 key：管理端只看掩码；status、stats 来自网关内存和最近 24 小时日志
+export type ChannelKey = {
+  id?: number
+  api_key?: string
+  masked: string
+  enabled: boolean
+  note: string
+  status?: { state: 'ok' | 'cooling' | 'invalid'; until?: string; reason?: string }
+  stats?: { success: number; failed: number }
+}
+
 export type Channel = {
   id: number
   name: string
   template: string
+  note: string
   api_key?: string
   api_key_masked: string
+  keys: ChannelKey[]
   priority: number
   enabled: boolean
   base_url_chat: string
