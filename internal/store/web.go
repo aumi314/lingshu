@@ -413,18 +413,21 @@ func (s *Store) SaveGroup(ctx context.Context, g *Group) error {
 }
 
 func saveGroup(ctx context.Context, tx pgx.Tx, g *Group) error {
+	var retries int
 	if g.ID == 0 {
 		err := tx.QueryRow(ctx, `INSERT INTO groups (name, ratio, enabled, is_public, description, retry_count, sort_order)
-			VALUES ($1, $2::numeric, $3, $4, $5, COALESCE($6, 2), (SELECT COALESCE(max(sort_order), 0) + 1 FROM groups)) RETURNING id`,
-			g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description, g.RetryCount).Scan(&g.ID)
+			VALUES ($1, $2::numeric, $3, $4, $5, COALESCE($6, 2), (SELECT COALESCE(max(sort_order), 0) + 1 FROM groups)) RETURNING id, retry_count`,
+			g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description, g.RetryCount).Scan(&g.ID, &retries)
 		if err != nil {
 			return translate(err)
 		}
-	} else if err := execOne(ctx, tx, `UPDATE groups SET name = $2, ratio = $3::numeric, enabled = $4, is_public = $5, description = $6,
-		retry_count = COALESCE($7, retry_count) WHERE id = $1`,
-		g.ID, g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description, g.RetryCount); err != nil {
-		return err
+		g.RetryCount = &retries
+	} else if err := tx.QueryRow(ctx, `UPDATE groups SET name = $2, ratio = $3::numeric, enabled = $4, is_public = $5, description = $6,
+		retry_count = COALESCE($7, retry_count) WHERE id = $1 RETURNING retry_count`,
+		g.ID, g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description, g.RetryCount).Scan(&retries); err != nil {
+		return translate(err)
 	}
+	g.RetryCount = &retries // 返回数据库里的实际值（新建默认 2、不带字段时保留原值）
 	if _, err := tx.Exec(ctx, `DELETE FROM group_user_groups WHERE group_id = $1`, g.ID); err != nil {
 		return err
 	}

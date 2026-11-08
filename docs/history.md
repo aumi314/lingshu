@@ -279,6 +279,10 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 `store.requestLoad` 按调用日志的筛选算最忙那一分钟的请求数和 token 数、成功请求的首字和总耗时中位数，随汇总返回（`peak_rpm`、`peak_tpm` 及发生时间、`median_first_token_ms`、`median_total_ms`）。日志页汇总卡片 6 张（宽屏一行 6 张、中屏 3 张、手机 2 张，数字不折行），日期旁加今日 / 本周 / 本月 / 近 7 天 / 近 30 天。测试：`TestLogLoadMetrics`，`activity-logs.browser.cjs` 加新卡片和快捷时间段（含手机宽度不撑宽页面）。
 
+### 服务分组失败重试次数与按原因重试（2026-11-07）
+
+迁移 0031 给 `groups` 加 `retry_count`（0–4，默认 2，原行为不变；保存不带字段时保留原值，接口返回数据库里的实际值）。`relay.attemptAll` 改为按失败原因走：key 级失败换 key 不占次数（后面还有渠道时同渠道最多 10 把，最后一个渠道不限），渠道级失败占次数、换渠道或等 1 秒同渠道再试；所有 key 限流冷却时直接回 429 + Retry-After（`router.KeyHealth.MinCooldown`）。删除不再使用的 `router.MaxAttempts`。服务分组页加“失败重试”列和编辑项。用户指出最初“同渠道最多 2 把 key”的设计会坑免费 key 聚合渠道，改为上面的规则。测试：`TestLastChannelRotatesAllKeysThenRetryAfter`、`TestKeyRotationCapWhenOtherChannelExists`、`TestGroupRetryCountZero`、`TestSingleChannel5xxRetriesSameChannel`、`TestGroupRetryCount`、`models.browser.cjs`。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 改为自动发布前的手动发布记录

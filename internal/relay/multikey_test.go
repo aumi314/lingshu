@@ -7,7 +7,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // 渠道多 key（docs/decisions.md「渠道多 key 与渠道备注」）：渠道 1 上放三把 key，模拟上游按收到的 key 决定怎么回。
@@ -200,5 +202,89 @@ func TestMultiKeyPreviousResponsePinsKey(t *testing.T) {
 	defer mu.Unlock()
 	if len(hits) != 2 || hits[1] != orig {
 		t.Errorf("续接对话应发回原 key %s，实际 %v", orig, hits)
+	}
+}
+
+// manyKeys 让渠道 1 一共有 n 把 key（原有的 upstreamKey 加 n-1 把）。
+func (e *env) manyKeys(n int) {
+	e.t.Helper()
+	for i := 1; i < n; i++ {
+		e.exec(`INSERT INTO channel_keys (channel_id, api_key, sort_order) VALUES (1, $1, $2)`, "key-"+strconv.Itoa(i), i)
+	}
+}
+
+// 最后一个渠道（免费 key 聚合类）：限流时一直换 key，不受 10 把的上限，直到 key 用完；
+// 之后所有 key 都在冷却，直接回 429 和 Retry-After，不再去上游白挨限流。
+func TestLastChannelRotatesAllKeysThenRetryAfter(t *testing.T) {
+	e := newEnv(t)
+	e.manyKeys(12)
+	var hits atomic.Int32
+	e.upstream = func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		status(429, `{"error":{"message":"rate limited"}}`)(w, r)
+	}
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	_, failed, attempts := e.keyLog(resp.Header.Get("X-Lingshu-Request-Id"))
+	if resp.StatusCode != 429 || attempts != 12 || len(failed) != 12 || hits.Load() != 12 {
+		t.Fatalf("最后一个渠道应把 12 把 key 都试一遍：%d 尝试 %d 失败 key %d 上游 %d 次", resp.StatusCode, attempts, len(failed), hits.Load())
+	}
+	resp = e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	ra, _ := strconv.Atoi(resp.Header.Get("Retry-After"))
+	if resp.StatusCode != 429 || ra < 1 || ra > 60 || !strings.Contains(string(body), "秒后恢复") || hits.Load() != 12 {
+		t.Errorf("key 全在冷却时应直接回 429 + Retry-After，不碰上游：%d Retry-After %q %s 上游 %d 次", resp.StatusCode, resp.Header.Get("Retry-After"), body, hits.Load())
+	}
+}
+
+// 后面还有别的渠道时，同一渠道最多连换 10 把 key 就去下一个渠道。
+func TestKeyRotationCapWhenOtherChannelExists(t *testing.T) {
+	e := newEnv(t)
+	e.manyKeys(12)
+	primaryHits, backupHits := e.withBackup(status(429, `{"error":{"message":"rate limited"}}`), okUpstream)
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	_, _, attempts := e.keyLog(resp.Header.Get("X-Lingshu-Request-Id"))
+	if resp.StatusCode != 200 || primaryHits.Load() != 10 || backupHits.Load() != 1 || attempts != 11 {
+		t.Errorf("换 10 把 key 后应去兜底渠道：%d 主 %d 次 备 %d 次 尝试 %d", resp.StatusCode, primaryHits.Load(), backupHits.Load(), attempts)
+	}
+}
+
+// 服务分组的失败重试次数只计渠道级失败：设为 0 时主渠道 500 就直接返回，不换兜底。
+func TestGroupRetryCountZero(t *testing.T) {
+	e := newEnv(t)
+	e.exec(`UPDATE groups SET retry_count = 0 WHERE id = 1`)
+	primaryHits, backupHits := e.withBackup(status(500, `{"error":{"message":"boom"}}`), okUpstream)
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	if resp.StatusCode != 500 || primaryHits.Load() != 1 || backupHits.Load() != 0 {
+		t.Errorf("重试 0 次：%d 主 %d 次 备 %d 次", resp.StatusCode, primaryHits.Load(), backupHits.Load())
+	}
+}
+
+// 没有别的渠道可换：渠道级失败后等 1 秒同渠道再试（偶发 524、抖动）；重试设为 0 时不再试。
+func TestSingleChannel5xxRetriesSameChannel(t *testing.T) {
+	e := newEnv(t)
+	var hits atomic.Int32
+	e.upstream = func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) == 1 {
+			status(524, `timeout`)(w, r)
+			return
+		}
+		okUpstream(w, r)
+	}
+	start := time.Now()
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || hits.Load() != 2 || time.Since(start) < sameChannelRetryDelay {
+		t.Errorf("应等一下同渠道重试成功：%d 上游 %d 次 用时 %v", resp.StatusCode, hits.Load(), time.Since(start))
+	}
+	e.exec(`UPDATE groups SET retry_count = 0 WHERE id = 1`)
+	hits.Store(0)
+	resp = e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	if resp.StatusCode != 524 || hits.Load() != 1 {
+		t.Errorf("重试 0 次时不再试：%d 上游 %d 次", resp.StatusCode, hits.Load())
 	}
 }

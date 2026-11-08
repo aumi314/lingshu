@@ -63,7 +63,7 @@ export type User = {
 export const isAdmin = (role?: string) => role === 'admin' || role === 'super_admin'
 
 export type UserGroup = { id: number; name: string; is_default: boolean }
-export type Group = { id: number; name: string; ratio: string; enabled: boolean; is_public: boolean; user_group_ids: number[]; description: string }
+export type Group = { id: number; name: string; ratio: string; enabled: boolean; is_public: boolean; user_group_ids: number[]; description: string; retry_count?: number } // retry_count：渠道级失败后最多重试几次
 
 // 价格规则（阶梯计价、分时段计价），按顺序匹配，第一条满足的生效
 export type PriceRule = {
