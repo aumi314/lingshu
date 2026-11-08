@@ -52,7 +52,7 @@ ssh -i ~/.ssh/dmit_lax_ed25519 -o IdentitiesOnly=yes root@136.175.178.126
 
 ## Lingshu 站点防护（2026-11-09，已发布）
 
-应用与 Caddy 已分别发布验收：应用 `eba864f` 于 2026-11-08T18:02:18Z（北京时间 11-09 02:02）自动发布，程序 SHA256 `50b0bc0c15487fa3ca0689bf77132b9989aafc8ee859d81e51dc062c39413532`，数据库 schema 到 `0034_log_upstream_protocol`，发布前备份 `lingshu-deploy-20261108T180158Z-eba864f.dump`；Caddy 站点块随后单独发布于 2026-11-08T18:13:39Z（北京时间 11-09 02:13），生产配置 SHA256 `fbc78bd7580f2cb7bc22d69441986962f604c1830cb695e20ae3d1a62ca57b4a`，备份 `/opt/newapi/Caddyfile.pre-lingshu-security-20261108T180518Z`。首次发布脚本用 urllib 默认 User-Agent 被 Cloudflare 1010 拒绝并自动回滚，改用 Lingshu-release-check UA 后发布成功，未改 Cloudflare。旧站、公开 health 与内部 health 均 200。生产 Caddy 为 2.11.4，cancel 语义按源码与 mock 在该版本确认通过，`flush_interval -1` 保持不变。模板仅限制 gateway.piqode.com，按 remote_ip 连接来源放行 Cloudflare，其他来源 HTTPS 返回 403；不使用客户端转发头提供准入资格。旧站与全局防火墙不变。
+2026-11-09 已分别发布应用 `eba864f`（北京时间 02:02）和 Caddy 站点防护（02:13），版本、备份、哈希与验收证据见 `docs/history.md`「三个 PR 合并发布与转接产物复验」。模板仅限制 gateway.piqode.com，按 remote_ip 连接来源放行 Cloudflare，其他来源 HTTPS 返回 403；旧站与全局防火墙不变。现役 Caddy 2.11.4 的即时 SSE、WS 与客户端断开取消已在隔离模拟上游验证。
 
 - 官方网段来自 https://www.cloudflare.com/ips-v4 和 https://www.cloudflare.com/ips-v6，2026-11-09 核对为 IPv4 15 条、IPv6 7 条。更新时验证两份列表每行 CIDR，将同一列表同时用于站点 @not_cloudflare 和现有全局 servers.trusted_proxies static；保留其他全局选项。列表与现役相同则无需改全局块。
 - remote_ip 决定准入，client_ip 解析可信代理传来的真实用户地址并覆盖 X-Real-IP。生产名单不加入回环或整个内网；运维健康检查访问 http://172.18.0.1:8300/healthz。
