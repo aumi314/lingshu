@@ -441,39 +441,43 @@ type LogFilter struct {
 }
 
 type LogEntry struct {
-	ID               int64           `json:"id"`
-	RequestID        string          `json:"request_id"`
-	Username         string          `json:"username"`
-	KeyName          string          `json:"key_name"`
-	GroupName        string          `json:"group_name"`
-	Protocol         string          `json:"protocol"`
-	Model            string          `json:"model"`
-	UpstreamModel    string          `json:"upstream_model,omitempty"`
-	ChannelName      string          `json:"channel_name,omitempty"`
-	Stream           bool            `json:"stream"`
-	Status           string          `json:"status"`
-	HTTPStatus       int             `json:"http_status"`
-	Error            string          `json:"error"`
-	InputTokens      int64           `json:"input_tokens"`
-	CacheReadTokens  int64           `json:"cache_read_tokens"`
-	CacheWriteTokens int64           `json:"cache_write_tokens"`
-	OutputTokens     int64           `json:"output_tokens"`
-	ReasoningTokens  int64           `json:"reasoning_tokens"`
-	UsageEstimated   bool            `json:"usage_estimated"`
-	GroupRatio       decimal.Decimal `json:"group_ratio"`
-	PriceRule        string          `json:"price_rule"` // 命中的价格规则，空表示基础价
-	InputPrice       decimal.Decimal `json:"input_price"`
-	OutputPrice      decimal.Decimal `json:"output_price"`
-	Cost             decimal.Decimal `json:"cost"`
-	Attempts         int             `json:"attempts"`
-	FirstByteMS      int             `json:"first_byte_ms"`
-	TotalMS          int             `json:"total_ms"`
-	CreatedAt        time.Time       `json:"created_at"`
-	ClientIP         string          `json:"client_ip"`
-	ReasoningEffort  string          `json:"reasoning_effort"`
-	ServiceTier      string          `json:"service_tier"`      // '' 标准、fast、fast_downgraded、unavailable
-	ReadMS           int             `json:"read_ms"`           // 读请求体用时，旧日志为 0
-	UpstreamStartMS  int             `json:"upstream_start_ms"` // 发出最终上游请求的时刻（从进入网关算），旧日志为 0
+	ID               int64  `json:"id"`
+	RequestID        string `json:"request_id"`
+	Username         string `json:"username"`
+	KeyName          string `json:"key_name"`
+	GroupName        string `json:"group_name"`
+	Protocol         string `json:"protocol"`
+	UpstreamProtocol string `json:"upstream_protocol"` // 实际发给上游的协议，转接时和入口不同
+	Operation        string `json:"operation"`         // generation 正常生成、compaction 上下文压缩
+	// ConversionDiagnostics 是协议转接的诊断（数组），没有就是空数组
+	ConversionDiagnostics json.RawMessage `json:"conversion_diagnostics"`
+	Model                 string          `json:"model"`
+	UpstreamModel         string          `json:"upstream_model,omitempty"`
+	ChannelName           string          `json:"channel_name,omitempty"`
+	Stream                bool            `json:"stream"`
+	Status                string          `json:"status"`
+	HTTPStatus            int             `json:"http_status"`
+	Error                 string          `json:"error"`
+	InputTokens           int64           `json:"input_tokens"`
+	CacheReadTokens       int64           `json:"cache_read_tokens"`
+	CacheWriteTokens      int64           `json:"cache_write_tokens"`
+	OutputTokens          int64           `json:"output_tokens"`
+	ReasoningTokens       int64           `json:"reasoning_tokens"`
+	UsageEstimated        bool            `json:"usage_estimated"`
+	GroupRatio            decimal.Decimal `json:"group_ratio"`
+	PriceRule             string          `json:"price_rule"` // 命中的价格规则，空表示基础价
+	InputPrice            decimal.Decimal `json:"input_price"`
+	OutputPrice           decimal.Decimal `json:"output_price"`
+	Cost                  decimal.Decimal `json:"cost"`
+	Attempts              int             `json:"attempts"`
+	FirstByteMS           int             `json:"first_byte_ms"`
+	TotalMS               int             `json:"total_ms"`
+	CreatedAt             time.Time       `json:"created_at"`
+	ClientIP              string          `json:"client_ip"`
+	ReasoningEffort       string          `json:"reasoning_effort"`
+	ServiceTier           string          `json:"service_tier"`      // '' 标准、fast、fast_downgraded、unavailable
+	ReadMS                int             `json:"read_ms"`           // 读请求体用时，旧日志为 0
+	UpstreamStartMS       int             `json:"upstream_start_ms"` // 发出最终上游请求的时刻（从进入网关算），旧日志为 0
 }
 
 type LogSummary struct {
@@ -551,6 +555,7 @@ func (s *Store) ListLogs(ctx context.Context, f LogFilter) ([]LogEntry, LogSumma
 	args = append(args, limit, f.Offset)
 	rows, err := s.Pool.Query(ctx, fmt.Sprintf(`
 		SELECT l.id, l.request_id, u.username, COALESCE(NULLIF(l.key_name, ''), k.name, ''), COALESCE(NULLIF(l.group_name, ''), g.name, ''), l.protocol, l.model,
+		       l.upstream_protocol, l.operation, l.conversion_diagnostics,
 		       l.upstream_model, COALESCE(NULLIF(l.channel_name, ''), c.name, ''), l.stream, l.status, l.http_status, l.error,
 		       l.input_tokens, l.cache_read_tokens, l.cache_write_tokens, l.output_tokens, l.reasoning_tokens,
 		       l.usage_estimated, l.group_ratio::text, l.cost::text, l.attempts, l.first_byte_ms, l.total_ms, l.created_at,
@@ -569,6 +574,7 @@ func (s *Store) ListLogs(ctx context.Context, f LogFilter) ([]LogEntry, LogSumma
 		var e LogEntry
 		var ratio, cost, inPrice, outPrice string
 		err := r.Scan(&e.ID, &e.RequestID, &e.Username, &e.KeyName, &e.GroupName, &e.Protocol, &e.Model,
+			&e.UpstreamProtocol, &e.Operation, &e.ConversionDiagnostics,
 			&e.UpstreamModel, &e.ChannelName, &e.Stream, &e.Status, &e.HTTPStatus, &e.Error,
 			&e.InputTokens, &e.CacheReadTokens, &e.CacheWriteTokens, &e.OutputTokens, &e.ReasoningTokens,
 			&e.UsageEstimated, &ratio, &cost, &e.Attempts, &e.FirstByteMS, &e.TotalMS, &e.CreatedAt,

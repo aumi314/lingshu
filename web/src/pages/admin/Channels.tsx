@@ -415,7 +415,19 @@ export default function Channels() {
               </Space>
             ),
           },
-          { title: t('原生协议', 'Native protocols'), render: (_, c) => protocols(c).map((p) => <Tag key={p}>{protocolLabel[p]}</Tag>) },
+          {
+            title: t('原生协议', 'Native protocols'),
+            render: (_, c) => (
+              <>
+                {protocols(c).map((p) => <Tag key={p}>{protocolLabel[p]}</Tag>)}
+                {c.base_url_messages && !c.base_url_responses && (
+                  <Tooltip title={t('客户端走 Responses 时，网关自动转成 Messages 上游请求。', 'Responses requests are converted to Messages upstream by the gateway.')}>
+                    <Tag color="cyan">{t('Responses（转接）', 'Responses (bridged)')}</Tag>
+                  </Tooltip>
+                )}
+              </>
+            ),
+          },
           {
             title: (
               <Tooltip title={t('最近 24 小时：成功率（次数）；首字、输出速度为中位数，首字从发给上游算起；缓存为命中率。失败只算渠道自身的问题，参数错、上下文超长这类请求本身的问题不算。', 'Last 24 hours: success rate (attempts); first token and speed are medians, first token measured from sending upstream; cache is hit rate. Only failures caused by the channel count.')}>

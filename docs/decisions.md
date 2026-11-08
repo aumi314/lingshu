@@ -14,7 +14,7 @@
 - **自研**：不 fork 现有项目。`references/` 下的仓库只作为设计参考，代码不继承。
 - **协议**：MVP 支持三个入口 `/v1/messages`、`/v1/chat/completions`、`/v1/responses`。
 - **System One（2026-10-22 确认，本地实现并验证）**：新增 `/v1/systemone` 原生 JSON 透传，接入 TypeSafe 与 Nace 两个渠道模板。渠道独立保存 System One 地址，不复用聊天协议字段。支持拉取 `{ "models": [{ "name": "…" }] }` 上游模型列表，冒烟测试发送 `state` 与 `questions`；正式请求沿用现有鉴权、模型映射、分组、路由重试、计费和日志。用量读取 `usage.input_tokens` / `output_tokens`，价格仍由管理员按官方价录入（两家当前输出免费），不做聊天协议转换。仅支持非流式调用，显式拒绝 `stream: true`。管理端只对 `typesafe` 和 `nace` 模板显示 System One 协议及地址项。实测及边界见 [System One 接入记录](research/systemone.md)。2026-10-23 已发布到 DMIT；模板和入口可用，实际渠道需另行配置。
-- **只做透传**：入口协议必须和渠道支持的协议一致，不做跨协议转换。不支持的组合返回明确提示，告诉用户该用哪个入口。适配和转换放到以后。
+- **协议转接**（2026-11-08 确认）：在原生透传之外增加 Responses 客户端 → Messages 上游，同一渠道有原生 Responses 地址时优先；其他跨协议组合继续返回具体的不支持提示。
 - **原始内容留存**：请求和回复全量保留，以后存云盘。MVP 先不做。
 
 ### 渠道选择：可以贵，不能差（2026-11-07 用户确认）
@@ -53,6 +53,18 @@
 - 部署：本机 WSL 从明确 Git 提交构建，发布至 DMIT 洛杉矶服务器（Caddy + Cloudflare），由 systemd 托管，使用独立数据库和备份。
 
 ## 网关
+
+### Responses → Messages（2026-11-08 确认）
+
+- Codex 使用现有 URL 和 API key 即可调用仅支持 Messages 的模型；全站自动提供转接，不新增渠道开关。候选渠道与原有分组、优先级和重试排序一致；选定渠道有 Responses 地址时原生透传，否则直接转换到 Messages，不经过 Chat。
+- 客户端协议与上游协议分开。URL、鉴权、结束判断和结算读取上游协议；输出事件和错误遵循客户端 Responses。原生透传保留未知字段。
+- 转换 instructions、system/developer、文本、图片、function/custom 工具、apply_patch、namespace、additional_tools 及历史调用和结果，保留顺序和调用 ID。工具声明、调用与结果成套转换；孤立结果、未知工具和损坏参数显式报错。
+- Claude thinking / redacted thinking 以带来源、版本的自包含封装回传，只恢复本转接层识别的内容。已知 Claude 型号按支持方式转换 effort；不支持的强度返回参数错误，实际 thinking/effort 进入转换诊断。
+- 文本增量立即输出；工具前说明使用 commentary，结束的最终回答使用 final_answer；分别处理完成、输出上限、拒绝、工具调用、流中错误和断流。客户端已收到事件后停止自动重试；取消立即传递给上游。
+- 普通 Codex 手动/自动摘要作为普通请求处理。显式 compaction_trigger 与 POST /v1/responses/compact 共用摘要流程：同渠道、同模型、禁用工具执行，成功生成摘要后返回版本化、自包含的 compaction 内容；回灌展开摘要，不再额外调用摘要。失败、空摘要或截断返回错误，保留客户端原历史。context_management 自动服务端压缩本期明确拒绝。
+- GET /v1/responses 支持客户端 WebSocket（coder/websocket）；每个 response.create 沿用现有鉴权、权限、限流、预扣和结算，原生上游也走 HTTP。generate:false 仅预热，每连接同时一个生成任务。连接内保留最近两个响应及必要输入，共享历史节点，全部连接缓存总量上限 256 MiB。失效引用返回 previous_response_not_found；HTTP 转接缺少可恢复历史也明确报错。不增加数据库会话存储。
+- 内部按 Messages 原始 input/output/cache_read/cache_write 四桶结算；对外 Responses usage 独立转换。每轮生成只结算一次，预热免费。调用日志新增 upstream_protocol、operation（generation / compaction）和脱敏结构化转换诊断；迁移仅添加日志字段。
+- 验收使用 Codex CLI 0.160.0 与渠道 23 kirisame 的隔离配置，真实调用累计预算 USD 10（包含前期压缩实验）。覆盖 HTTP/WS 工具与多轮、手动/自动摘要、显式压缩回灌、思考、取消、重连、缓存与账单。交付 PR 和 CI，合并另由用户决定；实现和验收见 [转接记录](research/responses-messages.md)。
 
 ### 透传与协议细节（2026-10-18 起）
 

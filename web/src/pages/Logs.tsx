@@ -28,6 +28,13 @@ const quickRanges = (): { key: string; label: (t: Translate) => string; range: [
 }
 const secs2 = (ms: number) => `${(ms / 1000).toFixed(2)}s`
 const protocolLabel: Record<string, string> = { chat: 'Chat', messages: 'Messages', responses: 'Responses', systemone: 'System One' }
+// 转接时（Responses 入口 → Messages 上游）把上游协议也标出来，一眼看出这次请求实际走了哪种协议
+const protocolText = (r: LogEntry) =>
+  r.upstream_protocol && r.upstream_protocol !== r.protocol
+    ? `${protocolLabel[r.protocol] ?? r.protocol} → ${protocolLabel[r.upstream_protocol] ?? r.upstream_protocol}`
+    : (protocolLabel[r.protocol] ?? r.protocol)
+const operationText = (r: LogEntry, t: Translate) =>
+  r.operation === 'compaction' ? t('上下文压缩', 'Compaction') : r.operation === 'generation' ? t('正常生成', 'Generation') : r.operation || '—'
 // 缓存命中率 = 缓存读 ÷（输入 + 缓存读 + 缓存写），向下取整，避免没全中却显示 100%
 const cacheRate = (read: number, total: number) => total > 0 ? `${Math.floor((read * 100) / total)}%` : '—'
 
@@ -185,7 +192,8 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
               <div className="nowrap">
                 <span className="mono">{r.model}</span>
                 {r.service_tier === 'fast' && <Tag color="orange" style={{ marginLeft: 6 }}>Fast</Tag>}
-                <div className="muted">{[protocolLabel[r.protocol] ?? r.protocol, r.stream ? t('流式', 'stream') : t('非流式', 'non-stream'), r.reasoning_effort, r.service_tier !== 'fast' && tierText(r.service_tier, t)].filter(Boolean).join(' · ')}</div>
+                {r.operation === 'compaction' && <Tag color="purple" style={{ marginLeft: 6 }}>{t('压缩', 'Compaction')}</Tag>}
+                <div className="muted">{[protocolText(r), r.stream ? t('流式', 'stream') : t('非流式', 'non-stream'), r.reasoning_effort, r.service_tier !== 'fast' && tierText(r.service_tier, t)].filter(Boolean).join(' · ')}</div>
               </div>
             ),
           },
@@ -335,7 +343,22 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
             <Descriptions.Item label={t('访问者 IP', 'Client IP')}><span className="mono">{detail.client_ip || '—'}</span></Descriptions.Item>
             <Descriptions.Item label="Key">{detail.key_name}</Descriptions.Item>
             <Descriptions.Item label={t('服务分组 / 倍率', 'Service group / ratio')}>{detail.group_name} ×{Number(detail.group_ratio)}</Descriptions.Item>
-            <Descriptions.Item label={t('协议', 'Protocol')}>{detail.protocol}{detail.stream ? t('（流式）', ' (stream)') : ''}</Descriptions.Item>
+            <Descriptions.Item label={t('协议', 'Protocol')}>
+              {protocolText(detail)}{detail.stream ? t('（流式）', ' (stream)') : ''}
+              {detail.upstream_protocol && detail.upstream_protocol !== detail.protocol && (
+                <Tooltip title={t('客户端走 Responses，上游只支持 Messages，网关自动转接。', 'The client spoke Responses and the upstream only speaks Messages; the gateway converted it.')}>
+                  <Tag color="cyan" style={{ marginLeft: 6 }}>{t('转接', 'bridged')}</Tag>
+                </Tooltip>
+              )}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('用途', 'Operation')}>{operationText(detail, t)}</Descriptions.Item>
+            {(detail.conversion_diagnostics?.length ?? 0) > 0 && (
+              <Descriptions.Item label={t('转接诊断', 'Conversion diagnostics')}>
+                <div className="mono" style={{ fontSize: 12, wordBreak: 'break-all' }}>
+                  {JSON.stringify(detail.conversion_diagnostics).slice(0, 500)}
+                </div>
+              </Descriptions.Item>
+            )}
             <Descriptions.Item label={t('推理强度', 'Reasoning effort')}>{detail.reasoning_effort || '—'}</Descriptions.Item>
             {detail.service_tier && <Descriptions.Item label={t('速度档位', 'Speed tier')}>{tierText(detail.service_tier, t)}</Descriptions.Item>}
             <Descriptions.Item label={t('模型', 'Model')}>{detail.model}</Descriptions.Item>

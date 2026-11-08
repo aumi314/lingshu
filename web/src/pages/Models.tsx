@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Alert, Segmented, Table, Tag, Typography } from 'antd'
+import { Alert, Segmented, Table, Tag, Tooltip, Typography } from 'antd'
 import { get, type Group, type PricedModel } from '../api'
 import { priceText, useApp } from '../app'
 import { ruleCondition } from '../pricing'
@@ -125,7 +125,16 @@ export default function Models() {
           {
             title: t('调用入口', 'Endpoint'),
             dataIndex: 'protocols',
-            render: (ps: string[]) => ps.map((p) => <Tag key={p} className="mono">{entry[p]}</Tag>),
+            render: (ps: string[], m: PricedModel) => (
+              <>
+                {ps.map((p) => <Tag key={p} className="mono">{entry[p]}</Tag>)}
+                {m.bridged_protocols?.includes('responses') && (
+                  <Tooltip title={t('上游只支持 Messages，Responses 请求由网关自动转接。', 'The upstream only speaks Messages; the gateway converts Responses requests for you.')}>
+                    <Tag color="cyan">{t('Responses（转接）', 'Responses (bridged)')}</Tag>
+                  </Tooltip>
+                )}
+              </>
+            ),
           },
           { title: `${t('输入', 'Input')}（${unit}）`, dataIndex: 'input_price', render: price },
           { title: t('输出', 'Output'), dataIndex: 'output_price', render: price },

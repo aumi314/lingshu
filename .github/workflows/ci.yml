@@ -86,6 +86,7 @@ jobs:
           node tests/legal.browser.cjs
           node tests/channels.browser.cjs
           node tests/probes.browser.cjs
+          node tests/bridge.browser.cjs
 
   edge:
     name: Caddy 隔离防护回归
