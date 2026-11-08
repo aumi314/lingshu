@@ -14,7 +14,10 @@ type GeneratedCode = { id: number; prefix: string; code: string }
 
 type FXStatus = { source: string; date?: string; rate?: string; checked_at?: string; error?: string }
 type CallLimits = { user_concurrency: number; user_rpm: number; reserve_output_tokens: number }
-type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; registration_enabled?: boolean; registration_code_required?: boolean; registration_email_required?: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string }
+type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; registration_enabled?: boolean; registration_code_required?: boolean; registration_email_required?: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string; user_agreement?: string; privacy_policy?: string }
+
+// 协议正文最长 10 万字，和后端一致
+const maxLegalLength = 100000
 
 export default function System() {
   const { t, reload, user } = useApp()
@@ -39,6 +42,10 @@ export default function System() {
   const [savingAPIURL, setSavingAPIURL] = useState(false)
   const [noticeForm] = Form.useForm<{ announcement: string }>()
   const [savingNotice, setSavingNotice] = useState(false)
+  const [agreementForm] = Form.useForm<{ user_agreement: string }>()
+  const [privacyForm] = Form.useForm<{ privacy_policy: string }>()
+  const [savingAgreement, setSavingAgreement] = useState(false)
+  const [savingPrivacy, setSavingPrivacy] = useState(false)
   const [deploymentMode, setDeploymentMode] = useState<'commercial_relay'>('commercial_relay')
   const [savingDeploymentMode, setSavingDeploymentMode] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -62,6 +69,8 @@ export default function System() {
     setFXStatus(s.fx_status ?? { source: 'Frankfurter' })
     apiURLForm.setFieldsValue({ api_base_url: s.api_base_url })
     noticeForm.setFieldsValue({ announcement: s.announcement ?? '' })
+    agreementForm.setFieldsValue({ user_agreement: s.user_agreement ?? '' })
+    privacyForm.setFieldsValue({ privacy_policy: s.privacy_policy ?? '' })
     setDeploymentMode(s.deployment_mode === 'commercial_relay' ? s.deployment_mode : 'commercial_relay')
     setPaymentEnabled(s.payment_enabled)
     setRegFlags(normalizeRegistration({ enabled: s.registration_enabled, code_required: s.registration_code_required, email_required: s.registration_email_required, mode: s.registration_mode }))
@@ -169,6 +178,32 @@ export default function System() {
       message.error((e as Error).message)
     } finally {
       setSavingDeploymentMode(false)
+    }
+  }
+
+  const saveAgreement = async () => {
+    const v = await agreementForm.validateFields()
+    setSavingAgreement(true)
+    try {
+      await put('/api/admin/settings', { user_agreement: v.user_agreement ?? '' })
+      message.success(t('已保存', 'Saved'))
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSavingAgreement(false)
+    }
+  }
+
+  const savePrivacy = async () => {
+    const v = await privacyForm.validateFields()
+    setSavingPrivacy(true)
+    try {
+      await put('/api/admin/settings', { privacy_policy: v.privacy_policy ?? '' })
+      message.success(t('已保存', 'Saved'))
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSavingPrivacy(false)
     }
   }
 
@@ -339,6 +374,32 @@ export default function System() {
                   <Input.TextArea rows={2} showCount maxLength={500} placeholder={t('例如：客服邮箱 support@example.com', 'e.g. Support: support@example.com')} disabled={loading} />
                 </Form.Item>
                 <Button type="primary" htmlType="submit" loading={savingNotice} disabled={loading}>
+                  {t('保存', 'Save')}
+                </Button>
+              </Form>
+            </Card>
+            <Card title={t('用户协议', 'Terms of Service')}>
+              <Typography.Paragraph type="secondary">
+                {t('用户注册时必须勾选同意这里的正文。留空表示还没有这份协议，注册页不会出现勾选框。纯文本即可，换行会原样保留。', 'Users must tick to agree to this text when registering. Leave it empty when there is no document yet; the registration page then shows no checkbox. Plain text is enough and line breaks are preserved.')}
+              </Typography.Paragraph>
+              <Form form={agreementForm} layout="vertical" onFinish={saveAgreement}>
+                <Form.Item name="user_agreement" rules={[{ max: maxLegalLength, message: t('最多 100000 字', 'At most 100000 characters') }]}>
+                  <Input.TextArea rows={10} showCount maxLength={maxLegalLength} placeholder={t('在这里填写用户协议正文', 'Write the terms of service here')} disabled={loading} />
+                </Form.Item>
+                <Button type="primary" htmlType="submit" loading={savingAgreement} disabled={loading}>
+                  {t('保存', 'Save')}
+                </Button>
+              </Form>
+            </Card>
+            <Card title={t('隐私政策', 'Privacy Policy')}>
+              <Typography.Paragraph type="secondary">
+                {t('说明收集哪些信息、怎么用和保存多久。用户注册时必须勾选同意这里的正文；留空表示还没有这份协议。纯文本即可，换行会原样保留。', 'Describe what is collected, how it is used and how long it is kept. Users must tick to agree to this text when registering; leave it empty when there is no document yet. Plain text is enough and line breaks are preserved.')}
+              </Typography.Paragraph>
+              <Form form={privacyForm} layout="vertical" onFinish={savePrivacy}>
+                <Form.Item name="privacy_policy" rules={[{ max: maxLegalLength, message: t('最多 100000 字', 'At most 100000 characters') }]}>
+                  <Input.TextArea rows={10} showCount maxLength={maxLegalLength} placeholder={t('在这里填写隐私政策正文', 'Write the privacy policy here')} disabled={loading} />
+                </Form.Item>
+                <Button type="primary" htmlType="submit" loading={savingPrivacy} disabled={loading}>
                   {t('保存', 'Save')}
                 </Button>
               </Form>

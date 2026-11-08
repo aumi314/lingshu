@@ -743,10 +743,16 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	legal, err := s.Store.LegalDocuments(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"call_limits": limits,
 		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode, "registration_enabled": registration.Enabled, "registration_code_required": registration.CodeRequired, "registration_email_required": registration.EmailRequired, "api_base_url": apiBaseURL, "deployment_mode": deploymentMode,
 		"fx_mode": s.fxMode(r.Context()), "fx_status": s.fxStatus(r.Context()), "announcement": s.announcement(r.Context()),
+		"user_agreement": legal.UserAgreement, "privacy_policy": legal.PrivacyPolicy, "legal_version": legal.Version,
 	})
 }
 
@@ -815,6 +821,8 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		RPM                       *int64           `json:"user_rpm"`
 		ReserveOutput             *int64           `json:"reserve_output_tokens"`
 		Announcement              *string          `json:"announcement"`
+		UserAgreement             *string          `json:"user_agreement"`
+		PrivacyPolicy             *string          `json:"privacy_policy"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -924,6 +932,19 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		in.Announcement = &v
 	}
+	if in.UserAgreement != nil {
+		// 协议原文照存，不去空白：从旧站同步过来时不丢内容，版本号也算在原文上。
+		if !checkLegalLength(*in.UserAgreement) {
+			writeError(w, http.StatusBadRequest, "用户协议最多 "+strconv.Itoa(maxLegalRunes)+" 个字")
+			return
+		}
+	}
+	if in.PrivacyPolicy != nil {
+		if !checkLegalLength(*in.PrivacyPolicy) {
+			writeError(w, http.StatusBadRequest, "隐私政策最多 "+strconv.Itoa(maxLegalRunes)+" 个字")
+			return
+		}
+	}
 	var kv [][2]string // 一次保存的多项设置在同一事务里写，操作日志记一条
 	if in.DeploymentMode != nil {
 		kv = append(kv, [2]string{"deployment_mode", *in.DeploymentMode})
@@ -948,6 +969,12 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Announcement != nil {
 		kv = append(kv, [2]string{"announcement", *in.Announcement})
+	}
+	if in.UserAgreement != nil {
+		kv = append(kv, [2]string{"user_agreement", *in.UserAgreement})
+	}
+	if in.PrivacyPolicy != nil {
+		kv = append(kv, [2]string{"privacy_policy", *in.PrivacyPolicy})
 	}
 	if err := s.Store.SetSettings(r.Context(), kv); err != nil {
 		writeStoreError(w, err)
