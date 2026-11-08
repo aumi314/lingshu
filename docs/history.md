@@ -486,6 +486,6 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 分支 `codex/responses-messages` 基于 `102e740`，独立 worktree；增加直接转换器、按上游协议路由与原始 Messages 用量结算、显式摘要和自包含回灌、连接内 WS 续接。模型/渠道标明 Responses（转接），日志增加上游协议、用途和转换诊断。
 - 新增迁移 `0034_log_upstream_protocol.sql`，只添加日志字段、按旧 protocol 回填 upstream_protocol；用户余额、定价和生产渠道配置不变。
 - Codex CLI 0.160.0 在本机隔离库、固定渠道 23 完成 HTTP/WS 的真实 exec_command、custom apply_patch、读回及二次修改；手动和低阈值自动摘要后恢复随机标记与文件阶段；OpenAI 名称分支的 compaction_trigger、legacy compact JSON 回灌、签名思考回灌、取消、重连和失效引用后完整重发通过。完整证据和字段语义见 [转接验收](research/responses-messages.md)。
-- 当前真实验收隔离账本 101 条，97 success、1 cancelled、2 upstream_error、1 rejected；成本 $1.3296268。加前期压缩实验约 $0.057872，总计约 $1.3875；预算 USD 10。取消的已生成部分使用现行估算规则，失败不扣费。最终额外验收完成后补充账本结值。
+- 最终真实验收隔离账本 110 条：105 success、2 cancelled、2 upstream_error、1 rejected；成本 $1.4786164，按四桶单价重算差异 0。加前期压缩实验约 $0.057872，累计约 $1.5365；预算 USD 10。两条取消使用现行估算规则，失败不扣费。真实 Codex turn/interrupt 返回 interrupted；显式 response.cancel 返回 cancelled。
 - 全量独立 PostgreSQL 测试、go vet、前端构建、10 个浏览器脚本通过；转接/WS 纯测试另有 race 检查。Vite 单包超 1600 kB 的体积提示保留，构建成功。原生 Chat/Messages/Responses/System One 回归保持通过。
 - 交付状态：PR 待合并；生产未部署。规则与协议说明已对齐，记忆只读；独立 worktree 和验收现场保留供复核。
