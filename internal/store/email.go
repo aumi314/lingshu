@@ -167,7 +167,14 @@ func (s *Store) RegisterUserWithEmail(ctx context.Context, username, passwordHas
 	return s.RegisterUser(ctx, username, passwordHash, "", email, code, sessionHash, expires)
 }
 
+// RegisterUser 是旧调用入口，等价于没有同意协议；配置了协议后注册会被拒绝。
 func (s *Store) RegisterUser(ctx context.Context, username, passwordHash, registrationCode, email, emailCode, sessionHash string, expires time.Time) error {
+	return s.RegisterUserWithConsent(ctx, username, passwordHash, registrationCode, email, emailCode, sessionHash, false, "", expires)
+}
+
+// RegisterUserWithConsent 注册用户。legalAccepted 是用户是否勾选同意协议，legalVersion 是用户提交的协议版本号，
+// 两者和当前配置比对一致才算同意；同意记录写进用户行，只有自助注册才有。
+func (s *Store) RegisterUserWithConsent(ctx context.Context, username, passwordHash, registrationCode, email, emailCode, sessionHash string, legalAccepted bool, legalVersion string, expires time.Time) error {
 	var validation error
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		flags, err := registrationFlags(ctx, tx)
@@ -176,6 +183,13 @@ func (s *Store) RegisterUser(ctx context.Context, username, passwordHash, regist
 		}
 		if !flags.Enabled {
 			return ErrRegistrationClosed
+		}
+		docs, err := legalDocuments(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if err := checkLegalConsent(docs, legalAccepted, legalVersion); err != nil {
+			return err
 		}
 		var codeID int64
 		if flags.CodeRequired {
@@ -209,8 +223,13 @@ func (s *Store) RegisterUser(ctx context.Context, username, passwordHash, regist
 		if flags.EmailRequired {
 			userEmail = email
 		}
+		var consentVersion any
+		if docs.Required() {
+			consentVersion = docs.Version
+		}
 		var id int64
-		if err := tx.QueryRow(ctx, `INSERT INTO users(username,password_hash,role,email) VALUES($1,$2,'user',$3) RETURNING id`, username, passwordHash, userEmail).Scan(&id); err != nil {
+		if err := tx.QueryRow(ctx, `INSERT INTO users(username,password_hash,role,email,legal_version,legal_accepted_at)
+			VALUES($1,$2,'user',$3,$4::text,CASE WHEN $4::text IS NULL THEN NULL ELSE now() END) RETURNING id`, username, passwordHash, userEmail, consentVersion).Scan(&id); err != nil {
 			var pe *pgconn.PgError
 			if errors.As(err, &pe) && pe.Code == "23505" {
 				if strings.Contains(pe.ConstraintName, "email") {

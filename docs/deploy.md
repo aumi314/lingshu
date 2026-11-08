@@ -127,6 +127,12 @@ GitHub 或自动发布不可用时使用。
 
 Refresh Token 保存在数据库中，微软轮换后会自动写回。数据库备份也包含这些凭据，沿用下节的 root 私有目录和恢复流程；导出或传输备份时按凭据文件处理。恢复旧备份可能恢复旧授权，恢复后逐个检查授权并发送测试邮件，通过后再开放邮箱注册。
 
+## 用户协议与隐私政策
+
+在“系统设置 → 运营设置”的公告下方分别编辑用户协议、隐私政策，支持纯文本多行内容。旧版 PiQode 原文来源为旧站数据库 `options` 中的 `legal.user_agreement` 和 `legal.privacy_policy`；读取后通过 Lingshu `PUT /api/admin/settings` 的 `user_agreement`、`privacy_policy` 字段导入，随后逐字核对返回内容。原文不放入公开仓库。
+
+公开阅读地址为 `/terms`、`/privacy`，无需登录。配置至少一份文档后，所有自助注册均要求勾选同意；后端校验文档版本，用户记录保存同意版本及时间。文档更新后，停留在旧注册页的用户需刷新阅读并重新同意。管理员手动创建和现有账号不补录注册同意。
+
 ## 备份、恢复与回滚
 
 `lingshu-backup.timer` 每天服务器时间 04:00 触发，随机延后最多十分钟。脚本在 `/var/backups/lingshu/` 生成 PostgreSQL custom-format dump 及 SHA-256 文件，目录为 root 私有。

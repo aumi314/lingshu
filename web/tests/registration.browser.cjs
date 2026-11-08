@@ -30,6 +30,8 @@ const path = require('node:path')
         if (state.legacy) return json({ enabled: state.open, mode: legacyMode() })
         return json({ enabled: state.open, code_required: state.code, email_required: state.email })
       }
+      // 没有配置协议时，注册页不出现勾选框。
+      if (url === '/api/auth/legal') return json({ user_agreement: '', privacy_policy: '', version: 'v-empty' })
       if (url === '/api/auth/challenge') return json({ token: 'browser-test-challenge', difficulty: 0 })
       if (url === '/api/auth/email-code') { state.sent.push(req.postDataJSON()); return json({ retry_after: 60 }) }
       if (url === '/api/auth/register') { state.registrations.push(req.postDataJSON()); state.user = { ...admin, id: 2, role: 'user', username: 'newmember' }; return json({ status: 'created' }, 201) }

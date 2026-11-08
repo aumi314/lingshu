@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
-import { Alert, App, Button, Card, Form, Input, Spin, Typography } from 'antd'
+import { useCallback, useEffect, useState } from 'react'
+import { Alert, App, Button, Card, Checkbox, Form, Input, Spin, Typography } from 'antd'
 import { Link, useNavigate } from 'react-router-dom'
 import { ApiError, get, post } from '../api'
 import { useApp } from '../app'
 import Logo from '../components/Logo'
 import { solveCaptcha } from '../captcha'
+import { fetchLegal, legalRequired, type LegalDocs } from '../legal'
 import { normalizeRegistration, type RegistrationFlags } from '../registration'
 
 export default function Register() {
@@ -19,6 +20,9 @@ export default function Register() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [legal, setLegal] = useState<LegalDocs | null>(null)
+  const [legalError, setLegalError] = useState('')
+  const [legalLoading, setLegalLoading] = useState(true)
   const nav = useNavigate()
 
   useEffect(() => {
@@ -27,6 +31,23 @@ export default function Register() {
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
   }, [])
+
+  // 协议拉不到就当没法确认条款：拦住注册，不让用户在没看到条款的情况下注册。
+  const loadLegal = useCallback(async () => {
+    setLegalLoading(true)
+    setLegalError('')
+    try {
+      setLegal(await fetchLegal())
+    } catch (e) {
+      setLegalError((e as Error).message)
+    } finally {
+      setLegalLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadLegal()
+  }, [loadLegal])
 
   useEffect(() => {
     const update = () => setSeconds(Math.max(0, Math.ceil((retryAt - Date.now()) / 1000)))
@@ -56,15 +77,25 @@ export default function Register() {
   }
 
   // 只提交当前要求的方式对应字段，未勾选的限制即使表单里有残值也不发送。
-  const register = async (values: { username: string; password: string; code?: string; email?: string; email_code?: string }) => {
+  const register = async (values: { username: string; password: string; code?: string; email?: string; email_code?: string; legal_accepted?: boolean }) => {
+    // 协议没读到就不提交，用户重试后条款到手才能注册。
+    if (legalError) {
+      setError(t('请先重新加载用户协议和隐私政策', 'Please reload the terms of service and privacy policy first'))
+      return
+    }
     setSubmitting(true)
     setError('')
     try {
-      const body: Record<string, string> = {}
+      const body: Record<string, string | boolean> = {}
       if (flags.email_required) { body.email = values.email ?? ''; body.email_code = values.email_code ?? '' }
       if (flags.code_required) body.code = values.code ?? ''
       body.username = values.username
       body.password = values.password
+      // 配置了协议才提交同意信息；没配置时后端不校验这一项。
+      if (legalRequired(legal)) {
+        body.legal_accepted = true
+        body.legal_version = legal?.version ?? ''
+      }
       await post('/api/auth/register', body)
       await reload()
       message.success(t('账号已创建', 'Account created'))
@@ -83,9 +114,19 @@ export default function Register() {
           <Logo size={32} />
           {t('创建账号', 'Create account')}
         </Typography.Title>
-        {loading ? <Spin /> : flags.enabled ? (
+        {loading || legalLoading ? <Spin /> : flags.enabled ? (
           <>
             <Typography.Paragraph type="secondary">{t('创建账号后使用用户名和密码登录。', 'Create an account, then sign in with your username and password.')}</Typography.Paragraph>
+            {legalError && (
+              <Alert
+                type="error"
+                showIcon
+                style={{ marginBottom: 16 }}
+                title={t('无法读取用户协议和隐私政策，暂时不能注册', 'Cannot load the terms of service and privacy policy, so registration is unavailable')}
+                description={legalError}
+                action={<Button size="small" onClick={loadLegal}>{t('重新加载', 'Retry')}</Button>}
+              />
+            )}
             {error && <Alert type="error" title={error} showIcon style={{ marginBottom: 16 }} />}
             <Form form={form} layout="vertical" onFinish={register} requiredMark={false}>
               {flags.email_required && <>
@@ -110,7 +151,25 @@ export default function Register() {
               <Form.Item name="password" label={t('密码', 'Password')} rules={[{ required: true, min: 12, message: t('至少 12 位', 'At least 12 characters') }]}>
                 <Input.Password size="large" autoComplete="new-password" />
               </Form.Item>
-              <Button type="primary" htmlType="submit" size="large" block loading={submitting}>{t('注册并进入', 'Register and continue')}</Button>
+              {legalRequired(legal) && (
+                <Form.Item
+                  name="legal_accepted"
+                  valuePropName="checked"
+                  rules={[{
+                    validator: (_, value) => value === true
+                      ? Promise.resolve()
+                      : Promise.reject(new Error(t('请先阅读并同意用户协议和隐私政策', 'Please read and agree to the terms of service and privacy policy'))),
+                  }]}
+                >
+                  <Checkbox>
+                    {t('我已阅读并同意', 'I have read and agree to the')}{' '}
+                    {legal?.user_agreement?.trim() && <Link to="/terms" target="_blank" rel="noopener noreferrer">{t('《用户协议》', 'Terms of Service')}</Link>}
+                    {legal?.user_agreement?.trim() && legal?.privacy_policy?.trim() && t(' 和 ', ' and ')}
+                    {legal?.privacy_policy?.trim() && <Link to="/privacy" target="_blank" rel="noopener noreferrer">{t('《隐私政策》', 'Privacy Policy')}</Link>}
+                  </Checkbox>
+                </Form.Item>
+              )}
+              <Button type="primary" htmlType="submit" size="large" block loading={submitting} disabled={Boolean(legalError)}>{t('注册并进入', 'Register and continue')}</Button>
             </Form>
           </>
         ) : (

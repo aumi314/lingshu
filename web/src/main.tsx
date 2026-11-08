@@ -11,6 +11,7 @@ import { isAdmin } from './api'
 import AppLayout from './components/AppLayout'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import Legal from './pages/Legal'
 import Welcome from './pages/Welcome'
 import Overview from './pages/Overview'
 import Keys from './pages/Keys'
@@ -72,6 +73,8 @@ function Root() {
             <Route index element={<Welcome />} />
             <Route path="login" element={<LoginRoute />} />
             <Route path="register" element={<Register />} />
+            <Route path="terms" element={<Legal kind="terms" />} />
+            <Route path="privacy" element={<Legal kind="privacy" />} />
             <Route path="console" element={<RequireUser />}>
               <Route element={<AppLayout />}>
                 <Route index element={<Overview />} />

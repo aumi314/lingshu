@@ -38,11 +38,13 @@ func (s *Server) registrationStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) registerWithCode(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Username  string `json:"username"`
-		Password  string `json:"password"`
-		Code      string `json:"code"`
-		Email     string `json:"email"`
-		EmailCode string `json:"email_code"`
+		Username      string `json:"username"`
+		Password      string `json:"password"`
+		Code          string `json:"code"`
+		Email         string `json:"email"`
+		EmailCode     string `json:"email_code"`
+		LegalAccepted bool   `json:"legal_accepted"`
+		LegalVersion  string `json:"legal_version"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -82,7 +84,7 @@ func (s *Server) registerWithCode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	err = s.Store.RegisterUser(r.Context(), in.Username, hash, in.Code, email, in.EmailCode, auth.HashAPIKey(token), expires)
+	err = s.Store.RegisterUserWithConsent(r.Context(), in.Username, hash, in.Code, email, in.EmailCode, auth.HashAPIKey(token), in.LegalAccepted, in.LegalVersion, expires)
 	switch {
 	case err == nil:
 		http.SetCookie(w, &http.Cookie{
@@ -98,6 +100,10 @@ func (s *Server) registerWithCode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, store.ErrUsernameTaken):
 		writeError(w, http.StatusConflict, "用户名已存在，请换一个")
+	case errors.Is(err, store.ErrLegalNotAccepted):
+		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, store.ErrLegalVersionMismatch):
+		writeError(w, http.StatusBadRequest, err.Error())
 	default:
 		writeStoreError(w, err)
 	}
