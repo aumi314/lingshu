@@ -53,7 +53,8 @@ const path = require('node:path')
       throw new Error('Timed out waiting for condition')
     }
     const row = (id) => page.getByRole('row').filter({ has: page.getByText(users[id - 1].username, { exact: true }) })
-    const open = async (id) => row(id).getByRole('button', { name: '编辑', exact: true }).click()
+    // 编辑入口：行里没有编辑按钮，点行里的空白单元格（ID 列）打开编辑弹窗
+    const open = async (id) => row(id).locator('td').first().click()
     const dialog = page.getByRole('dialog', { name: /^(编辑用户|Edit user)/ })
     const close = async () => {
       await dialog.getByRole('button', { name: /取\s*消/ }).click()
@@ -63,6 +64,8 @@ const path = require('node:path')
 
     // 列表：用户分组管理不再占顶部按钮；能看出谁能用哪些服务分组、最近有没有在用
     await row(1).waitFor()
+    assert.equal(await row(1).getByRole('button', { name: '编辑', exact: true }).count(), 0)
+    assert.equal(await row(1).getAttribute('aria-label'), '编辑用户 · user1')
     // 默认只看启用：停用的 user3 不显示，网址不带参数；切到全部后再做列表检查
     assert.equal(await row(3).count(), 0)
     assert.equal(new URL(page.url()).searchParams.get('status'), null)
@@ -169,7 +172,8 @@ const path = require('node:path')
     await dialog.getByRole('button', { name: /提\s*交/ }).waitFor({ state: 'visible' })
     users[0].preferences = { language: 'en' }
     await page.reload()
-    await row(2).getByRole('button', { name: 'Edit', exact: true }).click()
+    assert.equal(await row(2).getByRole('button', { name: 'Edit', exact: true }).count(), 0)
+    await row(2).locator('td').first().click()
     await dialog.getByText('Account status', { exact: true }).waitFor()
     await dialog.getByRole('button', { name: 'Submit', exact: true }).waitFor()
     await close().catch(() => dialog.getByRole('button', { name: 'Cancel' }).click())
@@ -179,8 +183,12 @@ const path = require('node:path')
     users[1].role = 'super_admin'
     await page.reload()
     await row(2).waitFor()
-    assert.equal(await row(2).getByRole('button', { name: 'Edit', exact: true }).isDisabled(), true)
-    await row(3).getByRole('button', { name: 'Edit', exact: true }).click()
+    // 普通管理员点超级管理员的行不打开编辑
+    assert.equal(await row(2).getAttribute('aria-disabled'), 'true')
+    assert.equal(await row(2).getAttribute('aria-label'), null)
+    await row(2).locator('td').first().click()
+    assert.equal(await dialog.isVisible(), false)
+    await row(3).locator('td').first().click()
     await dialog.getByText('Only super admins can change roles', { exact: true }).waitFor()
     console.log('PASS: plain admin cannot edit super admin or change roles; enabled-only by default, status filter with counts and URL, service group access column, last call, note, role moved into dialog with self protection, access preview, cancel discards drafts, confirmation cancellation, failure preserves drafts, blank amount skips balance, mobile scroll and footer, English')
   } finally {
