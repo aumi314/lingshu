@@ -480,11 +480,24 @@ func (s *Server) listChannels(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	keyStats, err := s.Store.ChannelKeyStats(r.Context(), time.Now().Add(-channelStatsWindow))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	out := make([]channelView, len(channels))
 	for i, c := range channels {
 		out[i] = channelView{Channel: c, Cooling: s.Relay.Health.Cooling(c.ID)}
 		if st, ok := stats[c.ID]; ok {
 			out[i].Stats = &st
+		}
+		// 每把 key 的当前状态（正常 / 冷却中 / 失效）和近 24 小时成功、失败次数
+		for j := range c.Keys {
+			k := &c.Keys[j]
+			k.Status = s.Relay.Keys.Status(k.ID)
+			if st, ok := keyStats[k.ID]; ok {
+				k.Stats = st
+			}
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -504,7 +517,11 @@ func (s *Server) saveChannel(w http.ResponseWriter, r *http.Request) {
 		c.ID = id
 	}
 	c.Name = strings.TrimSpace(c.Name)
+	c.Note = strings.TrimSpace(c.Note)
 	c.APIKey = strings.TrimSpace(c.APIKey)
+	if c.Keys == nil && c.APIKey != "" {
+		c.Keys = []store.ChannelKey{{APIKey: c.APIKey, Enabled: true}} // 旧客户端只传一把 key
+	}
 	c.BaseURLChat = strings.TrimRight(strings.TrimSpace(c.BaseURLChat), "/")
 	c.BaseURLMessages = strings.TrimRight(strings.TrimSpace(c.BaseURLMessages), "/")
 	c.BaseURLResponses = strings.TrimRight(strings.TrimSpace(c.BaseURLResponses), "/")
@@ -521,8 +538,11 @@ func (s *Server) saveChannel(w http.ResponseWriter, r *http.Request) {
 	case c.BaseURLChat == "" && c.BaseURLMessages == "" && c.BaseURLResponses == "" && c.BaseURLSystemOne == "":
 		writeError(w, http.StatusBadRequest, "至少填一个协议的地址")
 		return
-	case c.ID == 0 && c.APIKey == "":
+	case c.ID == 0 && len(c.Keys) == 0:
 		writeError(w, http.StatusBadRequest, "新建渠道要填 API key")
+		return
+	case utf8.RuneCountInString(c.Note) > 500:
+		writeError(w, http.StatusBadRequest, "渠道备注最多 500 个字")
 		return
 	}
 	for _, u := range []string{c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses, c.BaseURLSystemOne} {
@@ -535,14 +555,16 @@ func (s *Server) saveChannel(w http.ResponseWriter, r *http.Request) {
 		c.GroupIDs = []int64{}
 	}
 	if err := s.Store.SaveChannel(r.Context(), &c); err != nil {
-		if strings.HasPrefix(err.Error(), "新建渠道") {
-			writeError(w, http.StatusBadRequest, err.Error())
+		var bad *store.InputError
+		if errors.As(err, &bad) {
+			writeError(w, http.StatusBadRequest, bad.Msg)
 			return
 		}
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]int64{"id": c.ID})
+	// keys_deduped：自动去掉的重复 key 数，页面据此提示
+	writeJSON(w, http.StatusOK, map[string]int64{"id": c.ID, "keys_deduped": int64(c.KeysDeduped)})
 }
 
 // reorderGroups 保存服务分组的手动顺序（只影响各处的显示顺序）。
@@ -591,11 +613,19 @@ func (s *Server) deleteChannel(w http.ResponseWriter, r *http.Request) {
 // 编辑已有渠道时 key 留空表示用已保存的 key。
 func (s *Server) channelDraft(ctx context.Context, d *store.Channel) (*store.Channel, string) {
 	if d.ID != 0 && strings.TrimSpace(d.APIKey) == "" {
-		saved, err := s.Store.ChannelSecret(ctx, d.ID)
-		if err != nil {
-			return nil, "渠道不存在"
+		if d.TestKeyID != 0 { // 冒烟测试指定了某一把 key
+			key, err := s.Store.ChannelKeySecret(ctx, d.ID, d.TestKeyID)
+			if err != nil {
+				return nil, "这把 key 不存在，可能已被删除，请刷新页面"
+			}
+			d.APIKey = key
+		} else {
+			saved, err := s.Store.ChannelSecret(ctx, d.ID)
+			if err != nil {
+				return nil, "渠道不存在"
+			}
+			d.APIKey = saved.APIKey
 		}
-		d.APIKey = saved.APIKey
 	}
 	d.APIKey = strings.TrimSpace(d.APIKey)
 	if d.APIKey == "" {

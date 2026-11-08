@@ -45,7 +45,8 @@ var entryPaths = map[string]string{
 type Handler struct {
 	Store  *store.Store
 	Client *http.Client
-	Health *router.Health
+	Health *router.Health    // 渠道整体的健康（5xx、超时）
+	Keys   *router.KeyHealth // 渠道里单把 key 的冷却和失效（429、401 / 402 / 403）
 
 	// 等上游响应头的时限，超时就换渠道。流式请求上游通常几秒内就会回响应头；
 	// 非流式的推理模型要等全部生成完才回，所以给得长。
@@ -72,6 +73,7 @@ func NewHandler(s *store.Store) *Handler {
 		Store:               s,
 		Client:              &http.Client{Transport: newTransport(http.ProxyFromEnvironment)},
 		Health:              router.NewHealth(),
+		Keys:                router.NewKeyHealth(),
 		StreamHeaderTimeout: 60 * time.Second,
 		BodyHeaderTimeout:   5 * time.Minute,
 		limits:              newLimiter(),
@@ -160,20 +162,23 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		h.rejectNoRoute(w, r.Context(), c, owner.GroupID, req.model)
 		return
 	}
-	ordered := router.Order(h.Health, routes, func(rt store.Route) int64 { return rt.ChannelID })
+	// 同一会话固定用同一把 key（按“灵枢 key + 会话编号”），坏 key 和冷却中的渠道排到后面
+	sticky := strconv.FormatInt(owner.KeyID, 10) + "\x00" + sessionOf(r, req)
+	var pinKey int64
 	if c.proto == usage.Responses && req.previousResponseID != "" {
-		// previous_response_id 引用的状态存在原上游账号里，只能发回原渠道
-		chID, err := h.Store.ChannelForResponse(r.Context(), owner.UserID, req.previousResponseID)
+		// previous_response_id 引用的状态存在原上游账号里，只能发回原渠道、原来那把 key
+		chID, keyID, err := h.Store.ChannelForResponse(r.Context(), owner.UserID, req.previousResponseID)
 		if err != nil {
 			slog.Error("查询原渠道失败", "err", err)
 		}
 		if chID != 0 {
-			ordered = onlyChannel(ordered, chID)
-			if len(ordered) == 0 {
-				c.reject(w, http.StatusServiceUnavailable, "这轮对话接着的上一次响应来自一个现在不可用的渠道，没法继续，请开启新对话")
-				return
-			}
+			routes, pinKey = onlyChannel(routes, chID), keyID
 		}
+	}
+	ordered := h.orderAttempts(routes, sticky, pinKey)
+	if len(ordered) == 0 {
+		c.reject(w, http.StatusServiceUnavailable, "这轮对话接着的上一次响应来自一个现在不可用的渠道或 key，没法继续，请开启新对话")
+		return
 	}
 	c.log.GroupRatio = owner.GroupRatio
 
@@ -304,11 +309,17 @@ func (f *failure) write(w http.ResponseWriter, proto usage.Protocol) {
 func (h *Handler) attemptAll(w http.ResponseWriter, r *http.Request, c *call, req *request, routes []store.Route) {
 	var last *failure
 	var reasons []string
-	for i, route := range routes {
-		if i >= router.MaxAttempts || (i > 0 && time.Since(c.start) > router.RetryBudget) {
+	skip := map[int64]bool{} // 整体失败的渠道（5xx、超时），它后面的 key 不再试
+	n := 0
+	for _, route := range routes {
+		if skip[route.ChannelID] {
+			continue
+		}
+		if n >= router.MaxAttempts || (n > 0 && time.Since(c.start) > router.RetryBudget) {
 			break
 		}
-		c.useRoute(route, i+1)
+		n++
+		c.useRoute(route, n)
 		f := h.attempt(w, r, c, route, req)
 		if f == nil {
 			return // 已经给客户端写了响应（成功、不该重试的错误），或者用户已经断开
@@ -316,6 +327,12 @@ func (h *Handler) attemptAll(w http.ResponseWriter, r *http.Request, c *call, re
 		last = f
 		reasons = append(reasons, route.ChannelName+": "+f.reason)
 		c.log.FailedChannelIDs = append(c.log.FailedChannelIDs, route.ChannelID)
+		c.log.FailedKeyIDs = append(c.log.FailedKeyIDs, route.KeyID)
+		if router.KeyFailure(f.status) {
+			slog.Warn("key 失败，换下一把", "request_id", c.log.RequestID, "channel", route.ChannelName, "key_id", route.KeyID, "reason", f.reason)
+			continue // 限流、失效、欠费是这把 key 的问题，同渠道还有别的 key 就接着试
+		}
+		skip[route.ChannelID] = true
 		slog.Warn("渠道失败，换下一个", "request_id", c.log.RequestID, "channel", route.ChannelName, "reason", f.reason)
 	}
 	c.log.Status, c.log.HTTPStatus = "upstream_error", last.status
@@ -326,6 +343,7 @@ func (h *Handler) attemptAll(w http.ResponseWriter, r *http.Request, c *call, re
 // useRoute 切换到一个渠道，重置上一次尝试留下的状态。
 func (c *call) useRoute(route store.Route, attempt int) {
 	c.log.ChannelID, c.log.ChannelName, c.log.UpstreamModel, c.log.Prices = route.ChannelID, route.ChannelName, route.UpstreamModel, route.Prices
+	c.log.ChannelKeyID = route.KeyID
 	c.basePrices, c.rules = route.Prices, route.PriceRules
 	c.log.Attempts = attempt
 	c.tracker = usage.NewTracker(c.proto)
@@ -352,7 +370,7 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 	if route.Template == openCodeTemplate && c.proto == usage.Chat && strings.HasSuffix(route.UpstreamModel, "-free") {
 		// 会话归属用灵枢 key 的标识，随后恢复上游鉴权，不将用户 key 发给厂商。
 		upReq.Header.Set("Authorization", fmt.Sprintf("lingshu-key:%d", c.log.APIKeyID))
-		body, openCode, err = prepareOpenCode(upReq, body, route.ChannelID)
+		body, openCode, err = prepareOpenCode(upReq, body, route.KeyID) // 会话按 key 区分：不同账号的会话不混用
 		setUpstreamAuth(upReq.Header, c.proto, route.APIKey)
 		if err != nil {
 			return &failure{status: http.StatusBadRequest, reason: "OpenCode 请求格式错误", msg: err.Error()}
@@ -397,7 +415,12 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 		errBody = redactKey(errBody, route.APIKey) // 有的上游会在报错里回显 key，不能传给用户或写进日志
 		retry, outcome := router.Classify(resp.StatusCode)
-		h.Health.Record(route.ChannelID, outcome)
+		if router.KeyFailure(resp.StatusCode) {
+			// 限流、失效、欠费只记在这把 key 上，不拖累整个渠道
+			h.Keys.Fail(route.KeyID, resp.StatusCode, retryAfter(resp.Header), fmt.Sprintf("HTTP %d %s", resp.StatusCode, truncate(string(errBody), 120)))
+		} else {
+			h.Health.Record(route.ChannelID, outcome)
+		}
 		if retry {
 			return &failure{status: resp.StatusCode, header: resp.Header.Clone(), body: errBody,
 				reason: fmt.Sprintf("HTTP %d %s", resp.StatusCode, truncate(string(errBody), 200))}
@@ -446,6 +469,7 @@ func (h *Handler) relayBody(w http.ResponseWriter, c *call, route store.Route, r
 		return &failure{status: http.StatusBadGateway, reason: "无效的 System One 响应", msg: "上游没有返回有效的决策结果，请稍后重试"}
 	}
 	h.Health.Record(route.ChannelID, router.Success)
+	h.Keys.OK(route.KeyID)
 	copyResponseHeaders(w.Header(), resp.Header)
 	c.log.HTTPStatus = resp.StatusCode
 	w.WriteHeader(resp.StatusCode)
@@ -540,6 +564,7 @@ func (h *Handler) relayOpenCodeStream(w http.ResponseWriter, r *http.Request, c 
 	switch c.log.Status {
 	case "success":
 		h.Health.Record(route.ChannelID, router.Success)
+		h.Keys.OK(route.KeyID)
 	case "upstream_error":
 		h.Health.Record(route.ChannelID, router.Failure)
 	}
