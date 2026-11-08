@@ -10,6 +10,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/aumi314/lingshu/internal/billing"
+	"github.com/aumi314/lingshu/internal/relay/usage"
 )
 
 // KeyOwner 是网关鉴权和准入需要的 key、用户、分组信息。
@@ -77,17 +78,20 @@ type RouteKey struct {
 // Route 是一个可用的上游渠道，带上模型的站内标价。Keys 是渠道里启用的 key（至少一把）；
 // 网关按会话从中选一把，选中的填在 KeyID / APIKey 上再发请求。
 type Route struct {
-	ChannelID     int64
-	ChannelName   string
-	Template      string
-	BaseURL       string
-	Keys          []RouteKey
-	KeyID         int64
-	APIKey        string
-	ProxyURL      string // 空表示直连
-	UpstreamModel string
-	Prices        billing.Prices
-	PriceRules    []billing.PriceRule
+	ChannelID   int64
+	ChannelName string
+	Template    string
+	BaseURL     string
+	// UpstreamProtocol 是实际发给上游的协议。客户端走 Responses 入口、上游只有 Messages 地址时，
+	// 网关自动转接，这里记 messages；其余情况跟入口协议一致。
+	UpstreamProtocol usage.Protocol
+	Keys             []RouteKey
+	KeyID            int64
+	APIKey           string
+	ProxyURL         string // 空表示直连
+	UpstreamModel    string
+	Prices           billing.Prices
+	PriceRules       []billing.PriceRule
 	// FastMultiplier 是模型开放 GPT Fast 时的计费倍数，nil 表示不开放
 	FastMultiplier *decimal.Decimal
 }
@@ -101,13 +105,21 @@ var protocolColumns = map[string]string{
 }
 
 // FindRoutes 返回分组内支持该协议和模型的渠道，按优先级从高到低，同优先级随机。
+// Responses 入口也接受只有 Messages 地址的渠道（网关自动转接），这时 UpstreamProtocol 记 messages。
 func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model string) ([]Route, error) {
 	col, ok := protocolColumns[protocol]
 	if !ok {
 		return nil, fmt.Errorf("未知协议 %q", protocol)
 	}
+	baseURL, upstream, filter := "c."+col, "$3::text", "c."+col+" <> ''"
+	if protocol == string(usage.Responses) {
+		// Responses 客户端可以走只有 Messages 地址的渠道，网关负责转接
+		baseURL = "COALESCE(NULLIF(c.base_url_responses, ''), c.base_url_messages)"
+		upstream = "CASE WHEN c.base_url_responses <> '' THEN $3::text ELSE 'messages' END"
+		filter = "(c.base_url_responses <> '' OR c.base_url_messages <> '')"
+	}
 	rows, err := s.Pool.Query(ctx, fmt.Sprintf(`
-		SELECT c.id, c.name, c.template, c.%[1]s,
+		SELECT c.id, c.name, c.template, %[1]s, %[2]s,
 		       (SELECT json_agg(json_build_object('id', k.id, 'key', k.api_key) ORDER BY k.sort_order, k.id)
 		        FROM channel_keys k WHERE k.channel_id = c.id AND k.enabled),
 		       c.proxy_url, COALESCE(NULLIF(cm.upstream_name, ''), m.name),
@@ -117,9 +129,9 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 		JOIN channel_models cm ON cm.model_id = m.id
 		JOIN channels c ON c.id = cm.channel_id
 		JOIN channel_groups cg ON cg.channel_id = c.id AND cg.group_id = $1
-		WHERE m.name = $2 AND c.enabled AND c.%[1]s <> ''
+		WHERE m.name = $2 AND c.enabled AND %[3]s
 		  AND EXISTS (SELECT 1 FROM channel_keys k WHERE k.channel_id = c.id AND k.enabled)
-		ORDER BY c.priority DESC, random()`, col), groupID, model)
+		ORDER BY c.priority DESC, random()`, baseURL, upstream, filter), groupID, model, protocol)
 	if err != nil {
 		return nil, err
 	}
@@ -128,10 +140,12 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 		var in, out, cr, cw string
 		var fast *string
 		var keys []byte
-		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.Template, &rt.BaseURL, &keys, &rt.ProxyURL, &rt.UpstreamModel, &in, &out, &cr, &cw,
+		var upstreamProtocol string
+		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.Template, &rt.BaseURL, &upstreamProtocol, &keys, &rt.ProxyURL, &rt.UpstreamModel, &in, &out, &cr, &cw,
 			&rt.PriceRules, &fast); err != nil {
 			return rt, err
 		}
+		rt.UpstreamProtocol = usage.Protocol(upstreamProtocol)
 		if err := json.Unmarshal(keys, &rt.Keys); err != nil {
 			return rt, fmt.Errorf("解析渠道 %d 的 key: %w", rt.ChannelID, err)
 		}
@@ -142,12 +156,13 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 }
 
 // ModelProtocols 返回分组内这个模型能用哪些协议，用来提示用户换入口。
+// Responses 入口可以转接到 Messages 上游，所以有 Messages 地址就算支持 Responses。
 func (s *Store) ModelProtocols(ctx context.Context, groupID int64, model string) ([]string, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT DISTINCT p FROM (
 			SELECT CASE WHEN c.base_url_chat <> '' THEN 'chat' END AS p1,
 			       CASE WHEN c.base_url_messages <> '' THEN 'messages' END AS p2,
-			       CASE WHEN c.base_url_responses <> '' THEN 'responses' END AS p3,
+			       CASE WHEN c.base_url_responses <> '' OR c.base_url_messages <> '' THEN 'responses' END AS p3,
 			       CASE WHEN c.base_url_systemone <> '' THEN 'systemone' END AS p4
 			FROM models m
 			JOIN channel_models cm ON cm.model_id = m.id
@@ -197,44 +212,50 @@ func (s *Store) GroupModels(ctx context.Context, groupID int64) ([]string, error
 
 // RequestLog 对应 request_logs 一行。
 type RequestLog struct {
-	RequestID          string
-	UserID             int64
-	APIKeyID           int64
-	KeyName            string // 名字快照：渠道或 key 被删除后，历史日志仍能看出是谁
-	GroupID            int64
-	GroupName          string
-	ClientIP           string
-	ReasoningEffort    string
-	ServiceTier        string // 档位结果：'' 标准、fast、fast_downgraded、unavailable（见迁移 0025）
-	Protocol           string
-	Model              string
-	UpstreamModel      string
-	ChannelID          int64 // 0 表示没选到渠道
-	ChannelName        string
-	ChannelKeyID       int64   // 最终用的渠道 key，0 表示没选到
-	FailedKeyIDs       []int64 // 失败过的渠道 key（按尝试顺序），按 key 统计失败
-	Stream             bool
-	Status             string
-	HTTPStatus         int
-	Error              string
-	InputTokens        int64
-	CacheReadTokens    int64
-	CacheWriteTokens   int64
-	OutputTokens       int64
-	ReasoningTokens    int64
-	UsageEstimated     bool
-	Prices             billing.Prices  // 实际生效的单价快照（命中规则时是规则价）
-	PriceRule          string          // 命中的价格规则名，空表示基础价
-	GroupRatio         decimal.Decimal // 倍率快照
-	Cost               decimal.Decimal // 实际扣费，0 表示不扣
-	Attempts           int
-	FirstByteMS        int // 以下三个都从进入网关算起
-	TotalMS            int
-	UpstreamStartMS    int     // 发出最终那次上游请求的时刻，0 表示没发到上游
-	ReadMS             int     // 读请求体用的时间
-	FailedChannelIDs   []int64 // 失败过的渠道（可换渠道重试的失败，按尝试顺序），渠道连接状态据此统计失败
-	UpstreamResponseID string
-	Reserved           decimal.Decimal // 放行时冻结的额度，结算时解冻（不写进日志表）
+	RequestID       string
+	UserID          int64
+	APIKeyID        int64
+	KeyName         string // 名字快照：渠道或 key 被删除后，历史日志仍能看出是谁
+	GroupID         int64
+	GroupName       string
+	ClientIP        string
+	ReasoningEffort string
+	ServiceTier     string // 档位结果：'' 标准、fast、fast_downgraded、unavailable（见迁移 0025）
+	Protocol        string
+	// UpstreamProtocol 是实际发给上游的协议；客户端走 Responses、上游只有 Messages 时记 messages
+	UpstreamProtocol usage.Protocol
+	// Operation 是这次请求的用途：generation 正常生成、compaction 上下文压缩
+	Operation string
+	// ConversionDiagnostics 记协议转接时丢字段、降级之类的诊断（数组，默认空）
+	ConversionDiagnostics json.RawMessage
+	Model                 string
+	UpstreamModel         string
+	ChannelID             int64 // 0 表示没选到渠道
+	ChannelName           string
+	ChannelKeyID          int64   // 最终用的渠道 key，0 表示没选到
+	FailedKeyIDs          []int64 // 失败过的渠道 key（按尝试顺序），按 key 统计失败
+	Stream                bool
+	Status                string
+	HTTPStatus            int
+	Error                 string
+	InputTokens           int64
+	CacheReadTokens       int64
+	CacheWriteTokens      int64
+	OutputTokens          int64
+	ReasoningTokens       int64
+	UsageEstimated        bool
+	Prices                billing.Prices  // 实际生效的单价快照（命中规则时是规则价）
+	PriceRule             string          // 命中的价格规则名，空表示基础价
+	GroupRatio            decimal.Decimal // 倍率快照
+	Cost                  decimal.Decimal // 实际扣费，0 表示不扣
+	Attempts              int
+	FirstByteMS           int // 以下三个都从进入网关算起
+	TotalMS               int
+	UpstreamStartMS       int     // 发出最终那次上游请求的时刻，0 表示没发到上游
+	ReadMS                int     // 读请求体用的时间
+	FailedChannelIDs      []int64 // 失败过的渠道（可换渠道重试的失败，按尝试顺序），渠道连接状态据此统计失败
+	UpstreamResponseID    string
+	Reserved              decimal.Decimal // 放行时冻结的额度，结算时解冻（不写进日志表）
 }
 
 func failedIDs(ids []int64) []int64 {
@@ -258,18 +279,32 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 	if ratio.IsZero() && l.Cost.IsZero() {
 		ratio = decimal.NewFromInt(1) // 没走到计费的请求（如被拒绝），倍率记 1
 	}
+	operation := l.Operation
+	if operation == "" {
+		operation = "generation"
+	}
+	upstreamProtocol := l.UpstreamProtocol
+	if upstreamProtocol == "" {
+		upstreamProtocol = usage.Protocol(l.Protocol) // 没记就当原生转发
+	}
+	diagnostics := l.ConversionDiagnostics
+	if len(diagnostics) == 0 {
+		diagnostics = json.RawMessage("[]") // 列不允许 NULL
+	}
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO request_logs (
-				request_id, user_id, api_key_id, group_id, protocol, model, upstream_model, channel_id,
+				request_id, user_id, api_key_id, group_id, protocol, upstream_protocol, operation, conversion_diagnostics,
+				model, upstream_model, channel_id,
 				stream, status, http_status, error,
 				input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, reasoning_tokens, usage_estimated,
 				input_price, output_price, cache_read_price, cache_write_price, group_ratio, cost,
 				attempts, first_byte_ms, total_ms, upstream_response_id, channel_name, key_name, price_rule, group_name, client_ip, reasoning_effort,
 				service_tier, read_ms, upstream_start_ms, failed_channel_ids, channel_key_id, failed_key_ids
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-			          $19::numeric,$20::numeric,$21::numeric,$22::numeric,$23::numeric,$24::numeric,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40)`,
-			l.RequestID, l.UserID, l.APIKeyID, l.GroupID, l.Protocol, l.Model, l.UpstreamModel, channelID,
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
+			          $22::numeric,$23::numeric,$24::numeric,$25::numeric,$26::numeric,$27::numeric,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43)`,
+			l.RequestID, l.UserID, l.APIKeyID, l.GroupID, l.Protocol, string(upstreamProtocol), operation, diagnostics,
+			l.Model, l.UpstreamModel, channelID,
 			l.Stream, l.Status, l.HTTPStatus, l.Error,
 			l.InputTokens, l.CacheReadTokens, l.CacheWriteTokens, l.OutputTokens, l.ReasoningTokens, l.UsageEstimated,
 			l.Prices.Input.String(), l.Prices.Output.String(), l.Prices.CacheRead.String(), l.Prices.CacheWrite.String(),

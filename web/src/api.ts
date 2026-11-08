@@ -94,7 +94,9 @@ export type Model = {
 export type PricedModel = {
   group_id: number
   name: string
-  protocols: string[]
+  protocols: string[] // 客户端实际能用的入口（原生 + 转接）
+  native_protocols: string[] // 上游原生的协议
+  bridged_protocols: string[] // 靠网关转接才能用的协议（Responses 转 Messages）
   input_price: string
   output_price: string
   cache_read_price: string
@@ -123,6 +125,9 @@ export type LogEntry = {
   key_name: string
   group_name: string
   protocol: string
+  upstream_protocol: string // 实际发给上游的协议，转接时和入口不同；旧日志为空
+  operation: string // generation 正常生成、compaction 上下文压缩；旧日志为空
+  conversion_diagnostics: unknown[] // 协议转接的诊断，没有就是空数组
   model: string
   upstream_model?: string
   channel_name?: string

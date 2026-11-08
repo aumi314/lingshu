@@ -18,6 +18,7 @@ import (
 
 	"github.com/aumi314/lingshu/internal/auth"
 	"github.com/aumi314/lingshu/internal/billing"
+	"github.com/aumi314/lingshu/internal/relay/bridge"
 	"github.com/aumi314/lingshu/internal/relay/usage"
 	"github.com/aumi314/lingshu/internal/router"
 	"github.com/aumi314/lingshu/internal/store"
@@ -102,6 +103,11 @@ func (h *Handler) Serve(proto usage.Protocol) http.HandlerFunc {
 		c := &call{proto: proto, start: time.Now(), tracker: usage.NewTracker(proto)}
 		c.log.RequestID = newRequestID()
 		c.log.Protocol = string(proto)
+		c.log.UpstreamProtocol = proto
+		c.log.Operation = "generation"
+		if proto == usage.Responses && strings.HasSuffix(r.URL.Path, "/compact") {
+			c.log.Operation = "compaction"
+		}
 		w.Header().Set("X-Lingshu-Request-Id", c.log.RequestID)
 		h.serve(w, r, c)
 	}
@@ -130,6 +136,13 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 	}
 	c.log.Model, c.log.Stream, c.log.ReasoningEffort = req.model, req.stream, req.effort
 	c.body = body
+	if c.proto == usage.Responses && hasCompactionTrigger(req.fields["input"]) {
+		c.log.Operation = "compaction"
+	}
+	if c.log.Operation == "compaction" && strings.HasSuffix(r.URL.Path, "/compact") && req.stream {
+		c.reject(w, http.StatusBadRequest, "responses/compact 不支持 stream:true")
+		return
+	}
 	if c.proto == usage.SystemOne && req.stream {
 		c.reject(w, http.StatusBadRequest, "System One 不支持流式调用，请移除 stream 或设为 false")
 		return
@@ -166,9 +179,13 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 	// 同一会话固定用同一把 key（按“灵枢 key + 会话编号”），坏 key 和冷却中的渠道排到后面
 	sticky := strconv.FormatInt(owner.KeyID, 10) + "\x00" + sessionOf(r, req)
 	var pinKey int64
-	if c.proto == usage.Responses && req.previousResponseID != "" {
+	previousID := req.previousResponseID
+	if previousID == "" {
+		previousID, _ = r.Context().Value(wsPreviousResponseKey{}).(string)
+	}
+	if c.proto == usage.Responses && previousID != "" {
 		// previous_response_id 引用的状态存在原上游账号里，只能发回原渠道、原来那把 key
-		chID, keyID, err := h.Store.ChannelForResponse(r.Context(), owner.UserID, req.previousResponseID)
+		chID, keyID, err := h.Store.ChannelForResponse(r.Context(), owner.UserID, previousID)
 		if err != nil {
 			slog.Error("查询原渠道失败", "err", err)
 		}
@@ -185,7 +202,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 
 	// GPT 的 Fast（docs/decisions.md「GPT Fast 计费」）：只看 OpenAI 协议的 service_tier。
 	// 模型开放了 Fast 就原样转发、按倍率计费；没开放（或要的是 Ultrafast）就去掉档位，按标准处理，不让上游按高价收费而我们按标准价扣
-	if req.premiumTier != "" && (c.proto == usage.Chat || c.proto == usage.Responses) {
+	if req.premiumTier != "" && (c.proto == usage.Chat || c.proto == usage.Responses) && ordered[0].UpstreamProtocol != usage.Messages {
 		if m := ordered[0].FastMultiplier; req.premiumTier == "fast" && m != nil {
 			c.fastMultiplier = *m
 		} else {
@@ -414,17 +431,59 @@ func (c *call) useRoute(route store.Route, attempt int) {
 	c.log.ChannelKeyID = route.KeyID
 	c.basePrices, c.rules = route.Prices, route.PriceRules
 	c.log.Attempts = attempt
-	c.tracker = usage.NewTracker(c.proto)
+	upstream := route.UpstreamProtocol
+	if upstream == "" {
+		upstream = c.proto
+	}
+	c.log.UpstreamProtocol = upstream
+	c.log.UpstreamResponseID = ""
+	c.log.ConversionDiagnostics = nil
+	c.tracker = usage.NewTracker(upstream)
 	c.gotResp = false
 }
 
 // attempt 向一个渠道发请求。返回 nil 表示响应已经交给客户端（或用户已断开），否则返回可重试的失败。
 func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route store.Route, req *request) *failure {
+	upstream := usage.Protocol(c.log.UpstreamProtocol)
+	c.fastMultiplier = decimal.Zero
+	c.log.ServiceTier = ""
+	if req.premiumTier != "" && upstream == usage.Messages {
+		c.log.ServiceTier = "unavailable"
+	}
+	c.dropTier = false
+	if req.premiumTier != "" && (upstream == usage.Chat || upstream == usage.Responses) {
+		if req.premiumTier == "fast" && route.FastMultiplier != nil {
+			c.fastMultiplier = *route.FastMultiplier
+		} else {
+			c.dropTier = true
+			c.log.ServiceTier = "unavailable"
+		}
+	}
 	body, injected := req.bodyFor(c.proto, route.UpstreamModel, c.dropTier)
+	var converted *bridge.Request
+	if c.proto == usage.Responses && upstream == usage.Messages {
+		source := req.body
+		if strings.HasSuffix(r.URL.Path, "/compact") {
+			source = withCompactionTrigger(source)
+		}
+		var err error
+		converted, err = bridge.Prepare(source, route.UpstreamModel)
+		if err != nil {
+			rejectBridge(w, c, err)
+			return nil
+		}
+		body = converted.Body
+		c.log.ConversionDiagnostics, _ = json.Marshal(converted.Diagnostics)
+		c.fastMultiplier = decimal.Zero
+	}
+	c.body = body
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel() // 返回时（包括客户端断开）立刻取消上游请求
 
-	url := strings.TrimRight(route.BaseURL, "/") + upstreamPaths[c.proto]
+	url := strings.TrimRight(route.BaseURL, "/") + upstreamPaths[upstream]
+	if c.proto == usage.Responses && strings.HasSuffix(r.URL.Path, "/compact") && converted == nil {
+		url += "/compact"
+	}
 	if r.URL.RawQuery != "" {
 		url += "?" + r.URL.RawQuery // Claude Code 会带 ?beta=true
 	}
@@ -433,13 +492,13 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 		return &failure{status: http.StatusInternalServerError, reason: "构造请求失败", msg: "构造上游请求失败: " + err.Error()}
 	}
 	copyRequestHeaders(upReq.Header, r.Header)
-	setUpstreamAuth(upReq.Header, c.proto, route.APIKey)
+	setUpstreamAuth(upReq.Header, upstream, route.APIKey)
 	var openCode *openCodeRequest
 	if route.Template == openCodeTemplate && c.proto == usage.Chat && strings.HasSuffix(route.UpstreamModel, "-free") {
 		// 会话归属用灵枢 key 的标识，随后恢复上游鉴权，不将用户 key 发给厂商。
 		upReq.Header.Set("Authorization", fmt.Sprintf("lingshu-key:%d", c.log.APIKeyID))
 		body, openCode, err = prepareOpenCode(upReq, body, route.KeyID) // 会话按 key 区分：不同账号的会话不混用
-		setUpstreamAuth(upReq.Header, c.proto, route.APIKey)
+		setUpstreamAuth(upReq.Header, upstream, route.APIKey)
 		if err != nil {
 			return &failure{status: http.StatusBadRequest, reason: "OpenCode 请求格式错误", msg: err.Error()}
 		}
@@ -449,7 +508,7 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 	}
 
 	timeout := h.BodyHeaderTimeout
-	if req.stream || openCode != nil {
+	if req.stream || openCode != nil || converted != nil {
 		timeout = h.StreamHeaderTimeout
 	}
 	timer := time.AfterFunc(timeout, cancel)
@@ -482,6 +541,10 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 	if resp.StatusCode >= 400 {
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 		errBody = redactKey(errBody, route.APIKey) // 有的上游会在报错里回显 key，不能传给用户或写进日志
+		if converted != nil {
+			errBody = responsesErrorBody(resp.StatusCode, upstreamErrorMessage(errBody))
+			resp.Header.Set("Content-Type", "application/json")
+		}
 		retry, outcome := router.Classify(resp.StatusCode)
 		if router.KeyFailure(resp.StatusCode) {
 			// 限流、失效、欠费只记在这把 key 上，不拖累整个渠道
@@ -501,6 +564,9 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 		return nil
 	}
 
+	if converted != nil {
+		return h.relayResponsesBridge(w, r, c, route, resp, req.stream, converted, strings.HasSuffix(r.URL.Path, "/compact"))
+	}
 	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
 		if openCode != nil {
 			if !req.stream {
@@ -653,7 +719,9 @@ func (h *Handler) finish(reqCtx context.Context, c *call) {
 	u, estimated := c.settledUsage()
 	c.log.InputTokens, c.log.CacheReadTokens, c.log.CacheWriteTokens = u.Input, u.CacheRead, u.CacheWrite
 	c.log.OutputTokens, c.log.ReasoningTokens, c.log.UsageEstimated = u.Output, u.Reasoning, estimated
-	c.log.UpstreamResponseID = c.tracker.ResponseID
+	if c.tracker.ResponseID != "" {
+		c.log.UpstreamResponseID = c.tracker.ResponseID
+	}
 	c.log.TotalMS = int(time.Since(c.start).Milliseconds())
 
 	// 计费规则（docs/decisions.md）：成功和用户断开要扣；上游出错、被拒绝不扣，用量照记

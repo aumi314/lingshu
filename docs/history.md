@@ -474,3 +474,18 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 新增公告下方两份协议的管理设置、公开阅读页及注册同意校验；生产原文导入在功能合并发布后通过管理接口进行，并核对内容一致。
 - 新增迁移 `0033_legal_terms`，给用户添加可空同意版本与时间字段；独立 PostgreSQL 全量 Go 测试、go vet、格式与差异检查通过。原文保存不修改空白，公开读取与保存内容一致；缺少同意或版本过期在核销注册码/验证码前拒绝。
 - 前端类型检查与构建通过，全部 9 项浏览器回归通过；包含必选勾选框、链接保留注册输入、协议读取失败及重试、原文纯文本渲染、后台分别保存、中英文和手机布局。后端空白判定与前端一致，保存原文不 trim；文档链接与规则一致性检查完成。
+
+
+## 2026-11-08：协议范围更新
+
+原有“MVP 只做同协议透传、跨协议以后处理”的决策由 Responses → Messages 方案取代。原生入口继续保留；本期只新增 Responses 客户端到 Messages 上游，按现有渠道顺序自动选择，其他方向单独规划。实施和验收在 codex/responses-messages 独立工作区完成，PR 待用户决定合并。
+
+
+## 2026-11-08：Responses → Messages、显式压缩和客户端 WebSocket
+
+- 分支 `codex/responses-messages` 基于 `102e740`，独立 worktree；增加直接转换器、按上游协议路由与原始 Messages 用量结算、显式摘要和自包含回灌、连接内 WS 续接。模型/渠道标明 Responses（转接），日志增加上游协议、用途和转换诊断。
+- 新增迁移 `0034_log_upstream_protocol.sql`，只添加日志字段、按旧 protocol 回填 upstream_protocol；用户余额、定价和生产渠道配置不变。
+- Codex CLI 0.160.0 在本机隔离库、固定渠道 23 完成 HTTP/WS 的真实 exec_command、custom apply_patch、读回及二次修改；手动和低阈值自动摘要后恢复随机标记与文件阶段；OpenAI 名称分支的 compaction_trigger、legacy compact JSON 回灌、签名思考回灌、取消、重连和失效引用后完整重发通过。完整证据和字段语义见 [转接验收](research/responses-messages.md)。
+- 当前真实验收隔离账本 101 条，97 success、1 cancelled、2 upstream_error、1 rejected；成本 $1.3296268。加前期压缩实验约 $0.057872，总计约 $1.3875；预算 USD 10。取消的已生成部分使用现行估算规则，失败不扣费。最终额外验收完成后补充账本结值。
+- 全量独立 PostgreSQL 测试、go vet、前端构建、10 个浏览器脚本通过；转接/WS 纯测试另有 race 检查。Vite 单包超 1600 kB 的体积提示保留，构建成功。原生 Chat/Messages/Responses/System One 回归保持通过。
+- 交付状态：PR 待合并；生产未部署。规则与协议说明已对齐，记忆只读；独立 worktree 和验收现场保留供复核。

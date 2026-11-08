@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	github.com/Calcium-Ion/go-epay v0.0.5
+	github.com/coder/websocket v1.8.15
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/shopspring/decimal v1.5.0

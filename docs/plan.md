@@ -29,7 +29,8 @@ lingshu/
 ├── internal/
 │   ├── config/             # 读环境变量
 │   ├── store/              # 数据库访问 + migrations/*.sql
-│   ├── relay/              # 四个协议的透传：改写请求、转发；聊天协议支持流式
+│   ├── relay/              # 四个协议的透传及 Responses → Messages 转接
+│   │   ├── bridge/         # Responses → Messages 转换和事件状态机
 │   │   └── usage/          # 各协议 usage 解析和统一口径
 │   ├── router/             # 选渠道、重试、渠道冷却
 │   ├── probe/              # 模型检测：检测题和官方样本（data/，编译进程序）、出题、评判
@@ -56,7 +57,7 @@ lingshu/
 | `user_group_members` | user_id、user_group_id | 用户所属的用户分组 |
 | `group_user_groups` | group_id、user_group_id | 限定范围的服务分组允许使用的用户分组 |
 | `models` | name（站内标准名，唯一）、input / output / cache_read / cache_write 价格、price_rules、fast_multiplier | 存在定价记录即可供已启用渠道映射调用，零价有效 |
-| `channels` | name、template、api_key、priority、enabled、base_url_chat / base_url_messages / base_url_responses / base_url_systemone | 填了哪个协议的地址，就算支持哪个协议 |
+| `channels` | name、template、api_key、priority、enabled、base_url_chat / base_url_messages / base_url_responses / base_url_systemone | 地址表示上游原生能力；Messages 地址同时提供 Responses 转接 |
 | `channel_groups` | channel_id、group_id | 渠道属于哪些服务分组 |
 | `channel_models` | channel_id、model_id、upstream_name | 名称映射；upstream_name 为空表示和标准名相同 |
 | `api_keys` | user_id、name、key_hash、key_prefix、group_id、quota_limit、quota_used、enabled、last_used_at | 只存哈希，完整 key 创建时只显示一次 |
@@ -70,11 +71,12 @@ lingshu/
 | `probe_runs` | channel_id、model、baseline、preset、status、report | 模型检测记录 |
 | `settings` | key、value | 汇率及模式、充值开关、注册方式、API Base URL、部署模式、预扣与限流参数等 |
 
-`request_logs` 字段：request_id、user_id、api_key_id、group_id、protocol、model、upstream_model、channel_id、stream、status（success / client_cancelled / upstream_error / rejected）、http_status、error、input / cache_read / cache_write / output / reasoning tokens、usage_estimated、价格与倍率快照、cost、attempts、首字节耗时、总耗时、读体与发往上游时刻、upstream_response_id、client_ip、reasoning_effort、service_tier、failed_channel_ids、group_name 快照、created_at。
+`request_logs` 字段：request_id、user_id、api_key_id、group_id、protocol、upstream_protocol、operation、conversion_diagnostics、model、upstream_model、channel_id、stream、status（success / client_cancelled / upstream_error / rejected）、http_status、error、input / cache_read / cache_write / output / reasoning tokens、usage_estimated、价格与倍率快照、cost、attempts、首字节耗时、总耗时、读体与发往上游时刻、upstream_response_id、client_ip、reasoning_effort、service_tier、failed_channel_ids、group_name 快照、created_at。
 
 ## 4. 关键实现规则
 
-### 透传
+### 透传与转接
+- Responses 可直接转到 Messages；具体工具、思考、压缩和 WebSocket 规则见 `decisions.md`「Responses → Messages」。下列原样保留规则用于原生透传。
 - 请求体只改两处：`model` 换成渠道的上游名；chat 流式请求加 `stream_options.include_usage: true`。其余字段原样保留，包括网关不认识的字段（用原始 JSON 改写，不先反序列化成结构体）。
 - 请求头：换掉鉴权头，`User-Agent`、`anthropic-version`、`anthropic-beta` 等原样转发。
 - 流式：收到上游一个事件就立刻转发并 flush，不攒包。
@@ -98,7 +100,7 @@ lingshu/
 - 按 `decisions.md` 的流式规则：用户断开按已生成部分扣；上游出错或截断不扣；失败的尝试不扣。
 
 ### 路由
-- 候选渠道 = 属于 key 所选分组 ∩ 有入口协议的地址 ∩ 有这个模型 ∩ 启用 ∩ 不在冷却中。
+- 候选渠道 = 属于 key 所选分组 ∩ 有可服务入口的地址（Responses 包括 Messages 转接）∩ 有这个模型 ∩ 启用；冷却中的渠道排在后面。
 - 先用最高优先级一档，档内随机；失败后先试同档其他渠道，再往下一档。最多 3 次，总时限 60 秒。
 - 只在还没给客户端发出第一个字节之前重试。
 - 429 / 5xx / 超时 / 连接失败 / 404 → 重试并累计失败；401 / 402 / 403 → 重试并立刻冷却（key 失效或上游欠费）；其余 400 类 → 不重试，原样返回。
@@ -110,7 +112,7 @@ lingshu/
 
 ## 5. 当前状态（2026-11-08）
 
-线上 `https://gateway.piqode.com`（DMIT）已支持开放注册及可选验证码限制；当前分支增加用户协议、隐私政策设置与注册同意校验，待 PR 合并发布。
+线上 `https://gateway.piqode.com`（DMIT）已支持开放注册及协议同意；当前分支实现 Responses → Messages、显式压缩和客户端 WebSocket，已通过 Codex 工具、压缩及续接验收，待 PR 合并。
 
 | 模块 | 现在有什么 |
 |---|---|

@@ -514,14 +514,19 @@ func (s *Store) DeleteModel(ctx context.Context, id int64) error {
 
 // PricedModel 是用户端"模型与价格"页的一行：某个分组下能用的模型，价格已乘倍率。
 type PricedModel struct {
-	GroupID    int64               `json:"group_id"`
-	Name       string              `json:"name"`
-	Protocols  []string            `json:"protocols"`
-	Input      decimal.Decimal     `json:"input_price"`
-	Output     decimal.Decimal     `json:"output_price"`
-	CacheRead  decimal.Decimal     `json:"cache_read_price"`
-	CacheWrite decimal.Decimal     `json:"cache_write_price"`
-	PriceRules []billing.PriceRule `json:"price_rules"` // 价格同样已乘倍率
+	GroupID int64  `json:"group_id"`
+	Name    string `json:"name"`
+	// Protocols 是客户端实际能用的入口（原生 + 转接）
+	Protocols []string `json:"protocols"`
+	// NativeProtocols 是上游原生的协议
+	NativeProtocols []string `json:"native_protocols"`
+	// BridgedProtocols 是靠网关转接才能用的协议（目前只有 Responses 转 Messages）
+	BridgedProtocols []string            `json:"bridged_protocols"`
+	Input            decimal.Decimal     `json:"input_price"`
+	Output           decimal.Decimal     `json:"output_price"`
+	CacheRead        decimal.Decimal     `json:"cache_read_price"`
+	CacheWrite       decimal.Decimal     `json:"cache_write_price"`
+	PriceRules       []billing.PriceRule `json:"price_rules"` // 价格同样已乘倍率
 	// FastMultiplier：开放 GPT Fast 时的计费倍数（乘在上面任一单价上，含规则价），nil 表示不开放
 	FastMultiplier *decimal.Decimal `json:"fast_multiplier"`
 }
@@ -533,8 +538,15 @@ func (s *Store) PricedModels(ctx context.Context, groupIDs []int64) ([]PricedMod
 		       array_remove(ARRAY[
 		           CASE WHEN bool_or(c.base_url_chat <> '') THEN 'chat' END,
 		           CASE WHEN bool_or(c.base_url_messages <> '') THEN 'messages' END,
+		           CASE WHEN bool_or(c.base_url_responses <> '') OR bool_or(c.base_url_messages <> '') THEN 'responses' END,
+		           CASE WHEN bool_or(c.base_url_systemone <> '') THEN 'systemone' END], NULL),
+		       array_remove(ARRAY[
+		           CASE WHEN bool_or(c.base_url_chat <> '') THEN 'chat' END,
+		           CASE WHEN bool_or(c.base_url_messages <> '') THEN 'messages' END,
 		           CASE WHEN bool_or(c.base_url_responses <> '') THEN 'responses' END,
 		           CASE WHEN bool_or(c.base_url_systemone <> '') THEN 'systemone' END], NULL),
+		       CASE WHEN NOT bool_or(c.base_url_responses <> '') AND bool_or(c.base_url_messages <> '')
+		            THEN ARRAY['responses'] ELSE ARRAY[]::text[] END,
 		       (m.input_price * g.ratio)::text, (m.output_price * g.ratio)::text,
 		       (m.cache_read_price * g.ratio)::text, (m.cache_write_price * g.ratio)::text,
 		       m.price_rules, g.ratio::text, m.fast_multiplier::text
@@ -553,7 +565,7 @@ func (s *Store) PricedModels(ctx context.Context, groupIDs []int64) ([]PricedMod
 		var p PricedModel
 		var in, out, cr, cw, ratio string
 		var fast *string
-		err := r.Scan(&p.GroupID, &p.Name, &p.Protocols, &in, &out, &cr, &cw, &p.PriceRules, &ratio, &fast)
+		err := r.Scan(&p.GroupID, &p.Name, &p.Protocols, &p.NativeProtocols, &p.BridgedProtocols, &in, &out, &cr, &cw, &p.PriceRules, &ratio, &fast)
 		p.FastMultiplier = optDecimal(fast)
 		p.Input, p.Output, p.CacheRead, p.CacheWrite = mustDecimal(in), mustDecimal(out), mustDecimal(cr), mustDecimal(cw)
 		if err == nil {

@@ -1,0 +1,267 @@
+[
+  {
+    "path": "/v1/responses",
+    "transport": "http",
+    "body": {
+      "model": "claude-opus-5-5",
+      "instructions": "You are a coding assistant in an isolated test workspace.",
+      "input": [
+        {
+          "type": "message",
+          "id": "msg_01a1ba7f-872c-7853-9664-655bf193f959",
+          "role": "developer",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Work only in the isolated test workspace."
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "id": "msg_01a1ba7f-872c-7853-9664-65657bdb4efc",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Keep TEST-MARKER-812 and update fixture.txt."
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "id": "msg_01a1ba7f-872f-7ba3-b563-a99fa8b90118",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Keep TEST-MARKER-812 and update fixture.txt."
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "name": "exec_command",
+          "description": "Run a command in the test workspace.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "cmd": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "cmd"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "type": "custom",
+          "name": "apply_patch",
+          "description": "Edit a test file.",
+          "format": {
+            "type": "grammar",
+            "syntax": "lark",
+            "definition": "start: /.+/"
+          }
+        }
+      ],
+      "tool_choice": "auto",
+      "parallel_tool_calls": true,
+      "reasoning": {
+        "summary": "auto"
+      },
+      "store": false,
+      "stream": true,
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "prompt_cache_key": "fixture-session"
+    }
+  },
+  {
+    "path": "/v1/responses",
+    "transport": "http",
+    "body": {
+      "model": "claude-opus-5-5",
+      "instructions": "You are a coding assistant in an isolated test workspace.",
+      "input": [
+        {
+          "type": "message",
+          "id": "msg_01a1ba7f-872c-7853-9664-655bf193f959",
+          "role": "developer",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Work only in the isolated test workspace."
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "id": "msg_01a1ba7f-872c-7853-9664-65657bdb4efc",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Create a handoff summary preserving the marker, file state and pending task."
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "id": "msg_01a1ba7f-872f-7ba3-b563-a99fa8b90118",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Create a handoff summary preserving the marker, file state and pending task."
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "id": "msg_1",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Remembered TEST-MARKER-812."
+            }
+          ],
+          "phase": "final_answer"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Create a handoff summary preserving the marker, file state and pending task."
+            }
+          ]
+        }
+      ],
+      "tools": [],
+      "tool_choice": "auto",
+      "parallel_tool_calls": false,
+      "reasoning": {
+        "summary": "auto"
+      },
+      "store": false,
+      "stream": true,
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "prompt_cache_key": "fixture-session"
+    }
+  },
+  {
+    "path": "/v1/responses",
+    "transport": "http",
+    "body": {
+      "model": "claude-opus-5-5",
+      "instructions": "You are a coding assistant in an isolated test workspace.",
+      "input": [
+        {
+          "type": "message",
+          "id": "msg_01a1ba7f-872f-7ba3-b563-a99fa8b90118",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Continue from the summary and return the marker."
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "id": "msg_01a1ba7f-8744-7813-8add-66b17ab9068f",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Continue from the summary and return the marker."
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "id": "msg_01a1ba7f-8747-7b01-9212-deded7b1001a",
+          "role": "developer",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Work only in the isolated test workspace."
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "id": "msg_01a1ba7f-8747-7b01-9212-dee8dd23e2f2",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Continue from the summary and return the marker."
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "id": "msg_01a1ba7f-874a-7f42-a3a1-867fb055201e",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Continue from the summary and return the marker."
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "name": "exec_command",
+          "description": "Run a command in the test workspace.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "cmd": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "cmd"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "type": "custom",
+          "name": "apply_patch",
+          "description": "Edit a test file.",
+          "format": {
+            "type": "grammar",
+            "syntax": "lark",
+            "definition": "start: /.+/"
+          }
+        }
+      ],
+      "tool_choice": "auto",
+      "parallel_tool_calls": true,
+      "reasoning": {
+        "summary": "auto"
+      },
+      "store": false,
+      "stream": true,
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "prompt_cache_key": "fixture-session"
+    }
+  }
+]
