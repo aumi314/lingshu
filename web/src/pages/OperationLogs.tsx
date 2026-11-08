@@ -52,7 +52,7 @@ function fieldLabel(t: T, field: string): string {
   if (field.startsWith('values.')) return t('参数 ', 'Param ') + field.slice(7)
   if (field.startsWith('secrets.')) return t('密钥 ', 'Secret ') + field.slice(8)
   return ({
-    username: t('用户名', 'Username'), role: t('角色', 'Role'), enabled: t('状态', 'Status'), note: t('备注', 'Note'),
+    username: t('用户名', 'Username'), role: t('角色', 'Role'), enabled: t('状态', 'Status'), note: t('备注', 'Note'), keys: t('Key 列表', 'Keys'),
     password: t('密码', 'Password'), user_groups: t('用户分组', 'User groups'), name: t('名称', 'Name'), prefix: t('前缀', 'Prefix'),
     group: t('服务分组', 'Service group'), quota_limit: t('限额', 'Quota'), ratio: t('倍率', 'Ratio'), is_public: t('所有用户可用', 'Open to all'),
     description: t('说明', 'Description'), input_price: t('输入价', 'Input price'), output_price: t('输出价', 'Output price'),

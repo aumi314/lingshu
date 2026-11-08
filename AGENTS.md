@@ -129,5 +129,5 @@
 - 不把种子脚本（`scripts/seed-dev.py`）跑到线上：它按名字 upsert，会用本地 `.env` 的 key 覆盖线上渠道。
 
 ## 多代理协作
-- 共享仓库目录可能停在其他代理（如 Codex）的分支上，不在里面切分支、改文件；自己的工作用 `git worktree add /tmp/<名字> -b <分支> origin/main` 另开，PR 合并后删掉工作区和分支。
+- 共享仓库目录可能停在其他代理（如 Codex）的分支上，不在里面切分支、改文件；自己的工作用 `git worktree add ~/worktrees/lingshu-<名字> -b <分支> origin/main` 另开，PR 合并后删掉工作区和分支。不要放 `/tmp`：WSL 重启会清空它，没提交的改动全丢（2026-11-07 丢过一次）；改到一半也先在分支上本地提交。
 - 打真实上游的 Go 实测加 `-count=1`，否则 `go test` 会重放缓存的旧日志，看起来像通过。

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -21,6 +22,13 @@ var (
 	ErrNameTaken = errors.New("名称已存在")
 	ErrInUse     = errors.New("还有数据在使用它，不能删除")
 )
+
+// InputError 是存储层发现的输入问题（比如渠道 key 超过上限），接口层原样作为 400 提示返回。
+type InputError struct{ Msg string }
+
+func (e *InputError) Error() string { return e.Msg }
+
+func badInput(format string, a ...any) error { return &InputError{Msg: fmt.Sprintf(format, a...)} }
 
 // translate 把常见的约束错误换成能直接给用户看的错误。
 func translate(err error) error {

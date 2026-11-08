@@ -47,7 +47,7 @@ func openCodeSession(seed [32]byte) string {
 }
 
 // prepareOpenCode 仅对显式选择该模板的 Chat 请求调用，保留原请求的工具和参数。
-func prepareOpenCode(req *http.Request, body []byte, channelID int64) ([]byte, *openCodeRequest, error) {
+func prepareOpenCode(req *http.Request, body []byte, keyID int64) ([]byte, *openCodeRequest, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil {
 		return nil, nil, err
@@ -116,7 +116,7 @@ func prepareOpenCode(req *http.Request, body []byte, channelID int64) ([]byte, *
 		}
 	}
 	// 同一调用 key、渠道和会话的后续轮次保持归属，不把两个成员的同文请求合在一起。
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%d\x00%s\x00%s", channelID, req.Header.Get("Authorization"), seed)))
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%d\x00%s\x00%s", keyID, req.Header.Get("Authorization"), seed)))
 	session := openCodeSession(sum)
 	for _, name := range []string{"X-Opencode-Session", "X-Opencode-Session-Id", "X-Session-Affinity", "X-Session-Id"} {
 		req.Header.Set(name, session)

@@ -154,8 +154,12 @@ func TestOperationLogCoverage(t *testing.T) {
 	step("POST /api/admin/channels", a, "/api/admin/channels", channel, nil, "channel.create")
 	channel["api_key"], channel["enabled"] = "sk-secret-2", false
 	o = step("PUT /api/admin/channels/{id}", a, "/api/admin/channels/1", channel, nil, "channel.update")
-	if c := o.change("api_key"); c == nil || !c.Secret || c.From != nil || c.To != nil || o.change("enabled") == nil || len(o.Changes) != 2 {
+	// key 本身只记“已更换”；另记 key 列表的掩码（和渠道页显示的一样只露首尾），完整 key 不能出现在操作日志里
+	if c := o.change("api_key"); c == nil || !c.Secret || c.From != nil || c.To != nil || o.change("enabled") == nil || o.change("keys") == nil || len(o.Changes) != 3 {
 		t.Fatalf("渠道改 key 应只标记已更换: %+v", o.Changes)
+	}
+	if raw, _ := json.Marshal(o.Changes); strings.Contains(string(raw), "sk-secret-1") || strings.Contains(string(raw), "sk-secret-2") {
+		t.Fatalf("操作日志里出现了完整 key: %s", raw)
 	}
 	step("DELETE /api/admin/channels/{id}", a, "/api/admin/channels/1", nil, nil, "channel.delete")
 	o = step("DELETE /api/admin/models/{id}", a, "/api/admin/models/1", nil, nil, "model.delete")

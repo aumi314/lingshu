@@ -19,13 +19,32 @@ type ChannelModel struct {
 	UpstreamName string `json:"upstream_name"` // 空表示和站内标准名相同
 }
 
-// Channel 返回给管理端时 APIKey 只显示首尾，完整 key 不出服务器。
+// ChannelKey 是渠道里的一把 key。管理端只看掩码；保存时 ID 为 0 表示新加（APIKey 必填），
+// 带 ID 的 APIKey 留空表示不改；保存时不在列表里的 key 会被删除。Status、Stats 由接口层补上。
+type ChannelKey struct {
+	ID      int64  `json:"id,omitempty"`
+	APIKey  string `json:"api_key,omitempty"` // 只用于保存，读取时为空
+	Masked  string `json:"masked"`
+	Enabled bool   `json:"enabled"`
+	Note    string `json:"note"`
+	Status  any    `json:"status,omitempty"`
+	Stats   any    `json:"stats,omitempty"`
+}
+
+// MaxChannelKeys 是一个渠道最多挂几把 key。
+const MaxChannelKeys = 50
+
+// Channel 返回给管理端时 key 只显示首尾，完整 key 不出服务器。
 type Channel struct {
 	ID               int64          `json:"id"`
 	Name             string         `json:"name"`
 	Template         string         `json:"template"`
-	APIKey           string         `json:"api_key,omitempty"` // 只用于保存，读取时为空
-	APIKeyMasked     string         `json:"api_key_masked"`
+	Note             string         `json:"note"`
+	APIKey           string         `json:"api_key,omitempty"` // 只用于拉取模型、冒烟测试和旧客户端保存（等于只有一把 key），读取时为空
+	APIKeyMasked     string         `json:"api_key_masked"`    // 第一把启用的 key 的掩码
+	Keys             []ChannelKey   `json:"keys"`
+	TestKeyID        int64          `json:"test_key_id,omitempty"`  // 冒烟测试指定用哪把 key，0 表示第一把启用的
+	KeysDeduped      int            `json:"keys_deduped,omitempty"` // 保存时自动去掉的重复 key 数（只出现在保存的响应里）
 	Priority         int            `json:"priority"`
 	Enabled          bool           `json:"enabled"`
 	BaseURLChat      string         `json:"base_url_chat"`
@@ -50,7 +69,7 @@ func maskKey(k string) string {
 
 func (s *Store) ListChannels(ctx context.Context) ([]*Channel, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT c.id, c.name, c.template, c.api_key, c.priority, c.enabled,
+		SELECT c.id, c.name, c.template, c.note, COALESCE((SELECT k.api_key FROM channel_keys k WHERE k.channel_id = c.id AND k.enabled ORDER BY k.sort_order, k.id LIMIT 1), ''), c.priority, c.enabled,
 		       c.base_url_chat, c.base_url_messages, c.base_url_responses, c.base_url_systemone, c.proxy_url,
 		       COALESCE((SELECT array_agg(group_id ORDER BY group_id) FROM channel_groups WHERE channel_id = c.id), '{}'),
 		       c.balance_detail, c.balance_checked_at, c.balance_error
@@ -61,10 +80,10 @@ func (s *Store) ListChannels(ctx context.Context) ([]*Channel, error) {
 	byID := map[int64]*Channel{}
 	var out []*Channel
 	for rows.Next() {
-		c := &Channel{Models: []ChannelModel{}}
+		c := &Channel{Models: []ChannelModel{}, Keys: []ChannelKey{}}
 		var key string
 		var detail []byte
-		if err := rows.Scan(&c.ID, &c.Name, &c.Template, &key, &c.Priority, &c.Enabled,
+		if err := rows.Scan(&c.ID, &c.Name, &c.Template, &c.Note, &key, &c.Priority, &c.Enabled,
 			&c.BaseURLChat, &c.BaseURLMessages, &c.BaseURLResponses, &c.BaseURLSystemOne, &c.ProxyURL, &c.GroupIDs,
 			&detail, &c.BalanceCheckedAt, &c.BalanceError); err != nil {
 			rows.Close()
@@ -81,6 +100,28 @@ func (s *Store) ListChannels(ctx context.Context) ([]*Channel, error) {
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	krows, err := s.Pool.Query(ctx, `SELECT channel_id, id, api_key, enabled, note FROM channel_keys ORDER BY channel_id, sort_order, id`)
+	if err != nil {
+		return nil, err
+	}
+	for krows.Next() {
+		var chID int64
+		var k ChannelKey
+		var key string
+		if err := krows.Scan(&chID, &k.ID, &key, &k.Enabled, &k.Note); err != nil {
+			krows.Close()
+			return nil, err
+		}
+		k.Masked = maskKey(key)
+		if c := byID[chID]; c != nil {
+			c.Keys = append(c.Keys, k)
+		}
+	}
+	krows.Close()
+	if err := krows.Err(); err != nil {
 		return nil, err
 	}
 
@@ -104,18 +145,55 @@ func (s *Store) ListChannels(ctx context.Context) ([]*Channel, error) {
 	return out, mrows.Err()
 }
 
-// ChannelSecret 返回渠道的完整配置（含 key），只给服务器内部用（拉取模型、冒烟测试）。
+// ChannelSecret 返回渠道的完整配置，APIKey 是第一把启用的 key；只给服务器内部用（拉取模型、冒烟测试、模型检测）。
 func (s *Store) ChannelSecret(ctx context.Context, id int64) (*Channel, error) {
 	var c Channel
-	err := s.Pool.QueryRow(ctx, `SELECT id, name, template, api_key, base_url_chat, base_url_messages, base_url_responses, base_url_systemone, proxy_url
-		FROM channels WHERE id = $1`, id).Scan(&c.ID, &c.Name, &c.Template, &c.APIKey, &c.BaseURLChat, &c.BaseURLMessages, &c.BaseURLResponses, &c.BaseURLSystemOne, &c.ProxyURL)
+	err := s.Pool.QueryRow(ctx, `SELECT c.id, c.name, c.template, COALESCE((SELECT k.api_key FROM channel_keys k WHERE k.channel_id = c.id AND k.enabled ORDER BY k.sort_order, k.id LIMIT 1), ''), c.base_url_chat, c.base_url_messages, c.base_url_responses, c.base_url_systemone, c.proxy_url
+		FROM channels c WHERE c.id = $1`, id).Scan(&c.ID, &c.Name, &c.Template, &c.APIKey, &c.BaseURLChat, &c.BaseURLMessages, &c.BaseURLResponses, &c.BaseURLSystemOne, &c.ProxyURL)
 	if err != nil {
 		return nil, translate(err)
 	}
 	return &c, nil
 }
 
-// SaveChannel 新建或更新渠道，连同所属分组和模型映射一起整体保存。更新时 APIKey 为空表示不改 key。
+// ChannelKeySecret 返回渠道里指定的一把 key（冒烟测试选 key 用）；不属于这个渠道时返回 ErrNotFound。
+func (s *Store) ChannelKeySecret(ctx context.Context, channelID, keyID int64) (string, error) {
+	var key string
+	err := s.Pool.QueryRow(ctx, `SELECT api_key FROM channel_keys WHERE id = $1 AND channel_id = $2`, keyID, channelID).Scan(&key)
+	return key, translate(err)
+}
+
+// ChannelKeyStat 是一把 key 在统计窗口内的成功和失败次数（口径同渠道连接状态，按 key 记）。
+type ChannelKeyStat struct {
+	Success int64 `json:"success"`
+	Failed  int64 `json:"failed"`
+}
+
+// ChannelKeyStats 统计 since 之后每把 key 的成功（最终由它完成的 success 请求）和失败（failed_key_ids）次数。
+func (s *Store) ChannelKeyStats(ctx context.Context, since time.Time) (map[int64]ChannelKeyStat, error) {
+	rows, err := s.Pool.Query(ctx, `
+		WITH w AS (SELECT channel_key_id, status, failed_key_ids FROM request_logs WHERE created_at >= $1),
+		ok AS (SELECT channel_key_id AS k, count(*) AS n FROM w WHERE status = 'success' AND channel_key_id IS NOT NULL GROUP BY 1),
+		f AS (SELECT k, count(*) AS n FROM w, unnest(w.failed_key_ids) AS k GROUP BY 1)
+		SELECT COALESCE(ok.k, f.k), COALESCE(ok.n, 0), COALESCE(f.n, 0) FROM ok FULL JOIN f ON f.k = ok.k`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]ChannelKeyStat{}
+	for rows.Next() {
+		var id int64
+		var st ChannelKeyStat
+		if err := rows.Scan(&id, &st.Success, &st.Failed); err != nil {
+			return nil, err
+		}
+		out[id] = st
+	}
+	return out, rows.Err()
+}
+
+// SaveChannel 新建或更新渠道，连同所属分组、模型映射和 key 一起整体保存。
+// Keys 为 nil 时不动 key（旧客户端只传 APIKey 时，接口层会把它转成一把 key）。
 func (s *Store) SaveChannel(ctx context.Context, c *Channel) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		return track(ctx, tx, channelEntity, &c.ID, 0, func() error { return saveChannel(ctx, tx, c) })
@@ -124,25 +202,33 @@ func (s *Store) SaveChannel(ctx context.Context, c *Channel) error {
 
 func saveChannel(ctx context.Context, tx pgx.Tx, c *Channel) error {
 	if c.ID == 0 {
-		if c.APIKey == "" {
-			return fmt.Errorf("新建渠道必须填写 API key")
+		if len(c.Keys) == 0 {
+			return badInput("新建渠道至少要有一把 key")
 		}
+		// channels.api_key 已不再使用（迁移 0030 起 key 都在 channel_keys），新渠道写空串
 		if err := tx.QueryRow(ctx, `
-			INSERT INTO channels (name, template, api_key, priority, enabled, base_url_chat, base_url_messages, base_url_responses, base_url_systemone, proxy_url, sort_order)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, (SELECT COALESCE(max(sort_order), 0) + 1 FROM channels)) RETURNING id`,
-			c.Name, c.Template, c.APIKey, c.Priority, c.Enabled, c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses, c.BaseURLSystemOne, c.ProxyURL,
+			INSERT INTO channels (name, template, note, api_key, priority, enabled, base_url_chat, base_url_messages, base_url_responses, base_url_systemone, proxy_url, sort_order)
+			VALUES ($1, $2, $3, '', $4, $5, $6, $7, $8, $9, $10, (SELECT COALESCE(max(sort_order), 0) + 1 FROM channels)) RETURNING id`,
+			c.Name, c.Template, c.Note, c.Priority, c.Enabled, c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses, c.BaseURLSystemOne, c.ProxyURL,
 		).Scan(&c.ID); err != nil {
 			return translate(err)
 		}
 	} else {
 		if err := execOne(ctx, tx, `
-			UPDATE channels SET name = $2, template = $3, api_key = COALESCE(NULLIF($4, ''), api_key), priority = $5,
+			UPDATE channels SET name = $2, template = $3, note = $4, priority = $5,
 			       enabled = $6, base_url_chat = $7, base_url_messages = $8, base_url_responses = $9, proxy_url = $10, base_url_systemone = $11
 			WHERE id = $1`,
-			c.ID, c.Name, c.Template, c.APIKey, c.Priority, c.Enabled, c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses, c.ProxyURL, c.BaseURLSystemOne,
+			c.ID, c.Name, c.Template, c.Note, c.Priority, c.Enabled, c.BaseURLChat, c.BaseURLMessages, c.BaseURLResponses, c.ProxyURL, c.BaseURLSystemOne,
 		); err != nil {
 			return err
 		}
+	}
+	if c.Keys != nil {
+		n, err := saveChannelKeys(ctx, tx, c.ID, c.Keys)
+		if err != nil {
+			return err
+		}
+		c.KeysDeduped = n
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM channel_groups WHERE channel_id = $1`, c.ID); err != nil {
 		return err
@@ -164,6 +250,98 @@ func saveChannel(ctx context.Context, tx pgx.Tx, c *Channel) error {
 		}
 	}
 	return nil
+}
+
+// saveChannelKeys 按列表顺序整体保存渠道的 key，返回自动去掉的重复 key 数：
+// 带 ID 的更新（APIKey 留空不改），不带 ID 的新加，不在列表里的删除。
+// 自动去重：新加的 key 和本次已处理的 key 重复就跳过；和渠道里已有的某把相同（覆盖模式下常见）就沿用那一条，
+// 不删了重建——保留它的统计和会话归属。
+func saveChannelKeys(ctx context.Context, tx pgx.Tx, channelID int64, keys []ChannelKey) (int, error) {
+	existing := map[string]int64{}
+	rows, err := tx.Query(ctx, `SELECT id, api_key FROM channel_keys WHERE channel_id = $1`, channelID)
+	if err != nil {
+		return 0, err
+	}
+	for rows.Next() {
+		var id int64
+		var key string
+		if err := rows.Scan(&id, &key); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		existing[key] = id
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	keyOf := map[int64]string{}
+	for k, id := range existing {
+		keyOf[id] = k
+	}
+
+	type row struct {
+		id      int64 // 0 表示新加
+		key     string
+		enabled bool
+		note    string
+	}
+	var plan []row
+	seen := map[string]bool{}
+	kept := map[int64]bool{}
+	dups := 0
+	for _, k := range keys {
+		key := strings.TrimSpace(k.APIKey)
+		id := k.ID
+		if id != 0 {
+			if _, ok := keyOf[id]; !ok {
+				return 0, badInput("key %d 不属于这个渠道", id)
+			}
+			if key == "" {
+				key = keyOf[id]
+			}
+		} else if key == "" {
+			continue // 粘贴里的空行
+		} else if old, ok := existing[key]; ok {
+			id = old // 和已有的某把相同：沿用那一条
+		}
+		if seen[key] || (id != 0 && kept[id]) {
+			dups++
+			continue
+		}
+		seen[key] = true
+		if id != 0 {
+			kept[id] = true
+		}
+		plan = append(plan, row{id: id, key: key, enabled: k.Enabled, note: strings.TrimSpace(k.Note)})
+	}
+	if len(plan) == 0 {
+		return 0, badInput("渠道至少要有一把 key")
+	}
+	if len(plan) > MaxChannelKeys {
+		return 0, badInput("一个渠道最多 %d 把 key（去重后有 %d 把）", MaxChannelKeys, len(plan))
+	}
+	var keep []int64
+	for i, r := range plan {
+		if r.id != 0 {
+			if _, err := tx.Exec(ctx, `UPDATE channel_keys SET api_key = $3, enabled = $4, note = $5, sort_order = $6 WHERE id = $1 AND channel_id = $2`,
+				r.id, channelID, r.key, r.enabled, r.note, i); err != nil {
+				return 0, translate(err)
+			}
+			keep = append(keep, r.id)
+			continue
+		}
+		var id int64
+		if err := tx.QueryRow(ctx, `INSERT INTO channel_keys (channel_id, api_key, enabled, note, sort_order) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+			channelID, r.key, r.enabled, r.note, i).Scan(&id); err != nil {
+			return 0, translate(err)
+		}
+		keep = append(keep, id)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM channel_keys WHERE channel_id = $1 AND NOT (id = ANY($2::bigint[]))`, channelID, keep); err != nil {
+		return 0, err
+	}
+	return dups, nil
 }
 
 // ReorderChannels 按 ids 的顺序重排渠道列表（只影响显示）。不在 ids 里的渠道排到后面，保持原有顺序。

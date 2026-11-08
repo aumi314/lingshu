@@ -13,22 +13,29 @@ const path = require('node:path')
       try { if ((await fetch('http://127.0.0.1:25190')).ok) break } catch {}
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
-    const base = { template: 'standard', api_key_masked: 'sk-…', priority: 0, enabled: true, base_url_chat: 'https://up.example/v1', base_url_messages: '', base_url_responses: '', base_url_systemone: '', proxy_url: '', group_ids: [1], models: [{ model_id: 1, model_name: 'gpt-6-sol', upstream_name: '' }], balance: [], balance_checked_at: null, balance_error: '' }
+    const oneKey = [{ id: 90, masked: 'sk-z…zzzz', enabled: true, note: '', status: { state: 'ok' } }]
+    const base = { template: 'standard', note: '', keys: oneKey, api_key_masked: 'sk-…', priority: 0, enabled: true, base_url_chat: 'https://up.example/v1', base_url_messages: '', base_url_responses: '', base_url_systemone: '', proxy_url: '', group_ids: [1], models: [{ model_id: 1, model_name: 'gpt-6-sol', upstream_name: '' }], balance: [], balance_checked_at: null, balance_error: '' }
     const stat = { success: 0, failed: 0, first_token_ms: null, tokens_per_sec: null, cache_read_tokens: 0, input_tokens: 0, last_success_at: null, last_failure_at: null }
     const channels = [
       // 健康：97 / 100 → 97%，首字 2.35s → 2.4s（保留一位），缓存 870 / 1000
-      { ...base, id: 1, name: 'healthy', stats: { ...stat, success: 97, failed: 3, first_token_ms: 2350, tokens_per_sec: 45, cache_read_tokens: 870, input_tokens: 1000, last_success_at: '2026-11-06T07:00:00Z', last_failure_at: '2026-11-06T06:00:00Z' } },
+      { ...base, id: 1, name: 'healthy', template: 'custom', note: '质量好，0.15 倍', keys: [
+        { id: 11, masked: 'sk-a…aaaa', enabled: true, note: '主号', status: { state: 'ok' }, stats: { success: 12, failed: 0 } },
+        { id: 12, masked: 'sk-b…bbbb', enabled: true, note: '', status: { state: 'cooling', until: '2026-11-07T12:00:00Z', reason: 'HTTP 429 rate limited' }, stats: { success: 3, failed: 2 } },
+        { id: 13, masked: 'sk-c…cccc', enabled: true, note: '', status: { state: 'invalid', until: '2026-11-07T12:30:00Z', reason: 'HTTP 401 invalid key' } },
+      ], stats: { ...stat, success: 97, failed: 3, first_token_ms: 2350, tokens_per_sec: 45, cache_read_tokens: 870, input_tokens: 1000, last_success_at: '2026-11-06T07:00:00Z', last_failure_at: '2026-11-06T06:00:00Z' } },
       // 199 / 200 也只显示 99%，不四舍五入成 100%
       { ...base, id: 2, name: 'almost', stats: { ...stat, success: 199, failed: 1 } },
       { ...base, id: 3, name: 'broken', cooling: true, stats: { ...stat, success: 1, failed: 9 } },
       { ...base, id: 4, name: 'idle', stats: null },
       { ...base, id: 5, name: 'empty', models: [], stats: null },
     ]
+    let saved = null
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
     await page.route('**/api/**', (route) => {
       const p = new URL(route.request().url()).pathname
       const json = (b) => route.fulfill({ json: b })
       if (p === '/api/me') return json({ user: { id: 1, username: 'admin', role: 'admin', balance: '5', enabled: true, user_group_ids: [1], preferences: { language: 'zh' }, created_at: '2026-10-25' }, cny_per_usd: '6.7' })
+      if (p === '/api/admin/channels/1' && route.request().method() === 'PUT') { saved = route.request().postDataJSON(); return json({ id: 1, keys_deduped: 1 }) }
       if (p === '/api/admin/channels') return json(channels)
       if (p === '/api/admin/groups') return json([{ id: 1, name: 'default', ratio: '1', enabled: true, is_public: true, user_group_ids: [], description: '' }])
       return json([])
@@ -52,7 +59,42 @@ const path = require('node:path')
     // 悬停看次数和最近成功 / 失败时间
     await row('healthy').getByText('成功率 97% · 100 次', { exact: true }).hover()
     await page.getByText('最近 24 小时：成功 97 次，失败 3 次', { exact: true }).waitFor()
-    console.log('PASS: channel list shows connection status instead of models: success rate floors, colors, TTFT/speed/cache line, cooling tag, idle and no-model states, tooltip details')
+    // 渠道备注显示在名称下方；多 key 的渠道标出 key 数，有失效的标红
+    await row('healthy').getByText('质量好，0.15 倍', { exact: true }).waitFor()
+    assert.equal(await row('healthy').locator('.ant-tag-red').filter({ hasText: '3 把 key' }).count(), 1)
+    assert.equal(await row('idle').getByText(/把 key/).count(), 0)
+    // 编辑抽屉：每把 key 的掩码、状态、24 小时次数
+    await row('healthy').getByRole('button', { name: /编\s*辑/ }).click()
+    const drawer = page.locator('.ant-drawer-section')
+    await drawer.getByText('sk-a…aaaa', { exact: true }).waitFor()
+    await drawer.getByText('正常', { exact: true }).waitFor()
+    await drawer.getByText(/^冷却中（到 /).waitFor()
+    await drawer.getByText(/^失效（/).waitFor()
+    await drawer.getByText('12 / 0').waitFor()
+    // 追加：粘贴里的重复当场去掉并提示
+    await drawer.getByRole('button', { name: /添加 key/ }).click()
+    const dlg = page.getByRole('dialog').filter({ hasText: '追加' })
+    await dlg.locator('textarea').fill('sk-new-key-12345678\n\nsk-new-key-12345678')
+    await dlg.getByRole('button', { name: /确\s*定/ }).click()
+    await page.getByText('将追加 1 把 key（粘贴里去掉 1 把重复），保存后生效', { exact: true }).waitFor()
+    await drawer.getByText('待保存', { exact: true }).waitFor()
+    // 覆盖：只留这次粘贴的
+    await drawer.getByRole('button', { name: /添加 key/ }).click()
+    await dlg.getByText('覆盖', { exact: true }).click()
+    await dlg.getByText(/覆盖会替换现有的全部 key/).waitFor()
+    await dlg.locator('textarea').fill('sk-only-one-12345678\nsk-a-same-as-old-123')
+    await dlg.getByRole('button', { name: /确\s*定/ }).click()
+    await drawer.getByText('sk-o…5678', { exact: true }).waitFor()
+    await drawer.getByText('sk-a…-123', { exact: true }).waitFor()
+    for (const old of ['sk-a…aaaa', 'sk-b…bbbb', 'sk-c…cccc', 'sk-n…5678']) assert.equal(await drawer.getByText(old, { exact: true }).count(), 0)
+    // 保存：新 key 带完整内容；服务端去掉的重复数提示出来
+    await drawer.locator('.ant-drawer-extra').getByRole('button', { name: /保\s*存/ }).click()
+    for (let i = 0; i < 100 && !saved; i++) await page.waitForTimeout(30)
+    assert.deepEqual(saved.keys, [{ api_key: 'sk-only-one-12345678', enabled: true, note: '' }, { api_key: 'sk-a-same-as-old-123', enabled: true, note: '' }])
+    assert.equal(saved.note, '质量好，0.15 倍')
+    assert.equal(saved.api_key, undefined)
+    await page.getByText('渠道已保存，自动去掉了 1 把重复的 key', { exact: true }).waitFor()
+    console.log('PASS: channel note under the name, key count tag colored by key health, per-key status and 24h counts in the drawer, append dedups pasted keys, replace keeps only pasted keys, save payload carries new keys only in full, server dedup count shown; channel list shows connection status instead of models: success rate floors, colors, TTFT/speed/cache line, cooling tag, idle and no-model states, tooltip details')
   } finally {
     await browser.close()
     server.kill()

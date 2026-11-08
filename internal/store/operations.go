@@ -78,7 +78,11 @@ var (
 		FROM models WHERE id = $1`, nil}
 	// 代理地址里可能带账号密码，快照前遮掉
 	channelEntity = entity{"channel", "name", `
-		SELECT jsonb_build_object('name', c.name, 'template', c.template, 'api_key', md5(c.api_key), 'priority', c.priority,
+		SELECT jsonb_build_object('name', c.name, 'template', c.template, 'note', c.note, 'priority', c.priority,
+		       'api_key', (SELECT md5(string_agg(k.api_key, ',' ORDER BY k.id)) FROM channel_keys k WHERE k.channel_id = c.id),
+		       'keys', COALESCE((SELECT jsonb_agg(CASE WHEN length(k.api_key) > 10 THEN left(k.api_key, 4) || '…' || right(k.api_key, 4) ELSE repeat('*', length(k.api_key)) END
+		                                          || CASE WHEN k.enabled THEN '' ELSE '（停用）' END || CASE WHEN k.note <> '' THEN '：' || k.note ELSE '' END
+		                                          ORDER BY k.sort_order, k.id) FROM channel_keys k WHERE k.channel_id = c.id), '[]'),
 		       'enabled', c.enabled, 'base_url_chat', c.base_url_chat, 'base_url_messages', c.base_url_messages,
 		       'base_url_responses', c.base_url_responses, 'base_url_systemone', c.base_url_systemone,
 		       'proxy_url', regexp_replace(c.proxy_url, '//[^@/]*@', '//***@'),

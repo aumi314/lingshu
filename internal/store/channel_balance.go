@@ -27,7 +27,7 @@ type BalanceTarget struct {
 func (s *Store) BalanceTarget(ctx context.Context, channelID int64) (*BalanceTarget, error) {
 	var t BalanceTarget
 	err := s.Pool.QueryRow(ctx, `
-		SELECT id, template, base_url_chat, api_key, proxy_url FROM channels WHERE id = $1`, channelID).
+		SELECT c.id, c.template, c.base_url_chat, COALESCE((SELECT k.api_key FROM channel_keys k WHERE k.channel_id = c.id AND k.enabled ORDER BY k.sort_order, k.id LIMIT 1), ''), c.proxy_url FROM channels c WHERE c.id = $1`, channelID).
 		Scan(&t.ChannelID, &t.Template, &t.BaseURL, &t.APIKey, &t.ProxyURL)
 	if err != nil {
 		return nil, translate(err)
