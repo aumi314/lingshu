@@ -8,10 +8,9 @@ import (
 )
 
 const (
-	FailureThreshold = 3               // 连续失败几次进入冷却
-	CooldownDuration = 5 * time.Minute // 冷却多久
-	MaxAttempts      = 3               // 一个请求最多试几个渠道
-	RetryBudget      = 60 * time.Second
+	FailureThreshold = 3                // 连续失败几次进入冷却
+	CooldownDuration = 5 * time.Minute  // 冷却多久
+	RetryBudget      = 60 * time.Second // 一个请求换渠道、换 key 重试的总时限（重试次数由服务分组设置）
 )
 
 // Outcome 是一次尝试对渠道健康的影响。
@@ -139,6 +138,24 @@ func (k *KeyHealth) Fail(id int64, status int, retryAfter time.Duration, reason 
 		s.until = k.now().Add(KeyInvalidRecheck)
 	}
 	k.state[id] = s
+}
+
+// MinCooldown 返回这些 key 里限流冷却中（429）最早恢复的剩余时间；没有一把在限流冷却时 ok 为 false（可能都是失效的）。
+func (k *KeyHealth) MinCooldown(ids []int64) (time.Duration, bool) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	now := k.now()
+	best, ok := time.Duration(0), false
+	for _, id := range ids {
+		s := k.state[id]
+		if s == nil || s.invalid || !now.Before(s.until) {
+			continue
+		}
+		if d := s.until.Sub(now); !ok || d < best {
+			best, ok = d, true
+		}
+	}
+	return best, ok
 }
 
 // OK 这把 key 刚成功过：清掉冷却和失效标记。
