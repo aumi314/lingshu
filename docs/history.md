@@ -545,6 +545,14 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 生产路由的真实模型调用未在本轮验收，本轮只做入口与鉴权的低频检查。
 
 
+## 2026-11-09：渠道协议列表头与转接标签弱化
+
+- 用户调整：渠道列表的“原生协议”列改回“协议”，转接的 Responses 保留但显示更浅。列头改为「协议 / Protocols」，只有 Messages 地址的渠道继续标出「Responses（转接）」，去掉 cyan 强调色，改为浅底细边加三级文字色（跟随明暗主题）；模型页和调用日志的转接说明不变，网关行为不变。
+- 浏览器回归同步：渠道列表断言列头为「协议」、转接标签存在、标签文字色等于三级文字色且不同于原生协议标签；英文界面断言列头 Protocols 与 Responses (bridged)；浅色主题下复验同一颜色规则。
+- 基于 main `7a07de7` 的独立分支 `codex/channel-protocol-label`，交付 PR 待合并；生产未改动。
+
+- 验证：npm run build、bridge.browser.cjs（中文/英文、深色/浅色）和 channels.browser.cjs 均通过；保留既有 Vite 单包体积提示。
+
 ## 2026-11-09：引用内容下载超时换渠道
 
 - 线上错误样本：HTTP 400、`invalid_request_error`，消息为 `Upstream could not download the referenced content before its timeout. Check the URL's reachability and lifetime.`；此前单次仅尝试一个渠道。

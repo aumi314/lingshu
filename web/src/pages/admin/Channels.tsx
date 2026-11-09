@@ -416,7 +416,7 @@ export default function Channels() {
             ),
           },
           {
-            title: t('原生协议', 'Native protocols'),
+            title: t('协议', 'Protocols'),
             render: (_, c) => (
               <>
                 {protocols(c).map((p) => <Tag key={p}>{protocolLabel[p]}</Tag>)}
@@ -427,7 +427,7 @@ export default function Channels() {
                 )}
                 {c.base_url_messages && !c.base_url_responses && (
                   <Tooltip title={t('客户端走 Responses 时，网关自动转成 Messages 上游请求。', 'Responses requests are converted to Messages upstream by the gateway.')}>
-                    <Tag color="cyan">{t('Responses（转接）', 'Responses (bridged)')}</Tag>
+                    <Tag className="bridged-tag">{t('Responses（转接）', 'Responses (bridged)')}</Tag>
                   </Tooltip>
                 )}
               </>
