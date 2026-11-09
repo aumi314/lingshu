@@ -545,8 +545,21 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 生产路由的真实模型调用未在本轮验收，本轮只做入口与鉴权的低频检查。
 
 
+## 2026-11-09：渠道协议列表头与转接标签弱化
+
+- 用户调整：渠道列表的“原生协议”列改回“协议”，转接的 Responses 保留但显示更浅。列头改为「协议 / Protocols」，只有 Messages 地址的渠道继续标出「Responses（转接）」，去掉 cyan 强调色，改为浅底细边加三级文字色（跟随明暗主题）；模型页和调用日志的转接说明不变，网关行为不变。
+- 浏览器回归同步：渠道列表断言列头为「协议」、转接标签存在、标签文字色等于三级文字色且不同于原生协议标签；英文界面断言列头 Protocols 与 Responses (bridged)；浅色主题下复验同一颜色规则。
+- 基于 main `7a07de7` 的独立分支 `codex/channel-protocol-label`，交付 PR 待合并；生产未改动。
+
+- 验证：npm run build、bridge.browser.cjs（中文/英文、深色/浅色）和 channels.browser.cjs 均通过；保留既有 Vite 单包体积提示。
+
 ## 2026-11-09：引用内容下载超时换渠道
 
 - 线上错误样本：HTTP 400、`invalid_request_error`，消息为 `Upstream could not download the referenced content before its timeout. Check the URL's reachability and lifetime.`；此前单次仅尝试一个渠道。
 - 定向识别该错误，复用渠道重试、失败累计、冷却及日志；保留原始 HTTP 状态与错误，其他参数错误仍直接返回。
 - 验收：新增错误分类、换渠道与连续三次失败冷却回归；使用独立数据库 `lingshu_download_failover_test`，`go test -count=1 ./internal/relay ./internal/router`、`go vet ./internal/relay ./internal/router` 与差异检查均通过；现有普通 400、首事件故障、输出后不重试及结算回归一并通过。交付 PR，待合并发布。
+
+## 2026-11-09：引用内容下载超时修复发布
+
+- PR #67 审阅后 squash 合并为 `22e1f6060a6661c989b5237e4cc6620443471123`；PR CI、main CI `42554211489` 和 Release `42554408944` 均通过。2026-11-09 11:06:56（Asia/Shanghai）DMIT 自动发布完成。
+- 运行二进制 SHA-256 与 release.json 一致：`9882bf80a7edbbade7a5c383b0bd2ff07548834f1b01631be40d7caca112e85d`；备份 `lingshu-deploy-20261109T030625Z-22e1f60.dump` 校验通过、25 张表数据，schema 仍为 `0034_log_upstream_protocol`。应用、数据库、发布与备份 timer active，内部与公开 healthz 均 200。
