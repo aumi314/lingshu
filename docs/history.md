@@ -578,3 +578,11 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - main CI 42560569112、Release 42560809176 通过；2026-11-09 12:17:24（Asia/Shanghai）DMIT 发布 d379ef2。程序实际 SHA-256 与 release marker 一致：`a93a67c4e9ac6a16665580b3ab7e0cc6bc3c9bf9f29a757c64c73da79ac44898`。
 - 发布前备份 `lingshu-deploy-20261109T041659Z-d379ef2.dump` 校验 OK，部署检查 25 张表数据；schema 保持 `0034_log_upstream_protocol`。应用、数据库、发布及备份 timer active；内部与公开 healthz 为 200，匿名管理接口为 401。
 - Messages → Responses 的真实 Claude Code 与付费上游端到端仍待验收；本轮未增加模型支出。按 neat-freak 同步现行决策、计划状态、研究记录与发布事实；本轮未修改 Caddy、规则或用户记忆，工作区和测试库保留复核。
+
+
+## 2026-11-09：兑换码独立开关
+
+- 「系统设置 → 支付设置 → 兑换码」新增“开启兑换码”，默认开启并沿用现有 settings 表，切换立即保存，独立于在线支付开关；缺少设置的已有部署继续可兑换，无数据库迁移。
+- 关闭后进入或刷新钱包隐藏兑换码卡片，余额、在线充值与充值记录保留；后端直接兑换返回 403，不核销、不入账、不累计猜码失败。管理员仍可生成、查看、撤销兑换码；重新开启后有效码恢复兑换。开关修改进入操作日志，保存其他设置不覆盖它，保存失败保留界面原状态。
+- 验收：独立 PostgreSQL 容器 `lingshu-redeem-toggle-test`（本地端口 25439，数据库 `lingshu_redeem_test`）上 `go vet ./...` 与 `go test -count=1 -p 1 ./...` 全通过；新增接口回归覆盖默认开启、权限、两个开关组合、局部保存、关闭不消费及重新开启只兑一次。`npm run build` 与扩展的 `redeem.browser.cjs` 通过，覆盖开关保存/刷新/失败、关闭钱包入口、保留其他卡片、关闭时生成以及重新开启兑换。保留既有 Vite 单包体积提示。
+- 按 neat-freak 同步 decisions、payments 与 plan 钱包状态，代码和文档合同一致；使用独立 worktree `~/worktrees/lingshu-redeem-toggle`、分支 `codex/redeem-toggle` 交付 PR，待合并发布。共享主仓库原有内容保留，未操作线上；规则和用户记忆无需变更，worktree 与测试库保留复核。

@@ -99,3 +99,90 @@ func listJSON(t *testing.T, c *client) string {
 	_, b := c.do("GET", "/api/admin/redeem-codes", nil, nil)
 	return b
 }
+
+func TestRedeemEnabledSetting(t *testing.T) {
+	e := newEnv(t)
+	e.api.PublicURL = "https://gateway.example"
+	a, bob := e.login("admin"), e.login("bob")
+	checkFlags := func(redeem, payment bool) {
+		t.Helper()
+		var settings struct {
+			Redeem  bool `json:"redeem_enabled"`
+			Payment bool `json:"payment_enabled"`
+		}
+		if code, body := a.do("GET", "/api/admin/settings", nil, &settings); code != 200 || settings.Redeem != redeem || settings.Payment != payment {
+			t.Fatalf("设置开关应为 redeem=%v payment=%v: %d %s", redeem, payment, code, body)
+		}
+		var methods struct {
+			Redeem  bool `json:"redeem_enabled"`
+			Payment bool `json:"enabled"`
+		}
+		if code, body := bob.do("GET", "/api/me/payment-methods", nil, &methods); code != 200 || methods.Redeem != redeem || methods.Payment != payment {
+			t.Fatalf("钱包开关应为 redeem=%v payment=%v: %d %s", redeem, payment, code, body)
+		}
+	}
+	save := func(in map[string]any) {
+		t.Helper()
+		if code, body := a.do("PUT", "/api/admin/settings", in, nil); code != 200 {
+			t.Fatalf("保存设置: %d %s", code, body)
+		}
+	}
+	// 没有保存设置的已有部署仍然默认开放兑换。
+	checkFlags(true, false)
+	if code, body := bob.do("PUT", "/api/admin/settings", map[string]bool{"redeem_enabled": false}, nil); code != 403 {
+		t.Fatalf("成员不能关闭兑换: %d %s", code, body)
+	}
+	save(map[string]any{"redeem_enabled": false})
+	checkFlags(false, false)
+	if o := e.lastOp(); o.Action != "settings.update" || o.change("redeem_enabled") == nil {
+		t.Fatalf("开关修改应有操作日志: %+v", o)
+	}
+	// 关闭时仍可生成、查看、撤销，已有兑换码不受影响。
+	var codes []store.NewRegistrationCode
+	if code, body := a.do("POST", "/api/admin/redeem-codes", map[string]any{"count": 2, "amount": "3"}, &codes); code != 201 || len(codes) != 2 {
+		t.Fatalf("关闭时应可生成兑换码: %d %s", code, body)
+	}
+	before := e.opCount()
+	for i := 0; i < redeemMaxFails+1; i++ {
+		if code, body := bob.do("POST", "/api/me/redeem", map[string]string{"code": codes[0].Code}, nil); code != 403 || !strings.Contains(body, "兑换码充值已关闭") {
+			t.Fatalf("关闭时应拒绝兑换: %d %s", code, body)
+		}
+	}
+	if e.opCount() != before || len(e.api.redeemGuard.fails[2]) != 0 {
+		t.Fatal("关闭时不应记入账或猜码失败")
+	}
+	var me struct {
+		User struct {
+			Balance string `json:"balance"`
+		} `json:"user"`
+	}
+	if code, body := bob.do("GET", "/api/me", nil, &me); code != 200 || me.User.Balance != "5" {
+		t.Fatalf("关闭时余额应保持 5: %d %s", code, body)
+	}
+	var list []store.RedeemCode
+	if code, body := a.do("GET", "/api/admin/redeem-codes", nil, &list); code != 200 || len(list) != 2 || list[0].UsedAt != nil || list[1].UsedAt != nil {
+		t.Fatalf("关闭时不应核销兑换码: %d %s", code, body)
+	}
+	if code, body := a.do("DELETE", "/api/admin/redeem-codes/"+itoa(codes[1].ID), nil, nil); code != 200 {
+		t.Fatalf("关闭时应可撤销: %d %s", code, body)
+	}
+	// 局部保存与另一个开关互不覆盖。
+	save(map[string]any{"cny_per_usd": "7"})
+	checkFlags(false, false)
+	save(map[string]any{"payment_enabled": true})
+	checkFlags(false, true)
+	save(map[string]any{"redeem_enabled": true})
+	checkFlags(true, true)
+	save(map[string]any{"payment_enabled": false})
+	checkFlags(true, false)
+	// 重新开启后，暂停期间未使用的码仍可兑换，且只能用一次。
+	var redeemed struct {
+		Balance string `json:"balance"`
+	}
+	if code, body := bob.do("POST", "/api/me/redeem", map[string]string{"code": codes[0].Code}, &redeemed); code != 200 || redeemed.Balance != "8" {
+		t.Fatalf("重新开启应正常兑换并到账: %d %s", code, body)
+	}
+	if code, body := bob.do("POST", "/api/me/redeem", map[string]string{"code": codes[0].Code}, nil); code != 400 {
+		t.Fatalf("同一码只能兑换一次: %d %s", code, body)
+	}
+}
