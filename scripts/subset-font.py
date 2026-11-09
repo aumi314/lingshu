@@ -1,4 +1,4 @@
-"""重新生成首页用的宋体子集（Noto Serif SC，OFL 1.1）。首页文案改动后运行。
+"""重新生成首页和登录注册页用的宋体子集（Noto Serif SC，OFL 1.1）。首页或 AuthShell 文案改动后运行。
 
 用法（在项目根目录）：python3 -I scripts/subset-font.py
 从 Google Fonts 按"只含这些字"的方式下载，结果放在 web/src/assets/fonts/，随前端一起打包，
@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.request
 
 WEB = pathlib.Path(__file__).resolve().parent.parent / "web" / "src"
-SOURCES = [WEB / "pages" / "Welcome.tsx", WEB / "components" / "Meridian.tsx"]
+SOURCES = [WEB / "pages" / "Welcome.tsx", WEB / "components" / "Meridian.tsx", WEB / "components" / "AuthShell.tsx"]
 OUT = WEB / "assets" / "fonts"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"
 
