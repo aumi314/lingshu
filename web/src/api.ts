@@ -96,7 +96,7 @@ export type PricedModel = {
   name: string
   protocols: string[] // 客户端实际能用的入口（原生 + 转接）
   native_protocols: string[] // 上游原生的协议
-  bridged_protocols: string[] // 靠网关转接才能用的协议（Responses 转 Messages）
+  bridged_protocols: string[] // 靠网关转接才能用的协议（Messages 与 Responses 双向）
   input_price: string
   output_price: string
   cache_read_price: string

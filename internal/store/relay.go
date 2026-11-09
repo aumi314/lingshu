@@ -82,8 +82,7 @@ type Route struct {
 	ChannelName string
 	Template    string
 	BaseURL     string
-	// UpstreamProtocol 是实际发给上游的协议。客户端走 Responses 入口、上游只有 Messages 地址时，
-	// 网关自动转接，这里记 messages；其余情况跟入口协议一致。
+	// UpstreamProtocol 是实际发给上游的协议；Messages 与 Responses 可以互相转接。
 	UpstreamProtocol usage.Protocol
 	Keys             []RouteKey
 	KeyID            int64
@@ -105,7 +104,7 @@ var protocolColumns = map[string]string{
 }
 
 // FindRoutes 返回分组内支持该协议和模型的渠道，按优先级从高到低，同优先级随机。
-// Responses 入口也接受只有 Messages 地址的渠道（网关自动转接），这时 UpstreamProtocol 记 messages。
+// Messages 与 Responses 入口互相接受另一协议的渠道，同渠道优先原生地址。
 func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model string) ([]Route, error) {
 	col, ok := protocolColumns[protocol]
 	if !ok {
@@ -117,6 +116,11 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 		baseURL = "COALESCE(NULLIF(c.base_url_responses, ''), c.base_url_messages)"
 		upstream = "CASE WHEN c.base_url_responses <> '' THEN $3::text ELSE 'messages' END"
 		filter = "(c.base_url_responses <> '' OR c.base_url_messages <> '')"
+	}
+	if protocol == string(usage.Messages) {
+		baseURL = "COALESCE(NULLIF(c.base_url_messages, ''), c.base_url_responses)"
+		upstream = "CASE WHEN c.base_url_messages <> '' THEN $3::text ELSE 'responses' END"
+		filter = "(c.base_url_messages <> '' OR c.base_url_responses <> '')"
 	}
 	rows, err := s.Pool.Query(ctx, fmt.Sprintf(`
 		SELECT c.id, c.name, c.template, %[1]s, %[2]s,
@@ -156,12 +160,12 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 }
 
 // ModelProtocols 返回分组内这个模型能用哪些协议，用来提示用户换入口。
-// Responses 入口可以转接到 Messages 上游，所以有 Messages 地址就算支持 Responses。
+// Messages 与 Responses 可以互相转接，任一原生地址都提供这两个入口。
 func (s *Store) ModelProtocols(ctx context.Context, groupID int64, model string) ([]string, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT DISTINCT p FROM (
 			SELECT CASE WHEN c.base_url_chat <> '' THEN 'chat' END AS p1,
-			       CASE WHEN c.base_url_messages <> '' THEN 'messages' END AS p2,
+			       CASE WHEN c.base_url_messages <> '' OR c.base_url_responses <> '' THEN 'messages' END AS p2,
 			       CASE WHEN c.base_url_responses <> '' OR c.base_url_messages <> '' THEN 'responses' END AS p3,
 			       CASE WHEN c.base_url_systemone <> '' THEN 'systemone' END AS p4
 			FROM models m
@@ -222,7 +226,7 @@ type RequestLog struct {
 	ReasoningEffort string
 	ServiceTier     string // 档位结果：'' 标准、fast、fast_downgraded、unavailable（见迁移 0025）
 	Protocol        string
-	// UpstreamProtocol 是实际发给上游的协议；客户端走 Responses、上游只有 Messages 时记 messages
+	// UpstreamProtocol 是实际发给上游的协议，与入口协议分别记录
 	UpstreamProtocol usage.Protocol
 	// Operation 是这次请求的用途：generation 正常生成、compaction 上下文压缩
 	Operation string

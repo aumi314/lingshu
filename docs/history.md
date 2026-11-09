@@ -543,3 +543,15 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 最终低频线上检查：公开 health 与登录页 200、匿名管理接口 401；跨域、null origin、其他子域和 cross-site 请求 403，表单请求 415，同源与无来源 CLI 的损坏 JSON 400（到达解析器，未实际登录）；`/v1/responses` 带恶意 Origin 但无 key 返回 401，仍走独立鉴权。外部 curl `--noproxy '*' --resolve` 到源站 IP 为 403，附加 X-Forwarded-For、X-Real-IP、CF-Connecting-IP 伪造 Cloudflare 来源仍 403；`/.env`、`/.git/config`、`/wp-login.php`、`/actuator/health` 路径 404，HTTP 308，五项安全头取值与模板一致。运行中的二进制 SHA 与清单一致（`50b0bc0c…`），eba864f 发布前 dump 校验通过，四个服务与 timer 均 active，Caddy 配置 SHA `fbc78bd7…`，旧站 200，SSH 正常。
 - 保留的既有提示：Caddy 模板校验通过但仍有一条格式 warn（Caddyfile 未按 `caddy fmt` 排版），未额外格式化配置；既有的 Vite 单包超 1600 kB 体积提示保持不变。
 - 生产路由的真实模型调用未在本轮验收，本轮只做入口与鉴权的低频检查。
+
+## 2026-11-09：引用内容下载超时修复发布
+
+- PR #67 审阅后 squash 合并为 `22e1f6060a6661c989b5237e4cc6620443471123`；PR CI、main CI `42554211489` 和 Release `42554408944` 均通过。2026-11-09 11:06:56（Asia/Shanghai）DMIT 自动发布完成。
+- 运行二进制 SHA-256 与 release.json 一致：`9882bf80a7edbbade7a5c383b0bd2ff07548834f1b01631be40d7caca112e85d`；备份 `lingshu-deploy-20261109T030625Z-22e1f60.dump` 校验通过、25 张表数据，schema 仍为 `0034_log_upstream_protocol`。应用、数据库、发布与备份 timer active，内部与公开 healthz 均 200。
+
+## 2026-11-09：Messages → Responses 反向转接
+
+- 独立分支 `codex/messages-responses`，直接请求/响应转换，复用路由、限流、日志与结算；渠道原生 Messages 地址优先。模型能力补充 Messages 转接入口，渠道反向标签与 #66 的淡色语义一致。
+- 新包 `internal/relay/messagesbridge`：按消息顺序转换文本/图片/文档、函数声明/调用/结果、thinking 封装回放；命名恢复、参数对象和配对校验；明确报出未支持的服务端工具、引用注解及专用语义字段。思考加密条目仅取最终完整状态，并固定回放来源渠道/key。
+- 模拟上游与独立 PostgreSQL `lingshu_reverse_root` 覆盖 HTTP 流式/JSON、非流式聚合、原生优先、首事件重试、断流不收费、取消、错误脱敏、Responses 原始缓存用量和一次结算；包测试覆盖并行工具、转义/Unicode、思考回放、终态与畸形事件。前端模型/渠道桥接标签与既有日志浏览器回归通过。
+- 未使用生产数据或真实付费模型，没有真实 Claude Code 端到端验收；本次交付 PR，不合并发布。已有 Vite 包体积提示保留。研究来源、映射规则与限制见 `research/messages-responses.md`。

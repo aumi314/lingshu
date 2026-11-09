@@ -19,6 +19,7 @@ import (
 	"github.com/aumi314/lingshu/internal/auth"
 	"github.com/aumi314/lingshu/internal/billing"
 	"github.com/aumi314/lingshu/internal/relay/bridge"
+	"github.com/aumi314/lingshu/internal/relay/messagesbridge"
 	"github.com/aumi314/lingshu/internal/relay/usage"
 	"github.com/aumi314/lingshu/internal/router"
 	"github.com/aumi314/lingshu/internal/store"
@@ -191,6 +192,25 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		}
 		if chID != 0 {
 			routes, pinKey = onlyChannel(routes, chID), keyID
+		}
+	}
+	if c.proto == usage.Messages {
+		previous, err := messagesbridge.ReplayResponseID(req.body)
+		if err != nil {
+			c.reject(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if previous != "" {
+			channelID, keyID, err := h.Store.ChannelForResponse(r.Context(), owner.UserID, previous)
+			if err != nil {
+				c.reject(w, http.StatusInternalServerError, "查询思考状态来源失败")
+				return
+			}
+			routes, pinKey = onlyChannel(routes, channelID), keyID
+			if channelID == 0 || len(routes) == 0 || routes[0].UpstreamProtocol != usage.Responses {
+				c.reject(w, http.StatusBadRequest, "思考状态的原 Responses 渠道已不可用，请开启新对话")
+				return
+			}
 		}
 	}
 	ordered := h.orderAttempts(routes, sticky, pinKey)
@@ -461,6 +481,7 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 	}
 	body, injected := req.bodyFor(c.proto, route.UpstreamModel, c.dropTier)
 	var converted *bridge.Request
+	var reverse *messagesbridge.Request
 	if c.proto == usage.Responses && upstream == usage.Messages {
 		source := req.body
 		if strings.HasSuffix(r.URL.Path, "/compact") {
@@ -476,6 +497,17 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 		c.log.ConversionDiagnostics, _ = json.Marshal(converted.Diagnostics)
 		c.fastMultiplier = decimal.Zero
 	}
+	if c.proto == usage.Messages && upstream == usage.Responses {
+		var err error
+		reverse, err = messagesbridge.Prepare(req.body, route.UpstreamModel)
+		if err != nil {
+			c.reject(w, http.StatusBadRequest, err.Error())
+			return nil
+		}
+		body = reverse.Body
+		c.log.ConversionDiagnostics, _ = json.Marshal(reverse.Diagnostics)
+		c.fastMultiplier = decimal.Zero
+	}
 	c.body = body
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel() // 返回时（包括客户端断开）立刻取消上游请求
@@ -484,7 +516,7 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 	if c.proto == usage.Responses && strings.HasSuffix(r.URL.Path, "/compact") && converted == nil {
 		url += "/compact"
 	}
-	if r.URL.RawQuery != "" {
+	if r.URL.RawQuery != "" && reverse == nil {
 		url += "?" + r.URL.RawQuery // Claude Code 会带 ?beta=true
 	}
 	upReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
@@ -493,6 +525,11 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 	}
 	copyRequestHeaders(upReq.Header, r.Header)
 	setUpstreamAuth(upReq.Header, upstream, route.APIKey)
+	if reverse != nil {
+		// Anthropic 专用版本和 beta 只属于客户端，不发给 Responses 上游。
+		upReq.Header.Del("Anthropic-Version")
+		upReq.Header.Del("Anthropic-Beta")
+	}
 	var openCode *openCodeRequest
 	if route.Template == openCodeTemplate && c.proto == usage.Chat && strings.HasSuffix(route.UpstreamModel, "-free") {
 		// 会话归属用灵枢 key 的标识，随后恢复上游鉴权，不将用户 key 发给厂商。
@@ -508,7 +545,7 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 	}
 
 	timeout := h.BodyHeaderTimeout
-	if req.stream || openCode != nil || converted != nil {
+	if req.stream || openCode != nil || converted != nil || reverse != nil {
 		timeout = h.StreamHeaderTimeout
 	}
 	timer := time.AfterFunc(timeout, cancel)
@@ -545,6 +582,10 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 			errBody = responsesErrorBody(resp.StatusCode, upstreamErrorMessage(errBody))
 			resp.Header.Set("Content-Type", "application/json")
 		}
+		if reverse != nil {
+			errBody = messagesErrorBody(resp.StatusCode, upstreamErrorMessage(errBody))
+			resp.Header.Set("Content-Type", "application/json")
+		}
 		retry, outcome := router.Classify(resp.StatusCode)
 		if router.KeyFailure(resp.StatusCode) {
 			// 限流、失效、欠费只记在这把 key 上，不拖累整个渠道
@@ -564,6 +605,9 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 		return nil
 	}
 
+	if reverse != nil {
+		return h.relayMessagesBridge(w, r, c, route, resp, req.stream, reverse)
+	}
 	if converted != nil {
 		return h.relayResponsesBridge(w, r, c, route, resp, req.stream, converted, strings.HasSuffix(r.URL.Path, "/compact"))
 	}

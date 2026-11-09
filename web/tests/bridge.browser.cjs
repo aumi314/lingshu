@@ -22,6 +22,7 @@ const path = require('node:path')
     const models = [
       priced('claude-bridge', ['chat', 'responses'], ['chat'], ['responses']),
       priced('gpt-native', ['responses'], ['responses'], []),
+      priced('gpt-reverse', ['responses', 'messages'], ['responses'], ['messages']),
     ]
     const channel = (id, name, urls) => ({
       id, name, template: 'standard', note: '', api_key_masked: 'sk-***', keys: [], priority: 0, enabled: true,
@@ -70,6 +71,11 @@ const path = require('node:path')
     const nativeRow = page.locator('tbody tr').filter({ hasText: 'gpt-native' })
     assert.equal(await nativeRow.getByText('Responses（转接）', { exact: true }).count(), 0)
 
+    const reverseRow = page.locator('tbody tr').filter({ hasText: 'gpt-reverse' })
+    await reverseRow.getByText('Messages（转接）', { exact: true }).waitFor()
+    await reverseRow.getByText('/v1/messages', { exact: true }).waitFor()
+    assert.equal(await reverseRow.getByText('Responses（转接）', { exact: true }).count(), 0)
+
     // 渠道页：只有 Messages 地址的渠道标出 Responses 转接
     await page.goto('http://127.0.0.1:25187/console/admin/channels')
     await page.getByText('anthropic-bridge', { exact: true }).waitFor()
@@ -78,6 +84,7 @@ const path = require('node:path')
     await bridgeRow.getByText('messages', { exact: true }).waitFor()
     const nativeChannel = page.locator('tbody tr').filter({ hasText: 'openai-native' })
     assert.equal(await nativeChannel.getByText('Responses（转接）', { exact: true }).count(), 0)
+    await nativeChannel.getByText('Messages（转接）', { exact: true }).waitFor()
 
     // 调用日志：标出入口 → 上游协议、压缩用途；详情里有转接诊断
     await page.goto('http://127.0.0.1:25187/console/logs')

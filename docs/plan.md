@@ -29,8 +29,9 @@ lingshu/
 ├── internal/
 │   ├── config/             # 读环境变量
 │   ├── store/              # 数据库访问 + migrations/*.sql
-│   ├── relay/              # 四个协议的透传及 Responses → Messages 转接
+│   ├── relay/              # 四个协议的透传及 Messages / Responses 双向转接
 │   │   ├── bridge/         # Responses → Messages 转换和事件状态机
+│   │   ├── messagesbridge/ # Messages → Responses 转换与事件状态机
 │   │   └── usage/          # 各协议 usage 解析和统一口径
 │   ├── router/             # 选渠道、重试、渠道冷却
 │   ├── probe/              # 模型检测：检测题和官方样本（data/，编译进程序）、出题、评判
@@ -57,7 +58,7 @@ lingshu/
 | `user_group_members` | user_id、user_group_id | 用户所属的用户分组 |
 | `group_user_groups` | group_id、user_group_id | 限定范围的服务分组允许使用的用户分组 |
 | `models` | name（站内标准名，唯一）、input / output / cache_read / cache_write 价格、price_rules、fast_multiplier | 存在定价记录即可供已启用渠道映射调用，零价有效 |
-| `channels` | name、template、api_key、priority、enabled、base_url_chat / base_url_messages / base_url_responses / base_url_systemone | 地址表示上游原生能力；Messages 地址同时提供 Responses 转接 |
+| `channels` | name、template、api_key、priority、enabled、base_url_chat / base_url_messages / base_url_responses / base_url_systemone | 地址表示上游原生能力；Messages 与 Responses 地址互相提供转接 |
 | `channel_groups` | channel_id、group_id | 渠道属于哪些服务分组 |
 | `channel_models` | channel_id、model_id、upstream_name | 名称映射；upstream_name 为空表示和标准名相同 |
 | `api_keys` | user_id、name、key_hash、key_prefix、group_id、quota_limit、quota_used、enabled、last_used_at | 只存哈希，完整 key 创建时只显示一次 |
@@ -76,7 +77,7 @@ lingshu/
 ## 4. 关键实现规则
 
 ### 透传与转接
-- Responses 可直接转到 Messages；具体工具、思考、压缩和 WebSocket 规则见 `decisions.md`「Responses → Messages」。下列原样保留规则用于原生透传。
+- Responses 与 Messages 可以双向直接转换；具体工具、思考、压缩和 WebSocket 规则见 `decisions.md`「Responses → Messages」。下列原样保留规则用于原生透传。
 - 请求体只改两处：`model` 换成渠道的上游名；chat 流式请求加 `stream_options.include_usage: true`。其余字段原样保留，包括网关不认识的字段（用原始 JSON 改写，不先反序列化成结构体）。
 - 请求头：换掉鉴权头，`User-Agent`、`anthropic-version`、`anthropic-beta` 等原样转发。
 - 流式：收到上游一个事件就立刻转发并 flush，不攒包。
@@ -100,7 +101,7 @@ lingshu/
 - 按 `decisions.md` 的流式规则：用户断开按已生成部分扣；上游出错或截断不扣；失败的尝试不扣。
 
 ### 路由
-- 候选渠道 = 属于 key 所选分组 ∩ 有可服务入口的地址（Responses 包括 Messages 转接）∩ 有这个模型 ∩ 启用；冷却中的渠道排在后面。
+- 候选渠道 = 属于 key 所选分组 ∩ 有可服务入口的地址（Messages / Responses 包括互相转接）∩ 有这个模型 ∩ 启用；冷却中的渠道排在后面。
 - 先用最高优先级一档，档内随机；失败后先试同档其他渠道，再往下一档。最多 3 次，总时限 60 秒。
 - 只在还没给客户端发出第一个字节之前重试。
 - 429 / 5xx / 超时 / 连接失败 / 404 → 重试并累计失败；401 / 402 / 403 → 重试并立刻冷却（key 失效或上游欠费）；其余 400 类 → 不重试，原样返回。
@@ -112,7 +113,7 @@ lingshu/
 
 ## 5. 当前状态（2026-11-09）
 
-线上 `https://gateway.piqode.com`（DMIT）已支持开放注册及协议同意，用户列表、渠道协议标签、日志刷新、Agent 配置提示词和模型检测并发 5 个已发布，Responses → Messages 转接（PR #58）与首轮安全加固（PR #63）也已合并发布（应用 `eba864f`，2026-11-09 02:02；Caddy 站点防护，02:13），转接已通过 Codex 工具、压缩及续接验收。
+线上 `https://gateway.piqode.com`（DMIT）已支持开放注册及协议同意，用户列表、渠道协议标签、日志刷新、Agent 配置提示词和模型检测并发 5 个已发布，Responses → Messages 转接（PR #58）与首轮安全加固（PR #63）也已合并发布（应用 `eba864f`，2026-11-09 02:02；Caddy 站点防护，02:13），转接已通过 Codex 工具、压缩及续接验收；Messages → Responses 反向转接已实现并完成隔离测试，待 PR 合并。
 
 | 模块 | 现在有什么 |
 |---|---|

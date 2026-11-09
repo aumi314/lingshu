@@ -420,6 +420,11 @@ export default function Channels() {
             render: (_, c) => (
               <>
                 {protocols(c).map((p) => <Tag key={p}>{protocolLabel[p]}</Tag>)}
+                {c.base_url_responses && !c.base_url_messages && (
+                  <Tooltip title={t('客户端走 Messages 时，网关自动转成 Responses 上游请求。', 'Messages requests are converted to Responses upstream by the gateway.')}>
+                    <Tag style={{ color: 'var(--ant-color-text-tertiary)', background: 'var(--ant-color-fill-quaternary)', borderColor: 'var(--ant-color-border-secondary)' }}>{t('Messages（转接）', 'Messages (bridged)')}</Tag>
+                  </Tooltip>
+                )}
                 {c.base_url_messages && !c.base_url_responses && (
                   <Tooltip title={t('客户端走 Responses 时，网关自动转成 Messages 上游请求。', 'Responses requests are converted to Messages upstream by the gateway.')}>
                     <Tag color="cyan">{t('Responses（转接）', 'Responses (bridged)')}</Tag>

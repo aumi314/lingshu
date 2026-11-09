@@ -128,6 +128,9 @@ export default function Models() {
             render: (ps: string[], m: PricedModel) => (
               <>
                 {ps.map((p) => <Tag key={p} className="mono">{entry[p]}</Tag>)}
+                {m.bridged_protocols?.includes('messages') && (
+                  <Tooltip title={t('上游只支持 Responses，Messages 请求由网关自动转接。', 'The upstream only speaks Responses; the gateway converts Messages requests for you.')}><Tag color="cyan">{t('Messages（转接）', 'Messages (bridged)')}</Tag></Tooltip>
+                )}
                 {m.bridged_protocols?.includes('responses') && (
                   <Tooltip title={t('上游只支持 Messages，Responses 请求由网关自动转接。', 'The upstream only speaks Messages; the gateway converts Responses requests for you.')}>
                     <Tag color="cyan">{t('Responses（转接）', 'Responses (bridged)')}</Tag>
