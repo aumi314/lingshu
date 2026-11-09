@@ -572,3 +572,9 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 未使用生产数据或真实付费模型，没有真实 Claude Code 端到端验收；本次交付 PR，不合并发布。已有 Vite 包体积提示保留。研究来源、映射规则与限制见 `research/messages-responses.md`。
 
 - 最终复核：go vet ./...、隔离库 go test -count=1 -p 1 ./...、前端构建、bridge.browser.cjs 与 channels.browser.cjs 通过；补充历史 assistant 文本/工具顺序、文档引用拒绝和显式 effort 优先回归。#66 与最新 main 的冲突已解决且新一轮 CI 全绿，本分支基于 #66 组织独立增量 PR。委派独立审阅遇到 429，后续由主代理复核，未记录为独立审阅通过。
+## 2026-11-09：协议标签与反向转接发布
+
+- 用户授权处理全部待合并 PR：#66 squash 为 `302cf7e154eb0e65f7ec7ea83ca3c6d02b60a890`，北京时间 11:59:45 上线；#68 同步 main 并解决冲突后重新通过 Go、前端与浏览器、Caddy 三项 CI（42560288019），squash 为 `d379ef25a41765b8ee49329748de87ec22788588`。
+- main CI 42560569112、Release 42560809176 通过；2026-11-09 12:17:24（Asia/Shanghai）DMIT 发布 d379ef2。程序实际 SHA-256 与 release marker 一致：`a93a67c4e9ac6a16665580b3ab7e0cc6bc3c9bf9f29a757c64c73da79ac44898`。
+- 发布前备份 `lingshu-deploy-20261109T041659Z-d379ef2.dump` 校验 OK，部署检查 25 张表数据；schema 保持 `0034_log_upstream_protocol`。应用、数据库、发布及备份 timer active；内部与公开 healthz 为 200，匿名管理接口为 401。
+- Messages → Responses 的真实 Claude Code 与付费上游端到端仍待验收；本轮未增加模型支出。按 neat-freak 同步现行决策、计划状态、研究记录与发布事实；本轮未修改 Caddy、规则或用户记忆，工作区和测试库保留复核。

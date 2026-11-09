@@ -77,7 +77,7 @@ lingshu/
 ## 4. 关键实现规则
 
 ### 透传与转接
-- Responses 与 Messages 可以双向直接转换；具体工具、思考、压缩和 WebSocket 规则见 `decisions.md`「Responses → Messages」。下列原样保留规则用于原生透传。
+- Responses 与 Messages 可以双向直接转换；两方向映射规则分别见 `decisions.md` 对应小节；压缩和 WebSocket 能力以 Responses 入口为准。下列原样保留规则用于原生透传。
 - 请求体只改两处：`model` 换成渠道的上游名；chat 流式请求加 `stream_options.include_usage: true`。其余字段原样保留，包括网关不认识的字段（用原始 JSON 改写，不先反序列化成结构体）。
 - 请求头：换掉鉴权头，`User-Agent`、`anthropic-version`、`anthropic-beta` 等原样转发。
 - 流式：收到上游一个事件就立刻转发并 flush，不攒包。
@@ -113,7 +113,7 @@ lingshu/
 
 ## 5. 当前状态（2026-11-09）
 
-线上 `https://gateway.piqode.com`（DMIT）已发布开放注册、首轮安全加固、Responses → Messages 转接及引用内容下载超时换渠道修复（应用 `22e1f60`，2026-11-09 11:06；Caddy 防护 02:13），渠道列表恢复“协议”与浅色转接标签（PR #66），Messages → Responses 反向转接已实现，其中 #66 已合并，反向转接 PR #68 正在合并发布。
+线上 `https://gateway.piqode.com`（DMIT）已发布开放注册、首轮安全加固、Responses → Messages 转接及引用内容下载超时换渠道修复（应用 `22e1f60`，2026-11-09 11:06；Caddy 防护 02:13），渠道列表恢复“协议”与浅色转接标签（PR #66），Messages → Responses 反向转接已实现，两项均已发布（最新应用 `d379ef2`，2026-11-09 12:17）；真实 Claude Code 反向转接端到端验收待做。
 
 | 模块 | 现在有什么 |
 |---|---|
