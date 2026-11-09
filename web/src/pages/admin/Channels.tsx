@@ -610,7 +610,7 @@ export default function Channels() {
             <Input className="mono" placeholder="socks5://host:port" allowClear />
           </Form.Item>
           <Form.Item name="group_ids" label={t('所属服务分组', 'Service groups')}>
-            <Select mode="multiple" options={groups.map((g) => ({ value: g.id, label: `${g.name}${g.enabled ? '' : t('（已停用）', ' (disabled)')}` }))} />
+            <Select mode="multiple" options={groups.filter((g) => !g.is_collection).map((g) => ({ value: g.id, label: `${g.name}${g.enabled ? '' : t('（已停用）', ' (disabled)')}` }))} />
           </Form.Item>
         </Form>
 

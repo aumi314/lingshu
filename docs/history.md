@@ -303,6 +303,10 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 原来是 antd 默认卡片，和首页视觉脱节。新增 `AuthShell`（北斗、远山、雾、左侧标题、右侧玉色面板）和 `auth.css`，`Login.tsx`、`Register.tsx` 只换外层，表单逻辑不变；页脚改为"还没有账号？创建账号""已有账号？去登录"，品牌标志链接回首页；按钮不再自动在两个汉字间插空格。字体子集加入 AuthShell 重新生成。`registration`、`auth-security`、`legal` 三个浏览器回归通过，桌面、手机、英文和浅色主题截图检查。
 
+### 服务分组集合（2026-11-09）
+
+迁移 0035：`groups.is_collection`、`collection_groups`。`store.ModelSource` 按模型找集合成员，网关用成员的渠道和倍率（重试次数仍按集合），`GroupModels`、`PricedModels` 展开成员；渠道不能挂集合，集合不能包含集合，类型创建后不改，操作日志快照带成员。前端：分组页“创建集合”、集合行标签和成员、编辑时选包含的分组；渠道页不列集合；key 和模型价格页对集合不显示倍率。测试：`TestCollectionRoutesByModel`（按模型选成员、排序优先、停用跳过、/v1/models 合集、日志分组名）、`TestCollectionSave`（成员规则、类型不变、集合不能挂渠道、用户端价格）、`models.browser.cjs` 集合部分。
+
 ### 改为自动发布前的手动发布记录
 
 2026-11-05 发布并复核（概览页改版）：DMIT 已发布提交 `b5090dcb1881e60bdaa1f28b8e368ea7192a0505`，运行中程序 SHA-256 为 `995c0f0635ac55fb8830db57aa06dd3b8cf036f2e012109afc7da837200e8f29`，属主 `lingshu:lingshu` 0755。发布前备份 `/var/backups/lingshu/lingshu-20261105T160124Z.dump`，SHA-256 为 `ab5105544efe475be997872e7e65a9e12e143fc319029ba90cb2e23b62080194`，`pg_restore --list` 可读（20 张表数据）。旧程序、配置与发布标记保留为 `prev-b5090dc`。只改前端，无迁移，schema 仍为 `0020_commercial_relay_mode`；回滚换回 `prev-b5090dc` 程序即可。内网与公网健康检查通过，公网入口资源 `index-DRFHDpk-.js` 与干净构建产物 SHA-256 `54ea3d0fd1851a35d5c296af7f8fc9f935b3e7b5abbec83227362855b7c184c0` 一致，服务日志无 ERROR。压缩成品上传约 9 分钟；部署方式拟改为 GitHub Actions 构建、DMIT 下载成品（仓库为公开仓库，下载无需 token），待确认。

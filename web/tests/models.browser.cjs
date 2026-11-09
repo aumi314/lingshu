@@ -25,6 +25,8 @@ const fs = require('node:fs')
     const models = [...names.map((n) => priced(1, n)), { ...priced(8, 'gpt-6-sol'), price_rules: [longRule], fast_multiplier: '2' }]
     let savedModel = null
     let savedGroup = null
+    // 集合只在管理端分组列表里出现：包含两个分组，不挂渠道
+    const collection = { id: 9, name: 'Relay All', ratio: '1', enabled: true, is_public: true, user_group_ids: [], description: '', retry_count: 2, is_collection: true, member_ids: [1, 8] }
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
     await page.route('**/api/**', (route) => {
       const p = new URL(route.request().url()).pathname
@@ -34,7 +36,7 @@ const fs = require('node:fs')
       if (p.startsWith('/api/admin/models/') && route.request().method() === 'PUT') { savedModel = route.request().postDataJSON(); return json(savedModel) }
       if (p === '/api/admin/models') return json(names.map((n, i) => ({ id: i + 1, name: n, input_price: '1', output_price: '2', cache_read_price: '0', cache_write_price: '0', price_rules: [], fast_multiplier: n === 'gpt-6-sol' ? '2.0000' : null })))
       if (p.startsWith('/api/admin/groups/') && route.request().method() === 'PUT') { savedGroup = route.request().postDataJSON(); return json(savedGroup) }
-      if (p === '/api/admin/groups') return json(groups)
+      if (p === '/api/admin/groups') return json([...groups, collection])
       if (p === '/api/admin/user-groups') return json([{ id: 1, name: 'default', is_default: true }])
       return json([])
     })
@@ -125,10 +127,10 @@ const fs = require('node:fs')
     }
     await page.goto('http://127.0.0.1:25186/console/admin/pricing?tab=groups')
     await page.getByText('Third-party Relay', { exact: true }).waitFor()
-    assert.equal(await page.locator('tbody tr').filter({ hasText: 'Official API' }).getByRole('button').first().getAttribute('title'), '拖动排序（成员看到的分组顺序也随之改变）')
+    assert.equal(await page.locator('tr[data-row-key="1"]').getByRole('button').first().getAttribute('title'), '拖动排序（成员看到的分组顺序也随之改变）')
     // 失败重试：列表显示次数，编辑后提交新值
-    await page.locator('tbody tr').filter({ hasText: 'Official API' }).getByText('1 次', { exact: true }).waitFor()
-    const relayRow = page.locator('tbody tr').filter({ hasText: 'Third-party Relay' })
+    await page.locator('tr[data-row-key="1"]').getByText('1 次', { exact: true }).waitFor()
+    const relayRow = page.locator('tr[data-row-key="8"]')
     await relayRow.getByText('3 次', { exact: true }).waitFor()
     // 服务分组同样是点行打开编辑，行里没有编辑按钮
     assert.equal(await relayRow.getByRole('button', { name: /编\s*辑/ }).count(), 0)
@@ -146,13 +148,34 @@ const fs = require('node:fs')
     assert.equal(await page.getByRole('dialog').count(), 0)
     await relayRow.locator('button[title*="拖动排序"]').click()
     assert.equal(await page.getByRole('dialog').count(), 0)
+    // 集合：名字旁标“集合”并列出包含的分组，倍率显示“按成员分组”；编辑时没有倍率，改选包含的分组，保存带上类型和成员
+    const colRow = page.locator('tbody tr').filter({ hasText: 'Relay All' })
+    await colRow.getByText('集合', { exact: true }).waitFor()
+    await colRow.getByText('包含：Official API、Third-party Relay', { exact: true }).waitFor()
+    await colRow.getByText('按成员分组', { exact: true }).waitFor()
+    assert.equal(await colRow.getAttribute('aria-label'), '编辑集合 · Relay All')
+    await colRow.locator('td').nth(1).click()
+    const colDialog = page.getByRole('dialog')
+    await colDialog.getByText('包含的分组', { exact: true }).waitFor()
+    assert.equal(await page.locator('#ratio').count(), 0)
+    savedGroup = null
+    await colDialog.getByRole('button', { name: /保\s*存/ }).click()
+    for (let i = 0; i < 100 && !savedGroup; i++) await page.waitForTimeout(30)
+    assert.equal(savedGroup.is_collection, true)
+    assert.deepEqual(savedGroup.member_ids, [1, 8])
+    await page.getByRole('dialog').waitFor({ state: 'detached' })
+    await page.getByRole('button', { name: '创建集合' }).click()
+    await page.getByRole('dialog').getByText('创建集合', { exact: true }).waitFor()
+    assert.equal(await page.locator('#ratio').count(), 0)
+    await page.getByRole('dialog').getByRole('button', { name: /取\s*消/ }).click()
+    await page.getByRole('dialog').waitFor({ state: 'detached' })
     if (process.env.MODELS_SCREENSHOT_DIR) {
       await page.screenshot({ path: path.join(process.env.MODELS_SCREENSHOT_DIR, 'groups.png') })
       await page.goto('http://127.0.0.1:25186/console/models')
       await page.getByText('claude-sonnet-5-5', { exact: true }).waitFor()
       await page.screenshot({ path: path.join(process.env.MODELS_SCREENSHOT_DIR, 'models.png') })
     }
-    console.log('PASS: model search by name or vendor, vendor dropdown with counts kept in the URL, group selector label, ratio tag only when not 1, model counts, group in URL, vendor order on member and admin pages, GPT Fast prices incl. long context, admin Fast multiplier cleared to null, group drag handle, group retry count shown and saved')
+    console.log('PASS: model search by name or vendor, vendor dropdown with counts kept in the URL, group selector label, ratio tag only when not 1, model counts, group in URL, vendor order on member and admin pages, GPT Fast prices incl. long context, admin Fast multiplier cleared to null, group drag handle, group retry count shown and saved, collection row/members/edit/create')
   } finally {
     await browser.close()
     server.kill()

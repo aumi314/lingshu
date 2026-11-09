@@ -167,14 +167,26 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 	}
 	defer release()
 
-	routes, err := h.Store.FindRoutes(r.Context(), owner.GroupID, string(c.proto), req.model)
+	// key 绑的是集合时，按模型找到提供它的成员分组，用成员的渠道和倍率；失败重试次数仍按 key 绑的分组
+	routeGroup, ratio := owner.GroupID, owner.GroupRatio
+	src, err := h.Store.ModelSource(r.Context(), owner.GroupID, req.model)
+	if err != nil {
+		c.reject(w, http.StatusInternalServerError, "查询渠道失败，请稍后重试")
+		slog.Error("查询集合成员失败", "err", err)
+		return
+	}
+	if src != nil {
+		routeGroup, ratio = src.GroupID, src.Ratio
+		c.log.GroupName = owner.GroupName + " › " + src.GroupName
+	}
+	routes, err := h.Store.FindRoutes(r.Context(), routeGroup, string(c.proto), req.model)
 	if err != nil {
 		c.reject(w, http.StatusInternalServerError, "查询渠道失败，请稍后重试")
 		slog.Error("查询渠道失败", "err", err)
 		return
 	}
 	if len(routes) == 0 {
-		h.rejectNoRoute(w, r.Context(), c, owner.GroupID, req.model)
+		h.rejectNoRoute(w, r.Context(), c, routeGroup, req.model)
 		return
 	}
 	// 同一会话固定用同一把 key（按“灵枢 key + 会话编号”），坏 key 和冷却中的渠道排到后面
@@ -218,7 +230,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		c.reject(w, http.StatusServiceUnavailable, "这轮对话接着的上一次响应来自一个现在不可用的渠道或 key，没法继续，请开启新对话")
 		return
 	}
-	c.log.GroupRatio, c.retries = owner.GroupRatio, owner.GroupRetries
+	c.log.GroupRatio, c.retries = ratio, owner.GroupRetries
 
 	// GPT 的 Fast（docs/decisions.md「GPT Fast 计费」）：只看 OpenAI 协议的 service_tier。
 	// 模型开放了 Fast 就原样转发、按倍率计费；没开放（或要的是 Ultrafast）就去掉档位，按标准处理，不让上游按高价收费而我们按标准价扣
@@ -240,7 +252,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		maxOutput = cap
 	}
 	input := usage.EstimateRequest(body)
-	reserve := billing.Reserve(input, maxOutput, ordered[0].Prices, ordered[0].PriceRules, owner.GroupRatio, c.start)
+	reserve := billing.Reserve(input, maxOutput, ordered[0].Prices, ordered[0].PriceRules, ratio, c.start)
 	// 有历史时按“最近 20 次里最贵的一次 × 2”封顶：公式按原始请求体估输入、缓存按全价，
 	// 长上下文 + 高缓存命中时会高估几十倍（实测 $1.22 对实际 $0.02），把余额不多的正常用户拦住
 	if recent, n, err := h.Store.RecentMaxCost(r.Context(), owner.UserID, req.model); err == nil && n > 0 {

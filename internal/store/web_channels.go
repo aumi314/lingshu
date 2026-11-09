@@ -230,6 +230,13 @@ func saveChannel(ctx context.Context, tx pgx.Tx, c *Channel) error {
 		}
 		c.KeysDeduped = n
 	}
+	var collections []string
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(name ORDER BY name), '{}') FROM groups WHERE id = ANY($1) AND is_collection`, c.GroupIDs).Scan(&collections); err != nil {
+		return err
+	}
+	if len(collections) > 0 {
+		return &InputError{Msg: "集合不能直接挂渠道，请把渠道挂到它包含的分组上：" + strings.Join(collections, "、")}
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM channel_groups WHERE channel_id = $1`, c.ID); err != nil {
 		return err
 	}
