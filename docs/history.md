@@ -543,3 +543,10 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 最终低频线上检查：公开 health 与登录页 200、匿名管理接口 401；跨域、null origin、其他子域和 cross-site 请求 403，表单请求 415，同源与无来源 CLI 的损坏 JSON 400（到达解析器，未实际登录）；`/v1/responses` 带恶意 Origin 但无 key 返回 401，仍走独立鉴权。外部 curl `--noproxy '*' --resolve` 到源站 IP 为 403，附加 X-Forwarded-For、X-Real-IP、CF-Connecting-IP 伪造 Cloudflare 来源仍 403；`/.env`、`/.git/config`、`/wp-login.php`、`/actuator/health` 路径 404，HTTP 308，五项安全头取值与模板一致。运行中的二进制 SHA 与清单一致（`50b0bc0c…`），eba864f 发布前 dump 校验通过，四个服务与 timer 均 active，Caddy 配置 SHA `fbc78bd7…`，旧站 200，SSH 正常。
 - 保留的既有提示：Caddy 模板校验通过但仍有一条格式 warn（Caddyfile 未按 `caddy fmt` 排版），未额外格式化配置；既有的 Vite 单包超 1600 kB 体积提示保持不变。
 - 生产路由的真实模型调用未在本轮验收，本轮只做入口与鉴权的低频检查。
+
+
+## 2026-11-09：引用内容下载超时换渠道
+
+- 线上错误样本：HTTP 400、`invalid_request_error`，消息为 `Upstream could not download the referenced content before its timeout. Check the URL's reachability and lifetime.`；此前单次仅尝试一个渠道。
+- 定向识别该错误，复用渠道重试、失败累计、冷却及日志；保留原始 HTTP 状态与错误，其他参数错误仍直接返回。
+- 验收：新增错误分类、换渠道与连续三次失败冷却回归；使用独立数据库 `lingshu_download_failover_test`，`go test -count=1 ./internal/relay ./internal/router`、`go vet ./internal/relay ./internal/router` 与差异检查均通过；现有普通 400、首事件故障、输出后不重试及结算回归一并通过。交付 PR，待合并发布。

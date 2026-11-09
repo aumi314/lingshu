@@ -546,6 +546,9 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 			resp.Header.Set("Content-Type", "application/json")
 		}
 		retry, outcome := router.Classify(resp.StatusCode)
+		if referencedContentTimeout(resp.StatusCode, errBody) {
+			retry, outcome = true, router.Failure
+		}
 		if router.KeyFailure(resp.StatusCode) {
 			// 限流、失效、欠费只记在这把 key 上，不拖累整个渠道
 			h.Keys.Fail(route.KeyID, resp.StatusCode, retryAfter(resp.Header), fmt.Sprintf("HTTP %d %s", resp.StatusCode, truncate(string(errBody), 120)))
@@ -838,4 +841,22 @@ func (h *Handler) ServeModels(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": data})
+}
+
+// referencedContentTimeout 仅识别已知的引用内容下载超时，其他 400 保留原分类。
+func referencedContentTimeout(status int, body []byte) bool {
+	if status != http.StatusBadRequest {
+		return false
+	}
+	var payload struct {
+		Error struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &payload) != nil {
+		return false
+	}
+	const message = "Upstream could not download the referenced content before its timeout."
+	return payload.Error.Type == "invalid_request_error" && (payload.Error.Message == message || payload.Error.Message == message+" Check the URL's reachability and lifetime.")
 }
