@@ -570,3 +570,5 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 新包 `internal/relay/messagesbridge`：按消息顺序转换文本/图片/文档、函数声明/调用/结果、thinking 封装回放；命名恢复、参数对象和配对校验；明确报出未支持的服务端工具、引用注解及专用语义字段。思考加密条目仅取最终完整状态，并固定回放来源渠道/key。
 - 模拟上游与独立 PostgreSQL `lingshu_reverse_root` 覆盖 HTTP 流式/JSON、非流式聚合、原生优先、首事件重试、断流不收费、取消、错误脱敏、Responses 原始缓存用量和一次结算；包测试覆盖并行工具、转义/Unicode、思考回放、终态与畸形事件。前端模型/渠道桥接标签与既有日志浏览器回归通过。
 - 未使用生产数据或真实付费模型，没有真实 Claude Code 端到端验收；本次交付 PR，不合并发布。已有 Vite 包体积提示保留。研究来源、映射规则与限制见 `research/messages-responses.md`。
+
+- 最终复核：go vet ./...、隔离库 go test -count=1 -p 1 ./...、前端构建、bridge.browser.cjs 与 channels.browser.cjs 通过；补充历史 assistant 文本/工具顺序、文档引用拒绝和显式 effort 优先回归。#66 与最新 main 的冲突已解决且新一轮 CI 全绿，本分支基于 #66 组织独立增量 PR。委派独立审阅遇到 429，后续由主代理复核，未记录为独立审阅通过。

@@ -623,3 +623,53 @@ func TestPrepareRejectsUnknownMetadataKey(t *testing.T) {
 	_, err := Prepare(raw, "gpt-5.1")
 	wantErrorCode(t, err, CodeUnsupportedField)
 }
+
+func TestPrepareAssistantHistoryAroundTools(t *testing.T) {
+	raw := []byte(`{"model":"m","max_tokens":100,"tools":[{"name":"read","input_schema":{"type":"object"}}],"messages":[{"role":"user","content":"Read it"},{"role":"assistant","content":[{"type":"text","text":"Checking\n中文"},{"type":"tool_use","id":"c1","name":"read","input":{}},{"type":"text","text":"Waiting"}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c1","content":"done"}]}]}`)
+	q, err := Prepare(raw, "up")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := decodeItems(t, decodeBody(t, q.Body))
+	if len(items) != 5 || items[1]["content"] != "Checking\n中文" || items[2]["type"] != "function_call" || items[3]["content"] != "Waiting" || items[4]["type"] != "function_call_output" {
+		t.Fatalf("assistant history order/shape: %v", items)
+	}
+}
+
+func TestPrepareDocumentSemantics(t *testing.T) {
+	for _, tc := range []struct{ extra, code string }{
+		{`"citations":{"enabled":true}`, CodeUnsupportedContent},
+		{`"context":"Important background"`, CodeUnsupportedContent},
+		{`"citations":"bad"`, CodeInvalidInput},
+		{`"citations":{"enabled":false},"context":""`, ""},
+	} {
+		raw := []byte(`{"model":"m","max_tokens":100,"messages":[{"role":"user","content":[{"type":"document","source":{"type":"text","data":"text"},` + tc.extra + `}]}]}`)
+		_, err := Prepare(raw, "up")
+		if tc.code != "" {
+			wantErrorCode(t, err, tc.code)
+		} else if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestPrepareExplicitEffort(t *testing.T) {
+	for _, mode := range []string{"enabled", "adaptive"} {
+		for _, effort := range []string{"none", "low", "high"} {
+			raw := []byte(`{"model":"m","max_tokens":100,"thinking":{"type":"` + mode + `","budget_tokens":8000},"output_config":{"effort":"` + effort + `"},"messages":[{"role":"user","content":"hi"}]}`)
+			q, err := Prepare(raw, "up")
+			if err != nil {
+				t.Fatal(err)
+			}
+			reasoning := decodeBody(t, q.Body)["reasoning"].(map[string]any)
+			if reasoning["effort"] != effort {
+				t.Fatalf("explicit effort overwritten: %v", reasoning)
+			}
+			if effort == "none" && reasoning["summary"] != nil {
+				t.Fatalf("summary requested without reasoning: %v", reasoning)
+			}
+		}
+	}
+	_, err := Prepare([]byte(`{"model":"m","max_tokens":100,"thinking":{"type":"disabled"},"output_config":{"effort":"high"},"messages":[{"role":"user","content":"hi"}]}`), "up")
+	wantErrorCode(t, err, CodeUnsupportedEffort)
+}

@@ -455,7 +455,16 @@ func (p *preparer) buildContent(idx int, role string, content json.RawMessage) e
 	var parts []map[string]any
 	flush := func() {
 		if len(parts) != 0 {
-			p.items = append(p.items, map[string]any{"type": "message", "role": role, "content": parts})
+			var content any = parts
+			if role == "assistant" {
+				// 官方多轮示例使用文本简式；避免 assistant 的 input_text 校验差异。
+				var texts []string
+				for _, part := range parts {
+					texts = append(texts, part["text"].(string))
+				}
+				content = strings.Join(texts, "\n\n")
+			}
+			p.items = append(p.items, map[string]any{"type": "message", "role": role, "content": content})
 			parts = nil
 		}
 	}
@@ -552,10 +561,24 @@ func (p *preparer) imageItem(b block, field string) (map[string]any, error) {
 // documentItem 转文档块。
 func (p *preparer) documentItem(b block, field string) (map[string]any, error) {
 	if len(b.Citations) > 0 && !isNullJSON(b.Citations) {
-		p.diagf("field_ignored", field, "Responses 上游没有文档引用开关，这段 citations 配置已忽略")
+		var config struct {
+			Enabled bool `json:"enabled"`
+		}
+		if json.Unmarshal(b.Citations, &config) != nil {
+			return nil, newError(CodeInvalidInput, field+".citations", "文档 citations 配置格式不对")
+		}
+		if config.Enabled {
+			return nil, newError(CodeUnsupportedContent, field+".citations", "文档引用暂不支持转接，请关闭 citations 或使用原生 Messages 渠道")
+		}
 	}
 	if len(b.Context) > 0 && !isNullJSON(b.Context) {
-		p.diagf("field_ignored", field, "Responses 上游没有文档上下文设置，这段 context 已忽略")
+		var context string
+		if json.Unmarshal(b.Context, &context) != nil {
+			return nil, newError(CodeInvalidInput, field+".context", "文档 context 必须是字符串")
+		}
+		if context != "" {
+			return nil, newError(CodeUnsupportedContent, field+".context", "文档 context 暂不支持转接，请改用普通文本或原生 Messages 渠道")
+		}
 	}
 	if b.Source == nil {
 		return nil, newError(CodeInvalidInput, field, "文档块缺少 source")
@@ -760,6 +783,9 @@ func (p *preparer) reasoning() (map[string]any, error) {
 	case !hasThinking && !hasEffort:
 		return nil, nil
 	case hasThinking && thinkingType == "disabled":
+		if hasEffort && effort != "none" {
+			return nil, newError(CodeUnsupportedEffort, "output_config.effort", "thinking.disabled 与非 none 的 effort 冲突，请统一思考设置")
+		}
 		p.diagf("thinking_mapped", "thinking",
 			"思考已关闭，按 Responses 的 reasoning.effort=none 发出（上游型号接不接受这一档由上游决定）")
 		p.effort = "none"
@@ -769,16 +795,22 @@ func (p *preparer) reasoning() (map[string]any, error) {
 			return nil, newError(CodeInvalidInput, "thinking.budget_tokens",
 				"thinking.enabled 必须带 budget_tokens")
 		}
-		if hasEffort {
-			p.diagf("thinking_mapped", "output_config.effort",
-				"同时给了 thinking 预算和 output_config.effort，按 thinking 预算换算，effort 已忽略")
-		}
 		mapped := effortForBudget(budget)
-		p.diagf("thinking_mapped", "thinking.budget_tokens",
-			"Anthropic 思考预算 %d token 换算成 Responses 的 reasoning.effort=%s（阈值 4096/16384；两家的预算和档位不等价，实际思考量由上游模型决定）",
-			budget, mapped)
+		if hasEffort {
+			mapped = effort
+			p.diagf("thinking_mapped", "output_config.effort",
+				"显式 output_config.effort=%s 优先于 thinking 预算换算", effort)
+		} else {
+			p.diagf("thinking_mapped", "thinking.budget_tokens",
+				"Anthropic 思考预算 %d token 换算成 Responses 的 reasoning.effort=%s（阈值 4096/16384；两家的预算和档位不等价，实际思考量由上游模型决定）",
+				budget, mapped)
+		}
 		p.effort = mapped
-		return map[string]any{"effort": mapped, "summary": "auto"}, nil
+		reasoning := map[string]any{"effort": mapped}
+		if mapped != "none" {
+			reasoning["summary"] = "auto"
+		}
+		return reasoning, nil
 	case hasThinking && thinkingType == "adaptive":
 		if !hasEffort {
 			effort = "high"
@@ -789,7 +821,11 @@ func (p *preparer) reasoning() (map[string]any, error) {
 				"thinking=adaptive 按 output_config.effort=%s 发出", effort)
 		}
 		p.effort = effort
-		return map[string]any{"effort": effort, "summary": "auto"}, nil
+		reasoning := map[string]any{"effort": effort}
+		if effort != "none" {
+			reasoning["summary"] = "auto"
+		}
+		return reasoning, nil
 	case hasThinking:
 		return nil, newError(CodeUnsupportedField, "thinking",
 			"thinking 的 %s 不能转成 Responses 上游（支持 enabled、disabled、adaptive）", thinkingType)

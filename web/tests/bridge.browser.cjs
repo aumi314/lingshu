@@ -99,6 +99,8 @@ const path = require('node:path')
       probe.remove()
       return value
     })
+    const reverseTag = nativeChannel.getByText('Messages（转接）', { exact: true })
+    assert.equal(await reverseTag.evaluate((el) => getComputedStyle(el).color), await tertiaryColor())
     const tagColor = await bridgedTag.evaluate((el) => getComputedStyle(el).color)
     const nativeTagColor = await bridgeRow.getByText('messages', { exact: true }).evaluate((el) => getComputedStyle(el).color)
     assert.equal(tagColor, await tertiaryColor(), 'dark theme: bridged tag should use the tertiary text color')
