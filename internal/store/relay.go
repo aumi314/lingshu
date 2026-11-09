@@ -198,14 +198,48 @@ func (s *Store) ChannelForResponse(ctx context.Context, userID int64, responseID
 	return *id, *keyID, err
 }
 
-// GroupModels 返回分组内可用的模型名，给 /v1/models 用。
+// ModelSource 是集合里提供某个模型的成员分组。
+type ModelSource struct {
+	GroupID   int64
+	GroupName string
+	Ratio     decimal.Decimal
+}
+
+// ModelSource 找出集合里提供这个模型的成员：按分组排序取第一个启用、有启用渠道映射这个模型的成员。
+// 普通分组、或集合里没有成员提供这个模型时返回 nil（按分组自己处理，后面会报“模型不存在”）。
+func (s *Store) ModelSource(ctx context.Context, groupID int64, model string) (*ModelSource, error) {
+	var src ModelSource
+	var ratio string
+	err := s.Pool.QueryRow(ctx, `
+		SELECT g.id, g.name, g.ratio::text
+		FROM collection_groups x
+		JOIN groups g ON g.id = x.group_id AND g.enabled
+		WHERE x.collection_id = $1 AND EXISTS (
+			SELECT 1 FROM channel_groups cg
+			JOIN channels c ON c.id = cg.channel_id AND c.enabled
+			JOIN channel_models cm ON cm.channel_id = c.id
+			JOIN models m ON m.id = cm.model_id
+			WHERE cg.group_id = g.id AND m.name = $2)
+		ORDER BY g.sort_order, g.id LIMIT 1`, groupID, model).Scan(&src.GroupID, &src.GroupName, &ratio)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	src.Ratio = mustDecimal(ratio)
+	return &src, err
+}
+
+// routeGroupsSQL 是分组实际用到渠道的分组：普通分组是它自己，集合是它启用的成员
+const routeGroupsSQL = `(SELECT id FROM groups WHERE id = $1 AND NOT is_collection
+		UNION ALL SELECT x.group_id FROM collection_groups x JOIN groups g ON g.id = x.group_id AND g.enabled WHERE x.collection_id = $1)`
+
+// GroupModels 返回分组内可用的模型名，给 /v1/models 用；集合返回各成员模型的合集。
 func (s *Store) GroupModels(ctx context.Context, groupID int64) ([]string, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT DISTINCT m.name
 		FROM models m
 		JOIN channel_models cm ON cm.model_id = m.id
 		JOIN channels c ON c.id = cm.channel_id
-		JOIN channel_groups cg ON cg.channel_id = c.id AND cg.group_id = $1
+		JOIN channel_groups cg ON cg.channel_id = c.id AND cg.group_id IN `+routeGroupsSQL+`
 		WHERE c.enabled
 		ORDER BY m.name`, groupID)
 	if err != nil {

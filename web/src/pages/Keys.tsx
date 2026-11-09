@@ -179,7 +179,7 @@ export default function Keys() {
             <Select
               options={groups.map((g) => ({
                 value: g.id,
-                label: `${g.name} · ${t('倍率', 'ratio')} ${Number(g.ratio)}${g.description ? ' · ' + g.description : ''}`,
+                label: `${g.name} · ${g.is_collection ? t('按模型自动选分组', 'routes by model') : `${t('倍率', 'ratio')} ${Number(g.ratio)}`}${g.description ? ' · ' + g.description : ''}`,
               }))}
             />
           </Form.Item>

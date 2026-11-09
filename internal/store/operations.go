@@ -66,7 +66,9 @@ var (
 		FROM api_keys k JOIN groups g ON g.id = k.group_id WHERE k.id = $1`, nil}
 	groupEntity = entity{"group", "name", `
 		SELECT jsonb_build_object('name', g.name, 'ratio', g.ratio::text, 'enabled', g.enabled, 'is_public', g.is_public, 'retry_count', g.retry_count,
-		       'description', g.description,
+		       'description', g.description, 'is_collection', g.is_collection,
+		       'members', COALESCE((SELECT jsonb_agg(m.name ORDER BY m.name) FROM collection_groups x
+		                            JOIN groups m ON m.id = x.group_id WHERE x.collection_id = g.id), '[]'),
 		       'user_groups', COALESCE((SELECT jsonb_agg(ug.name ORDER BY ug.name) FROM group_user_groups x
 		                                JOIN user_groups ug ON ug.id = x.user_group_id WHERE x.group_id = g.id), '[]'))
 		FROM groups g WHERE g.id = $1`, nil}

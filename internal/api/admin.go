@@ -376,6 +376,11 @@ func (s *Server) saveGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Store.SaveGroup(r.Context(), &g); err != nil {
+		var bad *store.InputError
+		if errors.As(err, &bad) {
+			writeError(w, http.StatusBadRequest, bad.Msg)
+			return
+		}
 		writeStoreError(w, err)
 		return
 	}

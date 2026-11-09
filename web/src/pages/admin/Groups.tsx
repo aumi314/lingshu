@@ -15,9 +15,16 @@ export default function Groups() {
   const [groups, setGroups] = useState<Group[]>([])
   const [userGroups, setUserGroups] = useState<UserGroup[]>([])
   const [loading, setLoading] = useState(true)
-  const [editing, setEditing] = useState<Group | 'new' | null>(null)
+  const [editing, setEditing] = useState<Group | 'new' | 'new-collection' | null>(null)
   const [managingUserGroups, setManagingUserGroups] = useState(false)
   const [form] = Form.useForm()
+
+  const isCollection = editing === 'new-collection' || (typeof editing === 'object' && editing?.is_collection === true)
+  const nameOf = (id: number) => groups.find((g) => g.id === id)?.name ?? id
+  const create = (collection: boolean) => {
+    form.setFieldsValue({ name: '', ratio: 1, enabled: true, is_public: true, user_group_ids: [], description: '', retry_count: 2, member_ids: [] })
+    setEditing(collection ? 'new-collection' : 'new')
+  }
 
   const load = useCallback(async () => {
     try {
@@ -37,9 +44,9 @@ export default function Groups() {
 
   const save = async () => {
     const v = await form.validateFields()
-    const body = { ...v, ratio: String(v.ratio), user_group_ids: v.is_public ? [] : v.user_group_ids }
+    const body = { ...v, ratio: String(v.ratio ?? 1), user_group_ids: v.is_public ? [] : v.user_group_ids, is_collection: isCollection }
     try {
-      if (editing === 'new') await post('/api/admin/groups', body)
+      if (editing === 'new' || editing === 'new-collection') await post('/api/admin/groups', body)
       else if (editing) await put(`/api/admin/groups/${editing.id}`, body)
       setEditing(null)
       message.success(t('已保存', 'Saved'))
@@ -75,20 +82,14 @@ export default function Groups() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 12 }}>
         <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
           {t(
-            '服务分组决定倍率和使用哪些渠道。适用范围设为所有用户，或只开放给指定的用户分组（名单在「用户分组」里维护，成员在用户编辑里调整）。',
-            'Service groups set the price ratio and available channels. Open one to all users, or only to selected user groups (maintain the lists under User groups; change membership when editing a user).',
+            '服务分组决定倍率和使用哪些渠道。适用范围设为所有用户，或只开放给指定的用户分组（名单在「用户分组」里维护，成员在用户编辑里调整）。集合把几个分组合成一个，一把 key 就能用它们的全部模型，每个模型按所在分组的渠道和倍率。',
+            'Service groups set the price ratio and available channels. Open one to all users, or only to selected user groups (maintain the lists under User groups; change membership when editing a user). A collection combines several groups so one key reaches all their models, each billed at its own group\'s ratio.',
           )}
         </Typography.Paragraph>
         <Space>
           <Button onClick={() => setManagingUserGroups(true)}>{t('用户分组', 'User groups')}</Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              form.setFieldsValue({ name: '', ratio: 1, enabled: true, is_public: true, user_group_ids: [], description: '', retry_count: 2 })
-              setEditing('new')
-            }}
-          >
+          <Button onClick={() => create(true)}>{t('创建集合', 'Create collection')}</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => create(false)}>
             {t('创建服务分组', 'Create service group')}
           </Button>
         </Space>
@@ -98,14 +99,25 @@ export default function Groups() {
         rowKey="id"
         loading={loading}
         dataSource={groups}
-        onRow={(g) => rowEditing(() => { form.setFieldsValue({ ...g, ratio: Number(g.ratio) }); setEditing(g) }, `${t('编辑服务分组', 'Edit service group')} · ${g.name}`)}
+        onRow={(g) => rowEditing(() => { form.setFieldsValue({ ...g, ratio: Number(g.ratio) }); setEditing(g) }, `${g.is_collection ? t('编辑集合', 'Edit collection') : t('编辑服务分组', 'Edit service group')} · ${g.name}`)}
         pagination={false}
         components={{ body: { row: SortableRow } }}
         columns={[
           { key: 'sort', width: 40, render: () => <DragHandle title={t('拖动排序（成员看到的分组顺序也随之改变）', 'Drag to reorder (members see the same order)')} /> },
           { title: 'ID', dataIndex: 'id', width: 48, render: (v) => <span className="muted">{v}</span> },
-          { title: t('名称', 'Name'), dataIndex: 'name' },
-          { title: t('倍率', 'Ratio'), dataIndex: 'ratio', render: (v) => `×${Number(v)}` },
+          {
+            title: t('名称', 'Name'),
+            dataIndex: 'name',
+            render: (v, g) => g.is_collection ? (
+              <div>
+                <Space size={6}>{v}<Tag color="blue">{t('集合', 'Collection')}</Tag></Space>
+                <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                  {g.member_ids?.length ? `${t('包含', 'Includes')}：${g.member_ids.map(nameOf).join('、')}` : t('还没有包含分组', 'No groups yet')}
+                </div>
+              </div>
+            ) : v,
+          },
+          { title: t('倍率', 'Ratio'), dataIndex: 'ratio', render: (v, g) => g.is_collection ? <span className="muted">{t('按成员分组', 'Per member')}</span> : `×${Number(v)}` },
           {
             title: <Tooltip title={t('渠道出故障（5xx、超时、断流）后最多换几次渠道重试；key 限流换 key 不算次数', 'How many times to retry on channel failures (5xx, timeouts, broken streams); switching keys on rate limits does not count')}>{t('失败重试', 'Retries')}</Tooltip>,
             dataIndex: 'retry_count',
@@ -138,14 +150,29 @@ export default function Groups() {
         ]}
       />
       </SortableBody>
-      <Modal open={editing !== null} title={editing === 'new' ? t('创建服务分组', 'Create service group') : t('编辑服务分组', 'Edit service group')} onOk={save} onCancel={() => setEditing(null)} okText={t('保存', 'Save')} destroyOnHidden>
+      <Modal open={editing !== null} title={isCollection
+        ? (editing === 'new-collection' ? t('创建集合', 'Create collection') : t('编辑集合', 'Edit collection'))
+        : (editing === 'new' ? t('创建服务分组', 'Create service group') : t('编辑服务分组', 'Edit service group'))} onOk={save} onCancel={() => setEditing(null)} okText={t('保存', 'Save')} destroyOnHidden>
         <Form form={form} layout="vertical" requiredMark={false}>
           <Form.Item name="name" label={t('名称', 'Name')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="ratio" label={t('倍率', 'Ratio')} rules={[{ required: true }]} extra={t('1 表示按标价收费，0.5 表示半价', '1 = list price, 0.5 = half price')}>
-            <InputNumber min={0} step={0.1} style={{ width: '100%' }} />
-          </Form.Item>
+          {isCollection ? (
+            <Form.Item
+              name="member_ids"
+              label={t('包含的分组', 'Included groups')}
+              extra={t(
+                '请求某个模型时，按列表里的分组顺序取第一个提供它的分组，走它的渠道、按它的倍率计费；停用的分组跳过。顺序在列表里拖动调整。',
+                'For each model, the first group in list order that offers it is used, with its channels and ratio; disabled groups are skipped. Drag rows in the list to change the order.',
+              )}
+            >
+              <Select mode="multiple" options={groups.filter((g) => !g.is_collection).map((g) => ({ value: g.id, label: `${g.name} · ×${Number(g.ratio)}${g.enabled ? '' : t('（已停用）', ' (disabled)')}` }))} />
+            </Form.Item>
+          ) : (
+            <Form.Item name="ratio" label={t('倍率', 'Ratio')} rules={[{ required: true }]} extra={t('1 表示按标价收费，0.5 表示半价', '1 = list price, 0.5 = half price')}>
+              <InputNumber min={0} step={0.1} style={{ width: '100%' }} />
+            </Form.Item>
+          )}
           <Form.Item
             name="retry_count"
             label={t('失败重试次数', 'Retries on failure')}

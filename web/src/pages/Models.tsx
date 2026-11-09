@@ -52,7 +52,7 @@ export default function Models() {
               label: (
                 <span>
                   {g.name}
-                  {Number(g.ratio) !== 1 && <Tag color="gold" style={{ marginInlineStart: 6, marginInlineEnd: 0 }}>×{Number(g.ratio)}</Tag>}
+                  {!g.is_collection && Number(g.ratio) !== 1 && <Tag color="gold" style={{ marginInlineStart: 6, marginInlineEnd: 0 }}>×{Number(g.ratio)}</Tag>}
                   <span className="muted" style={{ marginInlineStart: 6 }}>{count(g.id)}</span>
                 </span>
               ),
@@ -63,7 +63,9 @@ export default function Models() {
       {group && (
         <Typography.Paragraph type="secondary">
           {group.description && <>{group.description}{t('。', '. ')}</>}
-          {Number(group.ratio) !== 1
+          {group.is_collection
+            ? t('价格已按各模型所在分组的倍率算好，就是实际扣费单价。', 'Prices already include each model\'s ratio; this is what you are charged.')
+            : Number(group.ratio) !== 1
             ? t(`价格已按倍率 ×${Number(group.ratio)} 算好，就是实际扣费单价。`, `Prices already include the ×${Number(group.ratio)} ratio; this is what you are charged.`)
             : t('下面就是实际扣费单价。', 'These are the prices you are charged.')}
           {t('创建 API key 时选这个分组，就能调用下面的模型。', 'Create an API key in this group to use the models below.')}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -370,6 +371,10 @@ type Group struct {
 	// RetryCount 是渠道级失败（5xx、超时、断流）后最多重试几次，0–4；换 key 不占次数。
 	// 保存时 nil 表示不改（旧客户端不带这个字段），新建时默认 2
 	RetryCount *int `json:"retry_count"`
+	// IsCollection：集合不挂渠道、不用自己的倍率，包含若干普通分组（MemberIDs，按分组排序）；请求某个模型时
+	// 取第一个提供它的启用成员，走它的渠道和倍率（ModelSource）。创建后不能改类型。保存时 MemberIDs 为 nil 表示不改
+	IsCollection bool    `json:"is_collection"`
+	MemberIDs    []int64 `json:"member_ids"`
 }
 
 func scanGroups(rows pgx.Rows, err error) ([]Group, error) {
@@ -380,16 +385,20 @@ func scanGroups(rows pgx.Rows, err error) ([]Group, error) {
 		var g Group
 		var ratio string
 		g.RetryCount = new(int)
-		err := r.Scan(&g.ID, &g.Name, &ratio, &g.Enabled, &g.IsPublic, &g.UserGroupIDs, &g.Description, g.RetryCount)
+		err := r.Scan(&g.ID, &g.Name, &ratio, &g.Enabled, &g.IsPublic, &g.UserGroupIDs, &g.Description, g.RetryCount, &g.IsCollection, &g.MemberIDs)
 		g.Ratio = mustDecimal(ratio)
 		return g, err
 	})
 }
 
+// groupMembersSQL 是集合的成员分组 id，按分组排序
+const groupMembersSQL = `COALESCE((SELECT array_agg(cg.group_id ORDER BY m.sort_order, m.id) FROM collection_groups cg
+		JOIN groups m ON m.id = cg.group_id WHERE cg.collection_id = g.id), '{}')`
+
 func (s *Store) ListGroups(ctx context.Context) ([]Group, error) {
 	return scanGroups(s.Pool.Query(ctx, `SELECT g.id, g.name, g.ratio::text, g.enabled, g.is_public,
 		COALESCE((SELECT array_agg(gug.user_group_id ORDER BY gug.user_group_id) FROM group_user_groups gug WHERE gug.group_id = g.id), '{}'),
-		g.description, g.retry_count FROM groups g ORDER BY g.sort_order, g.id`))
+		g.description, g.retry_count, g.is_collection, `+groupMembersSQL+` FROM groups g ORDER BY g.sort_order, g.id`))
 }
 
 // AccessibleGroups 返回用户能用的启用服务分组。
@@ -397,7 +406,7 @@ func (s *Store) AccessibleGroups(ctx context.Context, userID int64) ([]Group, er
 	return scanGroups(s.Pool.Query(ctx, `
 		SELECT g.id, g.name, g.ratio::text, g.enabled, g.is_public,
 		       COALESCE((SELECT array_agg(gug.user_group_id ORDER BY gug.user_group_id) FROM group_user_groups gug WHERE gug.group_id = g.id), '{}'),
-		       g.description, g.retry_count FROM groups g
+		       g.description, g.retry_count, g.is_collection, `+groupMembersSQL+` FROM groups g
 		WHERE g.enabled AND (g.is_public OR EXISTS (
 			SELECT 1 FROM group_user_groups gug
 			JOIN user_group_members ugm ON ugm.user_group_id = gug.user_group_id
@@ -415,19 +424,22 @@ func (s *Store) SaveGroup(ctx context.Context, g *Group) error {
 func saveGroup(ctx context.Context, tx pgx.Tx, g *Group) error {
 	var retries int
 	if g.ID == 0 {
-		err := tx.QueryRow(ctx, `INSERT INTO groups (name, ratio, enabled, is_public, description, retry_count, sort_order)
-			VALUES ($1, $2::numeric, $3, $4, $5, COALESCE($6, 2), (SELECT COALESCE(max(sort_order), 0) + 1 FROM groups)) RETURNING id, retry_count`,
-			g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description, g.RetryCount).Scan(&g.ID, &retries)
+		err := tx.QueryRow(ctx, `INSERT INTO groups (name, ratio, enabled, is_public, description, retry_count, sort_order, is_collection)
+			VALUES ($1, $2::numeric, $3, $4, $5, COALESCE($6, 2), (SELECT COALESCE(max(sort_order), 0) + 1 FROM groups), $7) RETURNING id, retry_count`,
+			g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description, g.RetryCount, g.IsCollection).Scan(&g.ID, &retries)
 		if err != nil {
 			return translate(err)
 		}
 		g.RetryCount = &retries
 	} else if err := tx.QueryRow(ctx, `UPDATE groups SET name = $2, ratio = $3::numeric, enabled = $4, is_public = $5, description = $6,
-		retry_count = COALESCE($7, retry_count) WHERE id = $1 RETURNING retry_count`,
-		g.ID, g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description, g.RetryCount).Scan(&retries); err != nil {
+		retry_count = COALESCE($7, retry_count) WHERE id = $1 RETURNING retry_count, is_collection`,
+		g.ID, g.Name, g.Ratio.String(), g.Enabled, g.IsPublic, g.Description, g.RetryCount).Scan(&retries, &g.IsCollection); err != nil {
 		return translate(err)
 	}
 	g.RetryCount = &retries // 返回数据库里的实际值（新建默认 2、不带字段时保留原值）
+	if err := saveCollectionMembers(ctx, tx, g); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM group_user_groups WHERE group_id = $1`, g.ID); err != nil {
 		return err
 	}
@@ -436,6 +448,31 @@ func saveGroup(ctx context.Context, tx pgx.Tx, g *Group) error {
 	}
 	_, err := tx.Exec(ctx, `INSERT INTO group_user_groups (group_id, user_group_id) SELECT $1, unnest($2::bigint[])`, g.ID, g.UserGroupIDs)
 	return translate(err)
+}
+
+// saveCollectionMembers 保存集合的成员：只能是普通分组，不能是集合自己或别的集合。普通分组不保存成员
+func saveCollectionMembers(ctx context.Context, tx pgx.Tx, g *Group) error {
+	if !g.IsCollection {
+		g.MemberIDs = []int64{}
+		return nil
+	}
+	if g.MemberIDs != nil {
+		var bad []string
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(name ORDER BY name), '{}') FROM groups WHERE id = ANY($1) AND (is_collection OR id = $2)`,
+			g.MemberIDs, g.ID).Scan(&bad); err != nil {
+			return err
+		}
+		if len(bad) > 0 {
+			return &InputError{Msg: "集合只能包含普通分组，不能包含集合：" + strings.Join(bad, "、")}
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM collection_groups WHERE collection_id = $1`, g.ID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO collection_groups (collection_id, group_id) SELECT $1, unnest($2::bigint[]) ON CONFLICT DO NOTHING`, g.ID, g.MemberIDs); err != nil {
+			return translate(err)
+		}
+	}
+	return tx.QueryRow(ctx, `SELECT `+groupMembersSQL+` FROM groups g WHERE g.id = $1`, g.ID).Scan(&g.MemberIDs)
 }
 
 // ReorderGroups 按 ids 的顺序重排服务分组（只影响显示顺序）。不在 ids 里的分组排到后面，保持原有顺序。
@@ -532,9 +569,16 @@ type PricedModel struct {
 }
 
 // PricedModels 返回这些分组下可用的模型和协议，价格是分组倍率之后的实际单价。
+// 集合的每个模型按实际提供它的成员（ModelSource 同样的规则：按分组排序取第一个）显示协议和价格。
 func (s *Store) PricedModels(ctx context.Context, groupIDs []int64) ([]PricedModel, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT cg.group_id, m.name,
+		WITH src AS (
+			SELECT id AS gid, id AS sid, 0 AS rank FROM groups WHERE id = ANY($1) AND NOT is_collection
+			UNION ALL
+			SELECT x.collection_id, x.group_id, g.sort_order FROM collection_groups x
+			JOIN groups g ON g.id = x.group_id AND g.enabled WHERE x.collection_id = ANY($1)
+		)
+		SELECT DISTINCT ON (src.gid, m.name) src.gid, m.name,
 		       array_remove(ARRAY[
 		           CASE WHEN bool_or(c.base_url_chat <> '') THEN 'chat' END,
 		           CASE WHEN bool_or(c.base_url_messages <> '') OR bool_or(c.base_url_responses <> '') THEN 'messages' END,
@@ -554,10 +598,10 @@ func (s *Store) PricedModels(ctx context.Context, groupIDs []int64) ([]PricedMod
 		JOIN channel_models cm ON cm.model_id = m.id
 		JOIN channels c ON c.id = cm.channel_id AND c.enabled
 		JOIN channel_groups cg ON cg.channel_id = c.id
-		JOIN groups g ON g.id = cg.group_id
-		WHERE cg.group_id = ANY($1)
-		GROUP BY cg.group_id, m.id, g.ratio
-		ORDER BY cg.group_id, m.name`, groupIDs)
+		JOIN src ON src.sid = cg.group_id
+		JOIN groups g ON g.id = src.sid
+		GROUP BY src.gid, src.sid, src.rank, m.id, g.ratio
+		ORDER BY src.gid, m.name, src.rank, src.sid`, groupIDs)
 	if err != nil {
 		return nil, err
 	}
