@@ -544,6 +544,13 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 保留的既有提示：Caddy 模板校验通过但仍有一条格式 warn（Caddyfile 未按 `caddy fmt` 排版），未额外格式化配置；既有的 Vite 单包超 1600 kB 体积提示保持不变。
 - 生产路由的真实模型调用未在本轮验收，本轮只做入口与鉴权的低频检查。
 
+
+## 2026-11-09：引用内容下载超时换渠道
+
+- 线上错误样本：HTTP 400、`invalid_request_error`，消息为 `Upstream could not download the referenced content before its timeout. Check the URL's reachability and lifetime.`；此前单次仅尝试一个渠道。
+- 定向识别该错误，复用渠道重试、失败累计、冷却及日志；保留原始 HTTP 状态与错误，其他参数错误仍直接返回。
+- 验收：新增错误分类、换渠道与连续三次失败冷却回归；使用独立数据库 `lingshu_download_failover_test`，`go test -count=1 ./internal/relay ./internal/router`、`go vet ./internal/relay ./internal/router` 与差异检查均通过；现有普通 400、首事件故障、输出后不重试及结算回归一并通过。交付 PR，待合并发布。
+
 ## 2026-11-09：引用内容下载超时修复发布
 
 - PR #67 审阅后 squash 合并为 `22e1f6060a6661c989b5237e4cc6620443471123`；PR CI、main CI `42554211489` 和 Release `42554408944` 均通过。2026-11-09 11:06:56（Asia/Shanghai）DMIT 自动发布完成。

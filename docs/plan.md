@@ -113,7 +113,7 @@ lingshu/
 
 ## 5. 当前状态（2026-11-09）
 
-线上 `https://gateway.piqode.com`（DMIT）已支持开放注册及协议同意，用户列表、渠道协议标签、日志刷新、Agent 配置提示词和模型检测并发 5 个已发布，Responses → Messages 转接（PR #58）与首轮安全加固（PR #63）也已合并发布（应用 `eba864f`，2026-11-09 02:02；Caddy 站点防护，02:13），转接已通过 Codex 工具、压缩及续接验收；Messages → Responses 反向转接已实现并完成隔离测试，待 PR 合并。
+线上 `https://gateway.piqode.com`（DMIT）已发布开放注册、首轮安全加固、Responses → Messages 转接及引用内容下载超时换渠道修复（应用 `22e1f60`，2026-11-09 11:06；Caddy 防护 02:13），Messages → Responses 反向转接已实现，待 PR 合并。
 
 | 模块 | 现在有什么 |
 |---|---|

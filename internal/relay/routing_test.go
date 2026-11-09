@@ -309,3 +309,54 @@ func TestLogKeepsNamesAfterChannelKeyAndGroupDeleted(t *testing.T) {
 		t.Errorf("渠道、key 和分组删除后，日志应保留名字快照和访问者 IP；，日志应保留名字快照，实际 %+v", logs)
 	}
 }
+
+func TestReferencedContentTimeoutFailsOverAndCoolsDown(t *testing.T) {
+	e := newEnv(t)
+	primary, backup := e.withBackup(status(400, `{"error":{"type":"invalid_request_error","message":"Upstream could not download the referenced content before its timeout. Check the URL's reachability and lifetime."}}`), okUpstream)
+	for i := 0; i < 4; i++ {
+		resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("status = %d", resp.StatusCode)
+		}
+		l := e.logRow(resp.Header.Get("X-Lingshu-Request-Id"))
+		want := 2
+		if i == 3 {
+			want = 1
+		}
+		if l.status != "success" || l.channel != 3 || l.attempts != want {
+			t.Fatalf("log = %+v", l)
+		}
+	}
+	if primary.Load() != 3 || backup.Load() != 4 {
+		t.Fatalf("hits = %d/%d", primary.Load(), backup.Load())
+	}
+	var count int
+	e.store.Pool.QueryRow(context.Background(), `SELECT count(*) FROM request_logs`).Scan(&count)
+	if count != 4 {
+		t.Fatalf("expected one log per request, got %d", count)
+	}
+}
+func TestReferencedContentTimeoutClassification(t *testing.T) {
+	const msg = "Upstream could not download the referenced content before its timeout."
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		want   bool
+	}{
+		{"known", 400, `{"error":{"type":"invalid_request_error","message":"` + msg + `"}}`, true},
+		{"parameter", 400, `{"error":{"type":"invalid_request_error","message":"Invalid timeout parameter"}}`, false},
+		{"wrong type", 400, `{"error":{"type":"authentication_error","message":"` + msg + `"}}`, false},
+		{"plain text", 400, msg, false},
+		{"wrong status", 422, `{"error":{"type":"invalid_request_error","message":"` + msg + `"}}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := referencedContentTimeout(tc.status, []byte(tc.body)); got != tc.want {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
