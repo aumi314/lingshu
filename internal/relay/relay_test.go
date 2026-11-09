@@ -279,6 +279,9 @@ func TestRejections(t *testing.T) {
 	e := newEnv(t)
 	e.upstream = func(w http.ResponseWriter, r *http.Request) { t.Error("不应该请求上游") }
 
+	if _, err := e.store.Pool.Exec(context.Background(), `UPDATE channels SET base_url_responses = '' WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
 	// 模型只在 chat 渠道上，却从 messages 入口调：提示换入口，错误格式是 Anthropic 的
 	resp := e.post("/v1/messages", `{"model":"std-chat"}`, nil)
 	var anthropicErr struct {

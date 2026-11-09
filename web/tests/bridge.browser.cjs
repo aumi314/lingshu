@@ -22,6 +22,7 @@ const path = require('node:path')
     const models = [
       priced('claude-bridge', ['chat', 'responses'], ['chat'], ['responses']),
       priced('gpt-native', ['responses'], ['responses'], []),
+      priced('gpt-reverse', ['responses', 'messages'], ['responses'], ['messages']),
     ]
     const channel = (id, name, urls) => ({
       id, name, template: 'standard', note: '', api_key_masked: 'sk-***', keys: [], priority: 0, enabled: true,
@@ -71,6 +72,11 @@ const path = require('node:path')
     const nativeRow = page.locator('tbody tr').filter({ hasText: 'gpt-native' })
     assert.equal(await nativeRow.getByText('Responses（转接）', { exact: true }).count(), 0)
 
+    const reverseRow = page.locator('tbody tr').filter({ hasText: 'gpt-reverse' })
+    await reverseRow.getByText('Messages（转接）', { exact: true }).waitFor()
+    await reverseRow.getByText('/v1/messages', { exact: true }).waitFor()
+    assert.equal(await reverseRow.getByText('Responses（转接）', { exact: true }).count(), 0)
+
     // 渠道页：表头是「协议」；转接标签保留，但视觉比原生协议弱一档
     await page.goto('http://127.0.0.1:25187/console/admin/channels')
     await page.getByText('anthropic-bridge', { exact: true }).waitFor()
@@ -80,6 +86,7 @@ const path = require('node:path')
     await bridgeRow.getByText('messages', { exact: true }).waitFor()
     const nativeChannel = page.locator('tbody tr').filter({ hasText: 'openai-native' })
     assert.equal(await nativeChannel.getByText('Responses（转接）', { exact: true }).count(), 0)
+    await nativeChannel.getByText('Messages（转接）', { exact: true }).waitFor()
     assert.equal(await page.locator('th').filter({ hasText: /^协议$/ }).count(), 1)
     assert.equal(await page.locator('th').filter({ hasText: /^原生协议$/ }).count(), 0)
 
@@ -92,6 +99,8 @@ const path = require('node:path')
       probe.remove()
       return value
     })
+    const reverseTag = nativeChannel.getByText('Messages（转接）', { exact: true })
+    assert.equal(await reverseTag.evaluate((el) => getComputedStyle(el).color), await tertiaryColor())
     const tagColor = await bridgedTag.evaluate((el) => getComputedStyle(el).color)
     const nativeTagColor = await bridgeRow.getByText('messages', { exact: true }).evaluate((el) => getComputedStyle(el).color)
     assert.equal(tagColor, await tertiaryColor(), 'dark theme: bridged tag should use the tertiary text color')

@@ -520,7 +520,7 @@ type PricedModel struct {
 	Protocols []string `json:"protocols"`
 	// NativeProtocols 是上游原生的协议
 	NativeProtocols []string `json:"native_protocols"`
-	// BridgedProtocols 是靠网关转接才能用的协议（目前只有 Responses 转 Messages）
+	// BridgedProtocols 是靠网关转接才能用的协议（Messages 与 Responses 双向）
 	BridgedProtocols []string            `json:"bridged_protocols"`
 	Input            decimal.Decimal     `json:"input_price"`
 	Output           decimal.Decimal     `json:"output_price"`
@@ -537,7 +537,7 @@ func (s *Store) PricedModels(ctx context.Context, groupIDs []int64) ([]PricedMod
 		SELECT cg.group_id, m.name,
 		       array_remove(ARRAY[
 		           CASE WHEN bool_or(c.base_url_chat <> '') THEN 'chat' END,
-		           CASE WHEN bool_or(c.base_url_messages <> '') THEN 'messages' END,
+		           CASE WHEN bool_or(c.base_url_messages <> '') OR bool_or(c.base_url_responses <> '') THEN 'messages' END,
 		           CASE WHEN bool_or(c.base_url_responses <> '') OR bool_or(c.base_url_messages <> '') THEN 'responses' END,
 		           CASE WHEN bool_or(c.base_url_systemone <> '') THEN 'systemone' END], NULL),
 		       array_remove(ARRAY[
@@ -546,7 +546,7 @@ func (s *Store) PricedModels(ctx context.Context, groupIDs []int64) ([]PricedMod
 		           CASE WHEN bool_or(c.base_url_responses <> '') THEN 'responses' END,
 		           CASE WHEN bool_or(c.base_url_systemone <> '') THEN 'systemone' END], NULL),
 		       CASE WHEN NOT bool_or(c.base_url_responses <> '') AND bool_or(c.base_url_messages <> '')
-		            THEN ARRAY['responses'] ELSE ARRAY[]::text[] END,
+		            THEN ARRAY['responses'] WHEN NOT bool_or(c.base_url_messages <> '') AND bool_or(c.base_url_responses <> '') THEN ARRAY['messages'] ELSE ARRAY[]::text[] END,
 		       (m.input_price * g.ratio)::text, (m.output_price * g.ratio)::text,
 		       (m.cache_read_price * g.ratio)::text, (m.cache_write_price * g.ratio)::text,
 		       m.price_rules, g.ratio::text, m.fast_multiplier::text
