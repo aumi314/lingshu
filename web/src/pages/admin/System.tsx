@@ -14,7 +14,7 @@ type GeneratedCode = { id: number; prefix: string; code: string }
 
 type FXStatus = { source: string; date?: string; rate?: string; checked_at?: string; error?: string }
 type CallLimits = { user_concurrency: number; user_rpm: number; reserve_output_tokens: number }
-type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; registration_enabled?: boolean; registration_code_required?: boolean; registration_email_required?: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string; user_agreement?: string; privacy_policy?: string }
+type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; redeem_enabled: boolean; registration_enabled?: boolean; registration_code_required?: boolean; registration_email_required?: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string; user_agreement?: string; privacy_policy?: string }
 
 // 协议正文最长 10 万字，和后端一致
 const maxLegalLength = 100000
@@ -51,6 +51,8 @@ export default function System() {
   const [loading, setLoading] = useState(true)
   const [paymentEnabled, setPaymentEnabled] = useState(false)
   const [savingPayment, setSavingPayment] = useState(false)
+  const [redeemEnabled, setRedeemEnabled] = useState(false)
+  const [savingRedeem, setSavingRedeem] = useState(false)
   const [regFlags, setRegFlags] = useState({ enabled: false, code_required: false, email_required: false })
   const [savingRegistration, setSavingRegistration] = useState(false)
   const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([])
@@ -73,6 +75,7 @@ export default function System() {
     privacyForm.setFieldsValue({ privacy_policy: s.privacy_policy ?? '' })
     setDeploymentMode(s.deployment_mode === 'commercial_relay' ? s.deployment_mode : 'commercial_relay')
     setPaymentEnabled(s.payment_enabled)
+    setRedeemEnabled(s.redeem_enabled)
     setRegFlags(normalizeRegistration({ enabled: s.registration_enabled, code_required: s.registration_code_required, email_required: s.registration_email_required, mode: s.registration_mode }))
   }
 
@@ -217,6 +220,19 @@ export default function System() {
       message.error((e as Error).message)
     } finally {
       setSavingPayment(false)
+    }
+  }
+
+  const saveRedeem = async (enabled: boolean) => {
+    setSavingRedeem(true)
+    try {
+      await put('/api/admin/settings', { redeem_enabled: enabled })
+      setRedeemEnabled(enabled)
+      message.success(t('已保存', 'Saved'))
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSavingRedeem(false)
     }
   }
 
@@ -418,7 +434,7 @@ export default function System() {
               </Typography.Paragraph>
               <PaymentSettings />
             </Card>
-            <RedeemCodes />
+            <RedeemCodes enabled={redeemEnabled} saving={savingRedeem} disabled={loading} onChange={saveRedeem} />
             </Space>
           ) },
           { key: 'registration', label: t('注册管理', 'Registration'), children: (

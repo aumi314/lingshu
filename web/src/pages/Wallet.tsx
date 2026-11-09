@@ -14,6 +14,7 @@ export default function Wallet() {
   const [params] = useSearchParams()
   const [form] = Form.useForm()
   const [methods, setMethods] = useState<Available[]>([])
+  const [redeemEnabled, setRedeemEnabled] = useState(false)
   const [totalSpent, setTotalSpent] = useState<string | null>(null)
   const [orders, setOrders] = useState<OrderList>({ items: [], total: 0 })
   const [page, setPage] = useState(1)
@@ -28,8 +29,9 @@ export default function Wallet() {
   useEffect(() => {
     reload()
     get<LogsResponse>('/api/me/logs?page_size=1').then((v) => setTotalSpent(v.summary.cost)).catch((e) => message.error(e.message))
-    get<{ enabled: boolean; methods: Available[] }>('/api/me/payment-methods').then((v) => {
+    get<{ enabled: boolean; redeem_enabled: boolean; methods: Available[] }>('/api/me/payment-methods').then((v) => {
       setMethods(v.methods)
+      setRedeemEnabled(v.redeem_enabled)
       if (v.methods[0]) form.setFieldsValue({ provider: v.methods[0].provider, method: v.methods[0].methods[0]?.id, credit_usd: v.methods[0].min_usd })
     }).catch((e) => message.error(e.message))
   }, [reload, form, message])
@@ -98,12 +100,12 @@ export default function Wallet() {
         </Col>
       </Row>
       {focused && <Alert showIcon type={focused.status === 'success' ? 'success' : 'info'} style={{ marginTop: 16 }} title={focused.status === 'success' ? t('充值已完成', 'Top-up completed') : t('正在核对付款状态，请勿重复支付', 'Checking payment; please do not pay again')} description={<Space wrap><Typography.Text copyable>{focused.id}</Typography.Text><span>{focused.status}</span>{focused.environment === 'test' && <Tag>{t('测试环境，不增加真实余额', 'Test: no wallet credit')}</Tag>}<Button size="small" loading={busy} onClick={() => refresh(focused.id)}>{t('刷新状态', 'Refresh status')}</Button></Space>} />}
-      <Card title={t('兑换码', 'Redeem a code')} style={{ marginTop: 16 }}>
+      {redeemEnabled && <Card title={t('兑换码', 'Redeem a code')} style={{ marginTop: 16 }}>
         <Space.Compact style={{ width: '100%', maxWidth: 520 }}>
           <Input value={redeemCode} onChange={(e) => setRedeemCode(e.target.value)} onPressEnter={redeem} placeholder={t('输入兑换码，例如 ABCDE-FGHIJ-…', 'Enter a code, e.g. ABCDE-FGHIJ-…')} allowClear className="mono" />
           <Button type="primary" loading={redeeming} onClick={redeem} disabled={!redeemCode.trim()}>{t('兑换', 'Redeem')}</Button>
         </Space.Compact>
-      </Card>
+      </Card>}
       <Card title={t('在线充值', 'Online top-up')} style={{ marginTop: 16 }}>
         {methods.length === 0 ? <Typography.Text type="secondary">{t('在线充值尚未开放，如需充值请联系管理员。', 'Online top-ups are not available. Contact an admin to top up.')}</Typography.Text> : <Form form={form} layout="vertical" onValuesChange={() => setRequestKey(crypto.randomUUID())} onFinish={(v) => run(async () => {
           const order = await post<Topup>('/api/me/topups', { ...v, method: v.provider === 'epay' ? v.method : '', request_key: requestKey })

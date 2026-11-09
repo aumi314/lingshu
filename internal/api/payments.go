@@ -204,6 +204,11 @@ func (s *Server) paymentsOpen(ctx context.Context) bool {
 }
 
 func (s *Server) paymentMethods(w http.ResponseWriter, r *http.Request) {
+	redeem, err := s.redeemEnabled(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	methods := []any{}
 	open := s.paymentsOpen(r.Context())
 	if open {
@@ -219,7 +224,7 @@ func (s *Server) paymentMethods(w http.ResponseWriter, r *http.Request) {
 			methods = append(methods, map[string]any{"provider": p, "currency": c.Currency, "unit_price": c.UnitPrice, "min_usd": c.MinUSD, "max_usd": c.MaxUSD, "methods": c.Methods})
 		}
 	}
-	writeJSON(w, 200, map[string]any{"enabled": open, "methods": methods})
+	writeJSON(w, 200, map[string]any{"enabled": open, "redeem_enabled": redeem, "methods": methods})
 }
 
 func (s *Server) createTopup(w http.ResponseWriter, r *http.Request) {

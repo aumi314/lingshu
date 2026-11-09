@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Space, Table, Tag, Typography } from 'antd'
+import { App, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Segmented, Space, Switch, Table, Tag, Typography } from 'antd'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
 import { del, get, post } from '../api'
@@ -10,7 +10,9 @@ type RedeemCode = { id: number; prefix: string; amount: string; note: string; ex
 type Generated = { id: number; prefix: string; code: string }
 type FormValues = { count: number; amount: number; currency: 'USD' | 'CNY'; note?: string; expires_at?: Dayjs }
 
-export default function RedeemCodes() {
+type Props = { enabled: boolean; saving: boolean; disabled: boolean; onChange: (enabled: boolean) => Promise<void> }
+
+export default function RedeemCodes({ enabled, saving, disabled, onChange }: Props) {
   const { money, t, currency } = useApp()
   const { message } = App.useApp()
   const [codes, setCodes] = useState<RedeemCode[]>([])
@@ -62,8 +64,12 @@ export default function RedeemCodes() {
   // 放在「系统设置 → 支付设置」的第二张卡片（2026-11-07 从单独的标签页合并过来），id 供旧链接 ?tab=redeem 定位
   return (
     <Card id="redeem-codes" title={t('兑换码', 'Redeem codes')}>
+        <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 12 }}>
+          <Typography.Text>{t('开启兑换码', 'Enable redeem codes')}</Typography.Text>
+          <Switch aria-label={t('开启兑换码', 'Enable redeem codes')} checked={enabled} loading={saving} disabled={disabled} onChange={onChange} />
+        </Space>
         <Typography.Paragraph type="secondary">
-          {t('用户在「钱包充值」输入兑换码，面额立即到账；不受上面“开放在线支付”开关影响，没接支付通道也能用。', 'Users enter a code under Wallet and the amount is credited at once. Works regardless of the online payment switch above, even without any payment service.')}
+          {t('开启后，用户在「钱包充值」输入兑换码，面额立即到账；关闭后隐藏钱包兑换入口并暂停兑换，已有兑换码保留，仍可生成和管理。不受上面“开放在线支付”开关影响，没接支付通道也能用。', 'When enabled, users enter a code under Wallet and the amount is credited at once. Disabling hides the wallet entry and pauses redemption; existing codes are kept and admins can still generate and manage them. Works regardless of the online payment switch above, even without any payment service.')}
           {t('可以把兑换码放到第三方发卡平台售卖（例如 ', 'You can sell codes on third-party card-selling platforms (e.g. ')}
           <a href="https://wzyp.cn" target="_blank" rel="noopener noreferrer">wzyp.cn</a>
           {t('），用户买到后自己兑换。', '); buyers redeem them themselves.')}

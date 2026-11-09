@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -44,7 +45,25 @@ func (g *redeemGuard) fail(userID int64, now time.Time) {
 	g.fails[userID] = append(g.fails[userID], now)
 }
 
+// redeemEnabled 未保存时默认开启，保留已有部署的兑换行为。
+func (s *Server) redeemEnabled(ctx context.Context) (bool, error) {
+	v, err := s.Store.Setting(ctx, "redeem_enabled")
+	if errors.Is(err, store.ErrNotFound) {
+		return true, nil
+	}
+	return v == "true", err
+}
+
 func (s *Server) redeem(w http.ResponseWriter, r *http.Request) {
+	enabled, err := s.redeemEnabled(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !enabled {
+		writeError(w, http.StatusForbidden, "兑换码充值已关闭，请联系管理员")
+		return
+	}
 	var in struct {
 		Code string `json:"code"`
 	}

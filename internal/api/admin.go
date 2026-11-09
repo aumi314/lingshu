@@ -721,6 +721,11 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	redeem, err := s.redeemEnabled(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	registrationMode, err := s.Store.Setting(r.Context(), "registration_mode")
 	if errors.Is(err, store.ErrNotFound) {
 		registrationMode = "manual"
@@ -749,7 +754,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"call_limits": limits,
+		"call_limits": limits, "redeem_enabled": redeem,
 		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode, "registration_enabled": registration.Enabled, "registration_code_required": registration.CodeRequired, "registration_email_required": registration.EmailRequired, "api_base_url": apiBaseURL, "deployment_mode": deploymentMode,
 		"fx_mode": s.fxMode(r.Context()), "fx_status": s.fxStatus(r.Context()), "announcement": s.announcement(r.Context()),
 		"user_agreement": legal.UserAgreement, "privacy_policy": legal.PrivacyPolicy, "legal_version": legal.Version,
@@ -810,6 +815,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		CNYPerUSD                 *decimal.Decimal `json:"cny_per_usd"`
 		PaymentEnabled            *bool            `json:"payment_enabled"`
+		RedeemEnabled             *bool            `json:"redeem_enabled"`
 		RegistrationMode          *string          `json:"registration_mode"`
 		RegistrationEnabled       *bool            `json:"registration_enabled"`
 		RegistrationCodeRequired  *bool            `json:"registration_code_required"`
@@ -962,6 +968,9 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.PaymentEnabled != nil {
 		kv = append(kv, [2]string{"payment_enabled", strconv.FormatBool(*in.PaymentEnabled)})
+	}
+	if in.RedeemEnabled != nil {
+		kv = append(kv, [2]string{"redeem_enabled", strconv.FormatBool(*in.RedeemEnabled)})
 	}
 	kv = append(kv, registrationValues...)
 	if in.APIBaseURL != nil {
