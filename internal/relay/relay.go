@@ -185,8 +185,9 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		slog.Error("查询渠道失败", "err", err)
 		return
 	}
+	routes = withoutDisabledBridges(routes, c.proto, limits)
 	if len(routes) == 0 {
-		h.rejectNoRoute(w, r.Context(), c, routeGroup, req.model)
+		h.rejectNoRoute(w, r.Context(), c, routeGroup, req.model, limits)
 		return
 	}
 	// 同一会话固定用同一把 key（按“灵枢 key + 会话编号”），坏 key 和冷却中的渠道排到后面
@@ -317,8 +318,39 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, proto usa
 	return owner, true
 }
 
-func (h *Handler) rejectNoRoute(w http.ResponseWriter, ctx context.Context, c *call, groupID int64, model string) {
+// withoutDisabledBridges 去掉被“调用设置”里的应急开关关掉的转接路由（上游协议和入口不同的那些）。
+func withoutDisabledBridges(routes []store.Route, proto usage.Protocol, limits store.CallLimits) []store.Route {
+	if (proto != usage.Responses || limits.BridgeResponsesToMessages) && (proto != usage.Messages || limits.BridgeMessagesToResponses) {
+		return routes
+	}
+	kept := routes[:0:0]
+	for _, rt := range routes {
+		if rt.UpstreamProtocol == proto {
+			kept = append(kept, rt)
+		}
+	}
+	return kept
+}
+
+// withBridgedProtocols 在原生协议之外补上能转接到的入口（Messages 与 Responses 互转，各自受开关控制）。
+func withBridgedProtocols(native []string, limits store.CallLimits) []string {
+	has := map[string]bool{}
+	for _, p := range native {
+		has[p] = true
+	}
+	out := append([]string(nil), native...)
+	if has["messages"] && !has["responses"] && limits.BridgeResponsesToMessages {
+		out = append(out, "responses")
+	}
+	if has["responses"] && !has["messages"] && limits.BridgeMessagesToResponses {
+		out = append(out, "messages")
+	}
+	return out
+}
+
+func (h *Handler) rejectNoRoute(w http.ResponseWriter, ctx context.Context, c *call, groupID int64, model string, limits store.CallLimits) {
 	protocols, err := h.Store.ModelProtocols(ctx, groupID, model)
+	protocols = withBridgedProtocols(protocols, limits)
 	if err == nil && len(protocols) > 0 {
 		entries := make([]string, len(protocols))
 		for i, p := range protocols {

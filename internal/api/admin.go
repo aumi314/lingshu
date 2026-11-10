@@ -831,6 +831,8 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		Concurrency               *int64           `json:"user_concurrency"`
 		RPM                       *int64           `json:"user_rpm"`
 		ReserveOutput             *int64           `json:"reserve_output_tokens"`
+		BridgeResponsesToMessages *bool            `json:"bridge_responses_to_messages"`
+		BridgeMessagesToResponses *bool            `json:"bridge_messages_to_responses"`
 		Announcement              *string          `json:"announcement"`
 		UserAgreement             *string          `json:"user_agreement"`
 		PrivacyPolicy             *string          `json:"privacy_policy"`
@@ -976,6 +978,11 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.RedeemEnabled != nil {
 		kv = append(kv, [2]string{"redeem_enabled", strconv.FormatBool(*in.RedeemEnabled)})
+	}
+	for k, v := range map[string]*bool{"bridge_responses_to_messages": in.BridgeResponsesToMessages, "bridge_messages_to_responses": in.BridgeMessagesToResponses} {
+		if v != nil {
+			kv = append(kv, [2]string{k, strconv.FormatBool(*v)})
+		}
 	}
 	kv = append(kv, registrationValues...)
 	if in.APIBaseURL != nil {

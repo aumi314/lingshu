@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/aumi314/lingshu/internal/relay/usage"
+	"github.com/aumi314/lingshu/internal/store"
 	"io"
 	"net/http"
 	"strings"
@@ -103,9 +104,18 @@ func TestMessagesResponsesStreamingBillingAndCapabilities(t *testing.T) {
 	if err != nil || proto != "messages" || up != "responses" || cost != "0.0001640000" || write != 0 || count != 1 {
 		t.Fatalf("billing %s/%s %s write=%d count=%d err=%v", proto, up, cost, write, count, err)
 	}
+	// 存储层只给原生协议，能转接的 Messages 入口由网关按调用设置的开关补上
 	ps, err := e.store.ModelProtocols(context.Background(), 1, "std-chat")
-	if err != nil || !strings.Contains(strings.Join(ps, ","), "messages") {
+	if err != nil || strings.Contains(strings.Join(ps, ","), "messages") {
 		t.Fatalf("protocols=%v %v", ps, err)
+	}
+	if got := strings.Join(withBridgedProtocols(ps, store.DefaultCallLimits), ","); !strings.Contains(got, "messages") {
+		t.Fatalf("开着转接时应补上 messages 入口: %s", got)
+	}
+	off := store.DefaultCallLimits
+	off.BridgeMessagesToResponses = false
+	if got := strings.Join(withBridgedProtocols(ps, off), ","); strings.Contains(got, "messages") {
+		t.Fatalf("关掉转接后不应再有 messages 入口: %s", got)
 	}
 	models, err := e.store.PricedModels(context.Background(), []int64{1})
 	if err != nil {

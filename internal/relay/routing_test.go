@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -232,16 +233,25 @@ func TestHeaderTimeoutFailsOver(t *testing.T) {
 	}
 }
 
+// 同优先级的渠道按会话分流（渠道亲和）：不同会话分散到各渠道，同一个 key 不带会话编号时固定一个渠道。
 func TestSamePriorityChannelsShareTraffic(t *testing.T) {
 	e := newEnv(t)
 	primaryHits, backupHits := e.withBackup(okUpstream, okUpstream)
 	e.exec(`UPDATE channels SET priority = 0 WHERE id = 3`)
 	for i := 0; i < 40; i++ {
-		resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+		resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, map[string]string{"Session-Id": "session-" + strconv.Itoa(i)})
 		resp.Body.Close()
 	}
 	if primaryHits.Load() < 5 || backupHits.Load() < 5 {
-		t.Errorf("同优先级应随机分流，实际 主 %d / 备 %d", primaryHits.Load(), backupHits.Load())
+		t.Errorf("不同会话应分散到同优先级的渠道，实际 主 %d / 备 %d", primaryHits.Load(), backupHits.Load())
+	}
+	primary, backup := primaryHits.Load(), backupHits.Load()
+	for i := 0; i < 10; i++ {
+		resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+		resp.Body.Close()
+	}
+	if dp, db := primaryHits.Load()-primary, backupHits.Load()-backup; dp != 0 && db != 0 {
+		t.Errorf("同一个 key 不带会话编号时应固定一个渠道，实际 主 %d / 备 %d", dp, db)
 	}
 }
 

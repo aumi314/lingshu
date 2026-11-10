@@ -46,9 +46,19 @@ func keyWeight(sticky string, keyID int64) uint64 {
 }
 
 // orderAttempts 把候选渠道展开成按顺序尝试的“渠道 + key”：
-// 渠道保持数据库给的顺序（优先级高的在前、同档随机），渠道冷却中或所有 key 都不可用的排到最后（全都不可用时仍然要试）；
+// 渠道按优先级从高到低，同档内按会话固定（渠道亲和），渠道冷却中或所有 key 都不可用的排到最后（全都不可用时仍然要试）；
 // 渠道内本会话固定的那把 key 在前，其余可用的按权重排在后面，冷却中、失效的放最后。pinKey 非 0 时这个渠道只用那一把。
 func (h *Handler) orderAttempts(routes []store.Route, sticky string, pinKey int64) []store.Route {
+	// 渠道亲和：同一优先级内按会话固定渠道（同一套最高随机权重哈希，和 key 分开算）。
+	// 上游的提示词缓存按账号存，一段对话在几个同档渠道之间来回跳，每跳一次缓存就落空；
+	// 固定的渠道冷却或 key 都不可用时，下面的 ready/later 会把它排到后面，恢复后自动回来
+	routes = append([]store.Route(nil), routes...)
+	sort.SliceStable(routes, func(i, j int) bool {
+		if routes[i].Priority != routes[j].Priority {
+			return routes[i].Priority > routes[j].Priority
+		}
+		return keyWeight("channel\x00"+sticky, routes[i].ChannelID) > keyWeight("channel\x00"+sticky, routes[j].ChannelID)
+	})
 	var ready, later []store.Route
 	for _, rt := range routes {
 		keys := append([]store.RouteKey(nil), rt.Keys...)

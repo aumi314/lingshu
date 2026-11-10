@@ -13,7 +13,7 @@ type RegistrationCode = { id: number; prefix: string; created_at: string; used_b
 type GeneratedCode = { id: number; prefix: string; code: string }
 
 type FXStatus = { source: string; date?: string; rate?: string; checked_at?: string; error?: string }
-type CallLimits = { user_concurrency: number; user_rpm: number; reserve_output_tokens: number }
+type CallLimits = { user_concurrency: number; user_rpm: number; reserve_output_tokens: number; bridge_responses_to_messages?: boolean; bridge_messages_to_responses?: boolean }
 type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; redeem_enabled: boolean; registration_enabled?: boolean; registration_code_required?: boolean; registration_email_required?: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string; user_agreement?: string; privacy_policy?: string }
 
 // 协议正文最长 10 万字，和后端一致
@@ -28,7 +28,7 @@ export default function System() {
   const [savingFXMode, setSavingFXMode] = useState(false)
   // 兑换码 2026-11-07 并入支付设置：旧链接 ?tab=redeem 落到支付设置并滚到兑换码卡片
   const rawTab = params.get('tab') ?? ''
-  const tab = rawTab === 'redeem' ? 'payments' : ['payments', 'registration'].includes(rawTab) ? rawTab : 'operations'
+  const tab = rawTab === 'redeem' ? 'payments' : ['calls', 'payments', 'registration'].includes(rawTab) ? rawTab : 'operations'
   useEffect(() => {
     if (rawTab !== 'redeem') return
     const timer = setTimeout(() => document.getElementById('redeem-codes')?.scrollIntoView({ block: 'start' }), 300)
@@ -53,6 +53,9 @@ export default function System() {
   const [savingPayment, setSavingPayment] = useState(false)
   const [redeemEnabled, setRedeemEnabled] = useState(false)
   const [savingRedeem, setSavingRedeem] = useState(false)
+  // 协议转接的应急开关（调用设置），默认两个方向都开
+  const [bridge, setBridge] = useState({ bridge_responses_to_messages: true, bridge_messages_to_responses: true })
+  const [savingBridge, setSavingBridge] = useState('')
   const [regFlags, setRegFlags] = useState({ enabled: false, code_required: false, email_required: false })
   const [savingRegistration, setSavingRegistration] = useState(false)
   const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([])
@@ -66,7 +69,11 @@ export default function System() {
 
   const fill = (s: Settings) => {
     form.setFieldsValue({ cny_per_usd: Number(s.cny_per_usd) })
-    if (s.call_limits) limitsForm.setFieldsValue(s.call_limits)
+    if (s.call_limits) {
+      const { bridge_responses_to_messages = true, bridge_messages_to_responses = true, ...limits } = s.call_limits
+      limitsForm.setFieldsValue(limits)
+      setBridge({ bridge_responses_to_messages, bridge_messages_to_responses })
+    }
     setFXMode(s.fx_mode === 'live' ? 'live' : 'manual')
     setFXStatus(s.fx_status ?? { source: 'Frankfurter' })
     apiURLForm.setFieldsValue({ api_base_url: s.api_base_url })
@@ -223,6 +230,19 @@ export default function System() {
     }
   }
 
+  const saveBridge = async (key: keyof typeof bridge, enabled: boolean) => {
+    setSavingBridge(key)
+    try {
+      await put('/api/admin/settings', { [key]: enabled })
+      setBridge((b) => ({ ...b, [key]: enabled }))
+      message.success(t('已保存，10 秒内生效', 'Saved; takes effect within 10 seconds'))
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSavingBridge('')
+    }
+  }
+
   const saveRedeem = async (enabled: boolean) => {
     setSavingRedeem(true)
     try {
@@ -346,28 +366,6 @@ export default function System() {
                 </Space>
               )}
             </Card>
-            <Card title={t('调用限制', 'Call limits')}>
-              <Typography.Paragraph type="secondary">
-                {t(
-                  '按用户计算，填 0 表示不限。超过并发或频率上限时返回 429 并告诉客户端多久后重试；调用前会按最大可能费用冻结额度，可用余额不够就拒绝，结算后多退少补，避免并发请求把余额扣成负数。',
-                  'Per user; 0 means unlimited. Over the concurrency or rate limit, requests get 429 with a retry hint. Before each call the maximum possible cost is held; if the available balance is short the call is refused, and the hold is settled against actual usage afterwards, so parallel calls cannot overdraw the balance.',
-                )}
-              </Typography.Paragraph>
-              <Form form={limitsForm} layout="vertical" onFinish={saveLimits} disabled={loading}>
-                <Space wrap size={24} align="start">
-                  <Form.Item name="user_concurrency" label={t('每个用户同时最多', 'Concurrent requests per user')} rules={[{ required: true }]}>
-                    <InputNumber min={0} max={1000000} precision={0} suffix={t('个请求', 'requests')} style={{ width: 180 }} />
-                  </Form.Item>
-                  <Form.Item name="user_rpm" label={t('每个用户每分钟最多', 'Requests per minute per user')} rules={[{ required: true }]}>
-                    <InputNumber min={0} max={1000000} precision={0} suffix={t('个请求', 'requests')} style={{ width: 180 }} />
-                  </Form.Item>
-                  <Form.Item name="reserve_output_tokens" label={t('预扣时输出最多按', 'Hold at most this much output')} rules={[{ required: true }]} extra={t('请求写得更少按请求的；回复超过它时可能小额透支，0 表示完全按请求写的上限冻结', 'Smaller request limits are used as is; replies beyond it may overdraw slightly; 0 holds the full request limit')}>
-                    <InputNumber min={0} max={1000000} precision={0} suffix="tokens" style={{ width: 180 }} />
-                  </Form.Item>
-                </Space>
-                <div><Button type="primary" htmlType="submit" loading={savingLimits}>{t('保存', 'Save')}</Button></div>
-              </Form>
-            </Card>
             <Card title={t('API 接入地址', 'API base URL')}>
               <Typography.Paragraph type="secondary">
                 {t('用户在 API keys 和概览页面看到这个地址。每个部署填写自己的公开地址，格式为 https://域名/v1。', 'This address appears on the API keys and Overview pages. Set the public URL for this deployment in the format https://domain/v1.')}
@@ -419,6 +417,65 @@ export default function System() {
                   {t('保存', 'Save')}
                 </Button>
               </Form>
+            </Card>
+            </Space>
+          ) },
+          { key: 'calls', label: t('调用设置', 'Calls'), forceRender: true, children: (
+            <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Card title={t('调用限制', 'Call limits')}>
+              <Typography.Paragraph type="secondary">
+                {t(
+                  '按用户计算，填 0 表示不限。超过并发或频率上限时返回 429 并告诉客户端多久后重试；调用前会按最大可能费用冻结额度，可用余额不够就拒绝，结算后多退少补，避免并发请求把余额扣成负数。',
+                  'Per user; 0 means unlimited. Over the concurrency or rate limit, requests get 429 with a retry hint. Before each call the maximum possible cost is held; if the available balance is short the call is refused, and the hold is settled against actual usage afterwards, so parallel calls cannot overdraw the balance.',
+                )}
+              </Typography.Paragraph>
+              <Form form={limitsForm} layout="vertical" onFinish={saveLimits} disabled={loading}>
+                <Space wrap size={24} align="start">
+                  <Form.Item name="user_concurrency" label={t('每个用户同时最多', 'Concurrent requests per user')} rules={[{ required: true }]}>
+                    <InputNumber min={0} max={1000000} precision={0} suffix={t('个请求', 'requests')} style={{ width: 180 }} />
+                  </Form.Item>
+                  <Form.Item name="user_rpm" label={t('每个用户每分钟最多', 'Requests per minute per user')} rules={[{ required: true }]}>
+                    <InputNumber min={0} max={1000000} precision={0} suffix={t('个请求', 'requests')} style={{ width: 180 }} />
+                  </Form.Item>
+                  <Form.Item name="reserve_output_tokens" label={t('预扣时输出最多按', 'Hold at most this much output')} rules={[{ required: true }]} extra={t('请求写得更少按请求的；回复超过它时可能小额透支，0 表示完全按请求写的上限冻结', 'Smaller request limits are used as is; replies beyond it may overdraw slightly; 0 holds the full request limit')}>
+                    <InputNumber min={0} max={1000000} precision={0} suffix="tokens" style={{ width: 180 }} />
+                  </Form.Item>
+                </Space>
+                <div><Button type="primary" htmlType="submit" loading={savingLimits}>{t('保存', 'Save')}</Button></div>
+              </Form>
+            </Card>
+            <Card title={t('协议转接', 'Protocol bridging')}>
+              <Typography.Paragraph type="secondary">
+                {t(
+                  '渠道没有客户端要用的协议地址时，网关自动转换协议，用户不用改任何配置。这里是应急开关：转接出问题时先关掉，对应的模型只走原生协议，不用等修复发版。',
+                  'When a channel lacks the protocol a client uses, the gateway converts between protocols automatically. These are emergency switches: turn one off if bridging misbehaves, and those models fall back to native protocols only.',
+                )}
+              </Typography.Paragraph>
+              {([
+                ['bridge_responses_to_messages', t('Codex 等 Responses 客户端调用只有 Messages 地址的模型（如 Claude）', 'Responses clients (e.g. Codex) on Messages-only models (e.g. Claude)')],
+                ['bridge_messages_to_responses', t('Claude Code 等 Messages 客户端调用只有 Responses 地址的模型（如 GPT）', 'Messages clients (e.g. Claude Code) on Responses-only models (e.g. GPT)')],
+              ] as const).map(([key, label]) => (
+                <Space key={key} style={{ width: '100%', justifyContent: 'space-between', marginTop: 8 }}>
+                  <Typography.Text>{label}</Typography.Text>
+                  <Switch aria-label={label} checked={bridge[key]} loading={savingBridge === key} disabled={loading} onChange={(v) => saveBridge(key, v)} />
+                </Space>
+              ))}
+            </Card>
+            <Card title={<Space>{t('渠道亲和', 'Channel affinity')}<Tag color="green">{t('自动生效', 'Always on')}</Tag></Space>}>
+              <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                {t(
+                  '同一段对话固定使用同一个渠道（按 Claude Code、Codex 带的会话编号，没有就按 API key），同一优先级的几个渠道之间不再来回切换。上游的提示词缓存按账号存，固定下来缓存才命中得了，输入按缓存价计费。固定的渠道出故障时自动换下一个，恢复后再回来。不需要配置。',
+                  'Each conversation sticks to one channel (by the session ID Claude Code and Codex send, or the API key otherwise) instead of hopping between channels of the same priority. Upstream prompt caches are per account, so sticking keeps cache hits and cheaper input. If that channel fails, the next one takes over and the conversation returns once it recovers. Nothing to configure.',
+                )}
+              </Typography.Paragraph>
+            </Card>
+            <Card title={<Space>{t('违禁词拦截', 'Prompt blocking')}<Tag>{t('规划中', 'Planned')}</Tag></Space>}>
+              <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                {t(
+                  '按关键词拦截请求，用来保护上游账号或满足合规要求。只检查最新一条用户消息（客户端每轮都会重发完整历史，检查历史会让一段对话命中一次就一直被拦），命中时告诉用户原因并记日志。',
+                  'Block requests by keyword to protect upstream accounts or meet compliance needs. Only the latest user message will be checked (clients resend the full history every turn, so checking history would block a conversation forever after one hit); blocked users see the reason and it is logged.',
+                )}
+              </Typography.Paragraph>
             </Card>
             </Space>
           ) },
