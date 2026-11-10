@@ -72,10 +72,17 @@
 - 转换 instructions、system/developer、文本、图片、function/custom 工具、apply_patch、namespace、additional_tools 及历史调用和结果，保留顺序和调用 ID。工具声明、调用与结果成套转换；孤立结果、未知工具和损坏参数显式报错。
 - Claude thinking / redacted thinking 以带来源、版本的自包含封装回传，只恢复本转接层识别的内容。已知 Claude 型号按支持方式转换 effort；不支持的强度返回参数错误，实际 thinking/effort 进入转换诊断。
 - 文本增量立即输出；工具前说明使用 commentary，结束的最终回答使用 final_answer；分别处理完成、输出上限、拒绝、工具调用、流中错误和断流。客户端已收到事件后停止自动重试；取消立即传递给上游。
-- 普通 Codex 手动/自动摘要作为普通请求处理。显式 compaction_trigger 与 POST /v1/responses/compact 共用摘要流程：同渠道、同模型、禁用工具执行，成功生成摘要后返回版本化、自包含的 compaction 内容；回灌展开摘要，不再额外调用摘要。失败、空摘要或截断返回错误，保留客户端原历史。context_management 自动服务端压缩本期明确拒绝。
+- 普通 Codex 手动/自动摘要作为普通请求处理。显式 compaction_trigger 与 POST /v1/responses/compact 共用摘要流程：同渠道、同模型、禁用工具执行，成功生成摘要后返回版本化、自包含的 compaction 内容；回灌展开摘要，不再额外调用摘要。失败、空摘要或截断返回错误，保留客户端原历史。context_management 自动服务端压缩本期明确拒绝（Responses 入口的 context_management；Messages 入口的同名字段见下方 2026-11-10 条目）。
 - GET /v1/responses 支持客户端 WebSocket（coder/websocket）；每个 response.create 沿用现有鉴权、权限、限流、预扣和结算，原生上游也走 HTTP。generate:false 仅预热，每连接同时一个生成任务。连接内保留最近两个响应及必要输入，共享历史节点，全部连接缓存总量上限 256 MiB。失效引用返回 previous_response_not_found；HTTP 转接缺少可恢复历史也明确报错。不增加数据库会话存储。
 - 内部按 Messages 原始 input/output/cache_read/cache_write 四桶结算；对外 Responses usage 独立转换。每轮生成只结算一次，预热免费。调用日志新增 upstream_protocol、operation（generation / compaction）和脱敏结构化转换诊断；迁移仅添加日志字段。
 - 验收使用 Codex CLI 0.160.0 与渠道 23 kirisame 的隔离配置，真实调用累计预算 USD 10（包含前期压缩实验）。覆盖 HTTP/WS 工具与多轮、手动/自动摘要、显式压缩回灌、思考、取消、重连、缓存与账单。交付 PR 和 CI，合并另由用户决定；实现和验收见 [转接记录](research/responses-messages.md)。
+
+### 转接兼容默认客户端与提示缓存（2026-11-10）
+
+- 起因：审查时用本地假服务器抓到 Codex 0.160、Claude Code 2.1.322 默认配置的请求，两个方向都被拒（Codex 默认带 `web_search` 工具；Claude Code 默认带 `context_management`、在 messages 里插 `role: system`）。原验收用的是关掉这些功能的隔离配置，没测出来；当时线上还没有转接流量。
+- 原则补充：“认不出就报错”只针对会改变对话内容的东西。只影响能力、不影响内容的项按降级处理并写诊断：`web_search` / `web_search_preview` 工具不发给 Messages 上游（这一轮不能联网搜索），历史里的 `web_search_call` 去掉（结果已在后续回复里）；`context_management` 忽略（思考内容由本层封装回放）。messages 里的 `system` 消息在原位置转成 Responses 的 developer 消息。
+- 提示缓存：Anthropic 只缓存请求方标出的前缀。Responses → Messages 按 Claude Code 的做法打最多 4 个 `cache_control` 断点（system 末尾、tools 末尾、最后一条消息、倒数第二条 user 消息，跳过思考块）。Messages → Responses 把 `metadata.user_id` 里的 `session_id` 作为 `prompt_cache_key`，让号池把同一会话固定到同一账号。
+- 回归：`testdata` 里放两份去掉系统提示原文和标识的默认请求样本，客户端升级后用 `scripts/capture-client-request.py` 重抓、更新样本再跑测试（见[转接记录](research/responses-messages.md)）。
 
 ### 透传与协议细节（2026-10-18 起）
 

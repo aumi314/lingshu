@@ -9,7 +9,6 @@
 //	Stream.Bind(req *Request)                                   // 绑定工具表和压缩标记
 //	Stream.SetLifecycle(on bool)                                // 是否由本层补发 response.created
 //	Stream.Event(data []byte) ([][]byte, error)                 // 吃上游 SSE 的 data，吐 Responses 事件 JSON
-//	Stream.ObserveBody(body []byte) ([][]byte, error)           // 上游不遵守 stream:true 时走整段 JSON
 //	Stream.Response() ([]byte, error)                           // 非流式客户端要的完整响应体
 //	Stream.Close() ([][]byte, error)                             // 上游断流时收尾，出 response.failed
 //	Stream.Done() bool / Stream.Failed() bool / Stream.Summary() string
@@ -212,11 +211,60 @@ func Prepare(raw []byte, upstreamModel string) (*Request, error) {
 		out["output_config"] = outputConfig
 	}
 
+	markCacheBreakpoints(p.system, out["tools"], p.messages)
+
 	encoded, err := json.Marshal(out)
 	if err != nil {
 		return nil, newError(CodeInvalidInput, "", "生成上游请求失败: %v", err)
 	}
 	return &Request{Body: encoded, Diagnostics: p.diags, Compact: p.compact, tools: p.tools, model: upstreamModel}, nil
+}
+
+// markCacheBreakpoints 打提示缓存断点。Anthropic 只缓存请求方标出的前缀（OpenAI 是自动缓存），
+// 不标的话长对话每一轮都按全价付输入；做法同 Claude Code，最多 4 处（上游上限）：
+// system 末尾、tools 末尾、最后一条消息末尾、倒数第二条 user 消息末尾（上一轮写入的缓存这一轮读得到）。
+// 思考块不能带 cache_control，从末尾往前找第一个能带的块。
+func markCacheBreakpoints(system []any, tools any, messages []map[string]any) {
+	mark := func(block map[string]any) bool {
+		switch strField(block, "type") {
+		case "thinking", "redacted_thinking":
+			return false
+		}
+		block["cache_control"] = map[string]any{"type": "ephemeral"}
+		return true
+	}
+	markLast := func(blocks []map[string]any) {
+		for i := len(blocks) - 1; i >= 0; i-- {
+			if mark(blocks[i]) {
+				return
+			}
+		}
+	}
+	if n := len(system); n > 0 {
+		if block, ok := system[n-1].(map[string]any); ok {
+			mark(block)
+		}
+	}
+	if list, ok := tools.([]map[string]any); ok && len(list) > 0 {
+		mark(list[len(list)-1])
+	}
+	content := func(m map[string]any) []map[string]any {
+		blocks, _ := m["content"].([]map[string]any)
+		return blocks
+	}
+	if n := len(messages); n > 0 {
+		markLast(content(messages[n-1]))
+		users := 0
+		for i := n - 1; i >= 0; i-- {
+			if messages[i]["role"] != "user" {
+				continue
+			}
+			if users++; users == 2 {
+				markLast(content(messages[i]))
+				break
+			}
+		}
+	}
 }
 
 // handoffPrompt 是压缩时的英文交接提示：让模型直接写出可以接手的摘要。

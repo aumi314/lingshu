@@ -97,6 +97,10 @@ func (p *preparer) buildMessages(items []inputItem) error {
 			p.compact = true
 		case "additional_tools":
 			// 工具在第一遍已经收进工具表，这里不用再管。
+		case "web_search_call":
+			// 之前用 OpenAI 上游时服务端执行的搜索记录（同一会话中途换到 Claude）：只有搜索动作，
+			// 搜到的内容已经写进后面的助手回复里，去掉不丢信息
+			p.diagf("history_dropped", "input", "历史里的联网搜索记录在 Messages 上游没有对应条目，已去掉（搜索结果在后面的回复里）")
 		default:
 			// 不认识的输入项不能悄悄丢：历史少一段，模型会顺着错的前提往下答。
 			return newError(CodeUnsupportedInput, "input",

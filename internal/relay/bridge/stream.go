@@ -133,58 +133,6 @@ func (s *Stream) Event(data []byte) ([][]byte, error) {
 	return out, err
 }
 
-// ObserveBody 处理上游忽略了 stream:true、直接返回整段 JSON 的情况：
-// 把它拆成等价的上游事件再走同一条转换路径，输出和流式一致。
-func (s *Stream) ObserveBody(body []byte) ([][]byte, error) {
-	var msg map[string]any
-	if err := json.Unmarshal(body, &msg); err != nil {
-		return nil, newError(CodeInvalidInput, "", "上游返回的不是合法 JSON: %v", err)
-	}
-	var out [][]byte
-	push := func(ev map[string]any) error {
-		encoded, err := json.Marshal(ev)
-		if err != nil {
-			return err
-		}
-		evs, err := s.Event(encoded)
-		out = append(out, evs...)
-		return err
-	}
-	start := map[string]any{
-		"type": "message_start",
-		"message": map[string]any{
-			"id":    strField(msg, "id"),
-			"model": strField(msg, "model"),
-			"role":  strField(msg, "role"),
-			"usage": msg["usage"],
-		},
-	}
-	if err := push(start); err != nil {
-		return out, err
-	}
-	for i, raw := range sliceField(msg, "content") {
-		block, _ := raw.(map[string]any)
-		if err := push(map[string]any{"type": "content_block_start", "index": i, "content_block": block}); err != nil {
-			return out, err
-		}
-		if err := push(map[string]any{"type": "content_block_stop", "index": i}); err != nil {
-			return out, err
-		}
-	}
-	delta := map[string]any{
-		"type":  "message_delta",
-		"delta": map[string]any{"stop_reason": strField(msg, "stop_reason")},
-		"usage": msg["usage"],
-	}
-	if err := push(delta); err != nil {
-		return out, err
-	}
-	if err := push(map[string]any{"type": "message_stop"}); err != nil {
-		return out, err
-	}
-	return out, nil
-}
-
 // Close 是上游流结束时的收尾：没收到终态就是断流，不能伪造完成。
 func (s *Stream) Close() ([][]byte, error) {
 	if s.done {

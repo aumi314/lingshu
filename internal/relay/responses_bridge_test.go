@@ -267,6 +267,10 @@ func TestResponsesMessagesJSONUpstream(t *testing.T) {
 	if resp.StatusCode != 200 || !strings.Contains(string(b), "json body") {
 		t.Fatalf("%d %s", resp.StatusCode, b)
 	}
+	// 整段 JSON 拆成事件后只记一次用量：(2×$1 + 3×$2) / 1e6，不估算
+	if cost, estimated := e.cost(resp.Header.Get("X-Lingshu-Request-Id")); cost.String() != "0.000008" || estimated {
+		t.Errorf("扣费 %s（估算 %v），期望 0.000008", cost, estimated)
+	}
 }
 
 func TestResponsesMessagesCompactionRejectsTruncatedSummary(t *testing.T) {

@@ -94,6 +94,10 @@ func (p *preparer) addTools(defs []map[string]any, ns string) error {
 						"namespace %s 里的工具类型 %s 不能转成 Messages（只支持 function、custom）", name, strField(sub, "type"))
 				}
 			}
+		case "web_search", "web_search_preview":
+			// Codex 默认每个请求都带联网搜索（OpenAI 服务端执行的工具），Messages 上游没有等价物。
+			// 去掉只是这一轮不能搜索，对话内容不变；整个请求拒掉的话默认配置的 Codex 完全用不了
+			p.diagf("tool_dropped", "tools", "联网搜索工具 %s 在 Messages 上游不可用，已去掉，模型这轮不能联网搜索", strField(def, "type"))
 		default:
 			return newError(CodeUnsupportedTool, "tools",
 				"工具类型 %s 不能转成 Messages（只支持 function、custom、namespace）", strField(def, "type"))

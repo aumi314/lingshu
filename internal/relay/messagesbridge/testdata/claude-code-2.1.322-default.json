@@ -1,0 +1,25 @@
+{
+  "model": "claude-opus-5-5",
+  "max_tokens": 32000,
+  "stream": true,
+  "system": [
+    {"type": "text", "text": "x-anthropic-billing-header: (shortened)"},
+    {"type": "text", "text": "You are Claude Code.", "cache_control": {"type": "ephemeral"}},
+    {"type": "text", "text": "(system prompt shortened for the fixture)", "cache_control": {"type": "ephemeral"}}
+  ],
+  "messages": [
+    {"role": "user", "content": [
+      {"type": "text", "text": "<system-reminder>project instructions</system-reminder>"},
+      {"type": "text", "text": "say hi"}
+    ]},
+    {"role": "system", "content": [{"type": "text", "text": "# Environment\nPrimary working directory: /work", "cache_control": {"type": "ephemeral"}}]}
+  ],
+  "tools": [
+    {"name": "Bash", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
+    {"name": "DeferredToolPlaceholder", "description": "Placeholder", "input_schema": {"type": "object", "properties": {}}, "defer_loading": true}
+  ],
+  "thinking": {"type": "adaptive", "display": "omitted"},
+  "context_management": {"edits": [{"type": "clear_thinking_20251015", "keep": "all"}]},
+  "output_config": {"effort": "medium"},
+  "metadata": {"user_id": "{\"device_id\":\"0000\",\"account_uuid\":\"00000000-0000-4000-8000-000000000000\",\"session_id\":\"11111111-2222-4333-8444-555555555555\"}"}
+}

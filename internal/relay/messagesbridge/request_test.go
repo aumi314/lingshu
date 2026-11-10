@@ -610,13 +610,6 @@ func TestPrepareHandlesTopLevelCacheControl(t *testing.T) {
 	}
 }
 
-func TestPrepareRejectsContextManagement(t *testing.T) {
-	raw := []byte(`{"model":"m","max_tokens":100,"context_management":{"edits":[]},
-		"messages":[{"role":"user","content":"hi"}]}`)
-	_, err := Prepare(raw, "gpt-5.1")
-	wantErrorCode(t, err, CodeUnsupportedField)
-}
-
 func TestPrepareRejectsUnknownMetadataKey(t *testing.T) {
 	raw := []byte(`{"model":"m","max_tokens":100,"metadata":{"team":"x"},
 		"messages":[{"role":"user","content":"hi"}]}`)

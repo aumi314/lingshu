@@ -467,30 +467,6 @@ func TestStreamCompactionTruncated(t *testing.T) {
 	}
 }
 
-func TestObserveWholeBody(t *testing.T) {
-	s := NewStream("resp_13")
-	events, err := s.ObserveBody([]byte(`{"id":"msg_1","model":"claude-opus-5-5","role":"assistant",
-		"content":[{"type":"text","text":"整段结果"}],"stop_reason":"end_turn",
-		"usage":{"input_tokens":5,"output_tokens":3}}`))
-	if err != nil {
-		t.Fatalf("整段响应转换失败: %v", err)
-	}
-	var decoded []map[string]any
-	for _, raw := range events {
-		var m map[string]any
-		json.Unmarshal(raw, &m)
-		decoded = append(decoded, m)
-	}
-	delta := findEvent(t, decoded, "response.output_text.delta")
-	if delta["delta"] != "整段结果" {
-		t.Errorf("整段响应没出文本增量: %v", delta)
-	}
-	last := decoded[len(decoded)-1]
-	if last["type"] != "response.completed" {
-		t.Fatalf("整段响应应出 response.completed: %v", last["type"])
-	}
-}
-
 func TestParallelToolsKeepOutputOrder(t *testing.T) {
 	q, err := Prepare([]byte(`{"input":"test","tools":[{"type":"function","name":"a"},{"type":"function","name":"b"}]}`), "claude-opus-5-5")
 	if err != nil {
