@@ -117,6 +117,12 @@ func Prepare(raw []byte, upstreamModel string) (*Request, error) {
 				"Responses 上游没有顶层缓存提示字段，这段缓存标记已去掉，上游是否命中缓存不保证")
 			continue
 		}
+		if field == "context_management" {
+			// Claude Code 默认每个请求都带（清理旧思考内容的提示）。思考内容由本层自己封装回放，
+			// Responses 上游没有这项设置，去掉不改变对话内容；拒掉的话默认配置的 Claude Code 完全用不了
+			p.diagf("field_ignored", field, "Responses 上游没有上下文编辑设置，context_management 已忽略")
+			continue
+		}
 		if !knownFields[field] {
 			return nil, newError(CodeUnsupportedField, field,
 				"Messages 的 %s 不能转成 Responses 上游，请去掉该字段或改用原生 Messages 渠道", field)
@@ -420,9 +426,14 @@ func (p *preparer) buildMessages() error {
 			if err := p.buildAssistant(i, msg.Content); err != nil {
 				return err
 			}
+		case "system":
+			// 对话中途的系统提示（新版 Claude Code 会插入），在原位置转成 Responses 的 developer 消息；只接受文本
+			if err := p.buildContent(i, "developer", msg.Content); err != nil {
+				return err
+			}
 		default:
 			return newError(CodeUnsupportedField, fmt.Sprintf("messages[%d].role", i),
-				"角色 %s 不能转成 Responses 上游（只支持 user、assistant）", msg.Role)
+				"角色 %s 不能转成 Responses 上游（只支持 user、assistant、system）", msg.Role)
 		}
 	}
 	if len(p.pending) > 0 {
@@ -982,6 +993,14 @@ func (p *preparer) mapMetadata(out map[string]any) error {
 			return newError(CodeInvalidInput, "metadata.user_id", "metadata.user_id 必须是字符串")
 		}
 		converted[key] = s
+		// Claude Code 把会话编号写在 user_id 的 JSON 里：作为 prompt_cache_key 发给上游，
+		// 号池据此把同一会话固定到同一个账号，OpenAI 的自动缓存才命中得了
+		var uid struct {
+			SessionID string `json:"session_id"`
+		}
+		if json.Unmarshal([]byte(s), &uid) == nil && uid.SessionID != "" {
+			out["prompt_cache_key"] = uid.SessionID
+		}
 	}
 	if len(converted) > 0 {
 		out["metadata"] = converted

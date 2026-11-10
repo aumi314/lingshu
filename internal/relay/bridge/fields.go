@@ -11,7 +11,7 @@ var honoredFields = map[string]bool{
 var ignoredFields = map[string]string{
 	"include":                "本层总会带上自己的不透明推理内容（reasoning.encrypted_content），客户端的 include 按这个处理",
 	"metadata":               "Messages 没有 metadata 透传，已忽略",
-	"prompt_cache_key":       "Messages 的缓存按上游账号算，没有这个字段，已忽略",
+	"prompt_cache_key":       "Messages 没有这个字段；缓存靠本层在 system、tools 和最近消息上打的 cache_control 断点",
 	"client_metadata":        "上游用不上，已忽略",
 	"service_tier":           "档位由灵枢按渠道定，客户端的 service_tier 不透传",
 	"temperature":            "Claude 开思考时只认默认采样参数，已忽略",

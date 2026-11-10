@@ -1,0 +1,26 @@
+{
+  "model": "claude-opus-5-5",
+  "instructions": "You are Codex, a coding agent. (system prompt shortened for the fixture)",
+  "input": [
+    {"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "<permissions instructions>sandbox: read-only</permissions instructions>"}]},
+    {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "<environment_context><cwd>/work</cwd></environment_context>"}]},
+    {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "say hi"}]}
+  ],
+  "tools": [
+    {"type": "function", "name": "exec_command", "description": "Run a command", "strict": false, "parameters": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}},
+    {"type": "function", "name": "write_stdin", "description": "Write to a session", "strict": false, "parameters": {"type": "object", "properties": {"session_id": {"type": "number"}}}},
+    {"type": "namespace", "name": "multi_agent_v1", "description": "Sub agents", "tools": [
+      {"type": "function", "name": "spawn_agent", "description": "Spawn", "parameters": {"type": "object", "properties": {"message": {"type": "string"}}}},
+      {"type": "function", "name": "wait_agent", "description": "Wait", "parameters": {"type": "object", "properties": {}}}
+    ]},
+    {"type": "web_search", "external_web_access": false}
+  ],
+  "tool_choice": "auto",
+  "parallel_tool_calls": true,
+  "reasoning": {"summary": "auto"},
+  "store": false,
+  "stream": true,
+  "include": ["reasoning.encrypted_content"],
+  "prompt_cache_key": "00000000-0000-7000-8000-000000000001",
+  "client_metadata": {"session_id": "00000000-0000-7000-8000-000000000001", "turn_id": "00000000-0000-7000-8000-000000000002"}
+}

@@ -203,9 +203,9 @@ func TestPrepareRejectsUnsupportedFields(t *testing.T) {
 }
 
 func TestPrepareRejectsUnsupportedTools(t *testing.T) {
-	_, err := Prepare([]byte(`{"tools":[{"type":"web_search"}],"input":"hi"}`), "claude-opus-5-5")
+	_, err := Prepare([]byte(`{"tools":[{"type":"file_search"}],"input":"hi"}`), "claude-opus-5-5")
 	if err == nil {
-		t.Fatal("web_search 应该报错")
+		t.Fatal("file_search 应该报错")
 	}
 	if code := errorCode(t, err); code != CodeUnsupportedTool {
 		t.Errorf("错误码 %s，期望 %s", code, CodeUnsupportedTool)

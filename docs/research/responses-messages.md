@@ -48,6 +48,14 @@ thinking/redacted thinking 使用带版本、来源厂商和型号的自包含�
 
 真实隔离账本合计 110 条，成本 **$1.4786164**；前期实验约 $0.057872，累计约 **$1.5365 / $10**。四桶用量乘定价与倍率逐条重算，差异条数为 0；仅两个取消请求采用部分用量估算。
 
+## 默认客户端样本（2026-11-10）
+
+原验收用的是关掉联网搜索等功能的隔离配置，默认配置下两个方向都会被拒，修复见 `docs/decisions.md`「转接兼容默认客户端与提示缓存」。之后每次 Codex 或 Claude Code 升级，按下面的步骤复查：
+
+1. `python3 -I scripts/capture-client-request.py 25877 /tmp/req.log`，按脚本说明用独立的临时配置目录让客户端连上来；终端里会打印顶层字段、工具类型和消息角色。
+2. 和 `internal/relay/bridge/testdata/codex-*.json`、`internal/relay/messagesbridge/testdata/claude-code-*.json` 对比。有新字段、新工具类型或新角色时，只把结构照抄进样本（不提交系统提示原文、设备标识），文件名换成新版本号。
+3. `go test ./internal/relay/bridge ./internal/relay/messagesbridge`。失败就说明新版客户端会被拒，先修再发布。
+
 ## 交付边界
 
 代码、迁移 0034 和测试经 PR 交付；合并及生产发布单独执行。WS 历史只属于当前连接，最后两个响应，共享节点缓存预算 256 MiB（数据及簿记估算）；淘汰/重启/断开后重发完整历史。HTTP 原生接口仍保留厂商原始字段，原生 /compact 发到原生上游端点。

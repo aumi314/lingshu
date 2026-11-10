@@ -80,8 +80,8 @@ func (h *Handler) relayResponsesBridge(w http.ResponseWriter, r *http.Request, c
 		if err != nil || len(raw) > maxRequestBody {
 			return &failure{status: 502, reason: "读取 Messages JSON 失败", msg: "上游响应读取失败或超过大小限制"}
 		}
-		c.tracker.ObserveBody(raw)
 		// 同一状态机处理不遵守 stream:true 的 JSON 上游；保留 JSON 字符串转义。
+		// 用量和结束标记由下面逐个事件交给 tracker，这里不再整段记一次（否则按文字估算的输出会算两遍）
 		encoded, err := jsonBodyEvents(raw)
 		if err != nil {
 			return &failure{status: 502, reason: err.Error(), msg: err.Error()}
