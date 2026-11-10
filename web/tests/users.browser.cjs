@@ -59,14 +59,14 @@ const path = require('node:path')
       throw new Error('Timed out waiting for condition')
     }
     const row = (id) => page.getByRole('row').filter({ has: page.getByText(users[id - 1].username, { exact: true }) })
-    // 编辑入口：行里没有编辑按钮，点行里的空白单元格（ID 列）打开编辑弹窗
+    // 编辑入口：行里没有编辑按钮，点行里的空白单元格（ID 列）打开编辑抽屉
     const open = async (id) => row(id).locator('td').first().click()
     const dialog = page.getByRole('dialog', { name: /^(编辑用户|Edit user)/ })
     const close = async () => {
       await dialog.getByRole('button', { name: /取\s*消|Cancel/ }).click()
       await dialog.waitFor({ state: 'hidden' })
     }
-    // 停用确认弹窗和编辑弹窗是两回事
+    // 停用确认弹窗和编辑抽屉是两回事
     const disableConfirm = () => page.getByRole('dialog').filter({ hasText: '停用账号？' })
     const editorOpen = () => page.getByRole('dialog', { name: /^(编辑用户|Edit user)/ }).count()
     const switchIn = (id) => row(id).getByRole('switch')
@@ -126,7 +126,7 @@ const path = require('node:path')
     await row(3).waitFor()
     assert.equal(new URL(page.url()).searchParams.get('status'), 'all')
 
-    // 启用：不弹确认，直接只提交 enabled；顺带确认不会顺手打开编辑弹窗
+    // 启用：不弹确认，直接只提交 enabled；顺带确认不会顺手打开编辑抽屉
     await switchIn(3).click()
     await waitFor(() => togglePatches.length === 1)
     assert.deepEqual(togglePatches[0], { enabled: true })
@@ -177,8 +177,19 @@ const path = require('node:path')
     assert.deepEqual(togglePatches[2], { enabled: false })
     await waitFor(async () => (await switchIn(4).getAttribute('aria-checked')) === 'false')
 
-    // 编辑：角色在弹窗里改；选了用户分组，下方即时显示能用哪些服务分组
+    // 编辑：角色在抽屉里改；选了用户分组，下方即时显示能用哪些服务分组
     await open(2)
+    await page.waitForTimeout(350)
+    const drawer = page.locator('.ant-drawer-content-wrapper').filter({ has: dialog })
+    const desktopBox = await drawer.boundingBox()
+    assert.ok(desktopBox && Math.abs(desktopBox.x + desktopBox.width - page.viewportSize().width) <= 1, '用户编辑从右侧展开')
+    assert.equal(Math.round(desktopBox.width), 720)
+    const submitBeforeScroll = await dialog.getByRole('button', { name: /提\s*交/ }).boundingBox()
+    await dialog.locator('.ant-drawer-body').evaluate((el) => { el.scrollTop = el.scrollHeight })
+    const submitAfterScroll = await dialog.getByRole('button', { name: /提\s*交/ }).boundingBox()
+    assert.ok(submitBeforeScroll && submitAfterScroll && Math.abs(submitAfterScroll.y - submitBeforeScroll.y) <= 1, '提交按钮固定在抽屉顶部')
+    if (process.env.USERS_TEST_SCREENSHOT) await page.screenshot({ path: process.env.USERS_TEST_SCREENSHOT, fullPage: true })
+    await dialog.locator('.ant-drawer-body').evaluate((el) => { el.scrollTop = 0 })
     await dialog.getByText('可用服务分组：open-group', { exact: true }).waitFor()
     await dialog.getByText('成员', { exact: true }).click()
     await dialog.locator('#user_group_ids').click()
@@ -243,13 +254,19 @@ const path = require('node:path')
     await dialog.getByText('不能取消自己的管理员身份', { exact: true }).waitFor()
     await close()
 
-    // 手机宽度：表格在内部左右滑，弹窗底部按钮可见；英文界面
+    // 手机宽度：表格在内部左右滑，抽屉顶部按钮可见；英文界面
     await page.setViewportSize({ width: 390, height: 844 })
     await page.reload()
     await row(1).waitFor()
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1))
     await open(1)
     await dialog.getByRole('button', { name: /提\s*交/ }).waitFor({ state: 'visible' })
+    await page.waitForTimeout(350)
+    const mobileBox = await page.locator('.ant-drawer-content-wrapper').filter({ has: dialog }).boundingBox()
+    assert.ok(mobileBox && mobileBox.x >= -1 && mobileBox.width <= 391, '手机抽屉不超出屏幕')
+    const mobileSubmit = await dialog.getByRole('button', { name: /提\s*交/ }).boundingBox()
+    assert.ok(mobileSubmit && mobileSubmit.y >= 0 && mobileSubmit.y + mobileSubmit.height <= 844)
+    if (process.env.USERS_TEST_MOBILE_SCREENSHOT) await page.screenshot({ path: process.env.USERS_TEST_MOBILE_SCREENSHOT, fullPage: true })
     users[0].preferences = { language: 'en' }
     await page.reload()
     assert.equal(await row(2).getByRole('button', { name: 'Edit', exact: true }).count(), 0)

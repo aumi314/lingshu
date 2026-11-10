@@ -95,6 +95,7 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 		Name       string          `json:"name"`
 		GroupID    int64           `json:"group_id"`
 		QuotaLimit json.RawMessage `json:"quota_limit"`
+		ExpiresAt  *time.Time      `json:"expires_at"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -116,9 +117,13 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	if in.ExpiresAt != nil && !in.ExpiresAt.After(time.Now()) {
+		writeError(w, http.StatusBadRequest, store.ErrKeyExpiration.Error())
+		return
+	}
 	u := currentUser(r)
 	key, hash, prefix := auth.NewAPIKey()
-	id, err := s.Store.CreateAPIKey(r.Context(), u.ID, in.Name, hash, prefix, in.GroupID, quota)
+	id, err := s.Store.CreateAPIKey(r.Context(), u.ID, in.Name, hash, prefix, in.GroupID, quota, in.ExpiresAt)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -171,6 +176,13 @@ func (s *Server) updateKey(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p.SetQuota, p.Quota = true, quota
+	}
+	if raw, has := in["expires_at"]; has {
+		if err := json.Unmarshal(raw, &p.ExpiresAt); err != nil {
+			writeError(w, http.StatusBadRequest, "过期时间格式不正确，请使用带时区的日期时间")
+			return
+		}
+		p.SetExpiresAt = true
 	}
 	if err := s.Store.UpdateAPIKey(r.Context(), u.ID, id, p); err != nil {
 		writeStoreError(w, err)

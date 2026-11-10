@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography } from 'antd'
 import { ExportOutlined, PlusOutlined } from '@ant-design/icons'
-import dayjs from 'dayjs'
+import dayjs, { type Dayjs } from 'dayjs'
 import { del, get, patch, post, type APIKey, type Group, type PricedModel } from '../api'
 import { useApp } from '../app'
 import { magpieImportURL } from '../guide'
+import { rowEditing } from '../rowEditing'
 
-type KeyForm = { name: string; group_id: number; quota_limit?: number | null }
+type KeyForm = { name: string; group_id: number; quota_limit?: number | null; expires_at?: Dayjs | null }
 
 export default function Keys() {
   const { money, t, currency, rate } = useApp()
@@ -17,6 +18,8 @@ export default function Keys() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<APIKey | 'new' | null>(null)
   const [created, setCreated] = useState('')
+  // 打开编辑时记下原来的过期时间：原来就过期的 key 允许只改名字，不算新选的过期时间
+  const [originalExpiry, setOriginalExpiry] = useState<Dayjs | null>(null)
   const [form] = Form.useForm<KeyForm>()
 
   const load = useCallback(async () => {
@@ -45,17 +48,25 @@ export default function Keys() {
   const fromUSD = (v: string | null) => (v == null ? null : Number((Number(v) * (currency === 'CNY' ? rate : 1)).toFixed(4)))
 
   const openNew = () => {
-    form.setFieldsValue({ name: '', group_id: groups[0]?.id, quota_limit: null })
+    form.setFieldsValue({ name: '', group_id: groups[0]?.id, quota_limit: null, expires_at: null })
+    setOriginalExpiry(null)
     setEditing('new')
   }
   const openEdit = (k: APIKey) => {
-    form.setFieldsValue({ name: k.name, group_id: k.group_id, quota_limit: fromUSD(k.quota_limit) })
+    const expires = k.expires_at ? dayjs(k.expires_at) : null
+    form.setFieldsValue({ name: k.name, group_id: k.group_id, quota_limit: fromUSD(k.quota_limit), expires_at: expires })
+    setOriginalExpiry(expires)
     setEditing(k)
   }
 
   const save = async () => {
-    const v = await form.validateFields()
-    const body = { name: v.name, group_id: v.group_id, quota_limit: toUSD(v.quota_limit) }
+    let v: KeyForm
+    try {
+      v = await form.validateFields()
+    } catch {
+      return
+    }
+    const body = { name: v.name, group_id: v.group_id, quota_limit: toUSD(v.quota_limit), expires_at: v.expires_at ? v.expires_at.toISOString() : null }
     try {
       if (editing === 'new') {
         const r = await post<{ key: string }>('/api/me/keys', body)
@@ -105,8 +116,8 @@ export default function Keys() {
       </Space>
       <Typography.Paragraph type="secondary">
         {t(
-          '每个 key 属于一个服务分组，按该分组倍率计费。可以给 key 设置限额，用完后这个 key 会被拒绝，账户余额不受影响。',
-          'Each key belongs to a service group and is billed at that group\'s ratio. A key can have a spending limit; once reached, that key is rejected while your balance stays untouched.',
+          '每个 key 属于一个服务分组，按该分组倍率计费。可以给 key 设置限额，用完后这个 key 会被拒绝，账户余额不受影响；也可以设置过期时间，到期后同样会被拒绝。',
+          'Each key belongs to a service group and is billed at that group\'s ratio. A key can have a spending limit; once reached, that key is rejected while your balance stays untouched. You can also set an expiration time; an expired key is rejected too.',
         )}
       </Typography.Paragraph>
       <Card size="small" style={{ marginBottom: 16 }}>
@@ -121,6 +132,7 @@ export default function Keys() {
         rowKey="id"
         loading={loading}
         dataSource={keys}
+        onRow={(k) => rowEditing(() => openEdit(k), `${t('编辑 API key', 'Edit API key')} · ${k.name}`)}
         pagination={false}
         locale={{ emptyText: t('还没有 key，点右上角创建一个', 'No keys yet. Create one from the top right.') }}
         columns={[
@@ -136,6 +148,19 @@ export default function Keys() {
             ),
           },
           {
+            title: t('过期时间', 'Expires'),
+            render: (_, k) => {
+              if (!k.expires_at) return <span className="muted">{t('永不过期', 'Never')}</span>
+              const d = dayjs(k.expires_at)
+              return (
+                <span className="nowrap">
+                  {d.isBefore(dayjs()) && <Tag color="red">{t('已过期', 'Expired')}</Tag>}
+                  {d.format('YYYY-MM-DD HH:mm')}
+                </span>
+              )
+            },
+          },
+          {
             title: t('最后使用', 'Last used'),
             dataIndex: 'last_used_at',
             render: (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : <span className="muted">{t('从未', 'Never')}</span>),
@@ -145,19 +170,14 @@ export default function Keys() {
             title: '',
             align: 'right',
             render: (_, k) => (
-              <Space>
-                <Button size="small" type="link" onClick={() => openEdit(k)}>
-                  {t('编辑', 'Edit')}
+              <Popconfirm
+                title={t('删除后用这个 key 的程序会立即失效，确定删除？', 'Apps using this key will stop working immediately. Delete it?')}
+                onConfirm={() => remove(k)}
+              >
+                <Button size="small" type="link" danger>
+                  {t('删除', 'Delete')}
                 </Button>
-                <Popconfirm
-                  title={t('删除后用这个 key 的程序会立即失效，确定删除？', 'Apps using this key will stop working immediately. Delete it?')}
-                  onConfirm={() => remove(k)}
-                >
-                  <Button size="small" type="link" danger>
-                    {t('删除', 'Delete')}
-                  </Button>
-                </Popconfirm>
-              </Space>
+              </Popconfirm>
             ),
           },
         ]}
@@ -189,6 +209,24 @@ export default function Keys() {
             extra={t('留空表示不限额', 'Leave empty for no limit')}
           >
             <InputNumber min={0.01} step={1} style={{ width: '100%' }} prefix={currency === 'CNY' ? '¥' : '$'} />
+          </Form.Item>
+          <Form.Item
+            name="expires_at"
+            label={t('过期时间', 'Expires')}
+            extra={t('按本地时间选择，留空表示永不过期', 'Choose in local time. Leave empty to never expire.')}
+            rules={[
+              {
+                validator: (_rule, value?: Dayjs | null) => {
+                  if (!value) return Promise.resolve()
+                  // 原样保留已有的过期时间（key 已经过期时也允许只改名字）
+                  if (originalExpiry && originalExpiry.isSame(value)) return Promise.resolve()
+                  if (!value.isAfter(dayjs())) return Promise.reject(new Error(t('过期时间要晚于现在', 'Expiration must be later than now')))
+                  return Promise.resolve()
+                },
+              },
+            ]}
+          >
+            <DatePicker showTime style={{ width: '100%' }} placeholder={t('永不过期', 'Never')} disabledDate={(d) => d.isBefore(dayjs(), 'day')} />
           </Form.Item>
         </Form>
       </Modal>

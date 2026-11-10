@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { App, Button, Form, Input, InputNumber, Modal, Segmented, Select, Space, Switch, Table, Tag, Typography } from 'antd'
+import { App, Button, Drawer, Form, Input, InputNumber, Modal, Segmented, Select, Space, Switch, Table, Tag, Typography } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useSearchParams } from 'react-router-dom'
@@ -225,19 +225,20 @@ export default function Users() {
         </Form>
       </Modal>
 
-      <Modal
+      <Drawer
         open={!!editingUser}
         title={`${t('编辑用户', 'Edit user')} · ${editingUser?.username}`}
-        okText={t('提交', 'Submit')}
-        cancelText={t('取消', 'Cancel')}
-        onCancel={closeEdit}
-        onOk={saveUser}
-        confirmLoading={submitting}
-        cancelButtonProps={{ disabled: submitting }}
+        onClose={closeEdit}
+        extra={
+          <Space>
+            <Button disabled={submitting} onClick={closeEdit}>{t('取消', 'Cancel')}</Button>
+            <Button type="primary" loading={submitting} onClick={saveUser}>{t('提交', 'Submit')}</Button>
+          </Space>
+        }
         closable={!submitting}
         keyboard={!submitting}
         maskClosable={!submitting}
-        width={720}
+        size={720}
         destroyOnHidden
       >
         <Form form={editForm} layout="vertical" requiredMark={false} disabled={submitting}>
@@ -294,7 +295,7 @@ export default function Users() {
             <Input placeholder={t('例如：10 月额度', 'e.g. October allowance')} />
           </Form.Item>
         </Form>
-      </Modal>
+      </Drawer>
     </div>
   )
 }

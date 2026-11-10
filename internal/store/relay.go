@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
@@ -20,6 +21,7 @@ type KeyOwner struct {
 	UserID       int64
 	GroupID      int64
 	GroupName    string
+	ExpiresAt    *time.Time
 	KeyEnabled   bool
 	UserEnabled  bool
 	GroupAllowed bool // 公开分组，或用户被授权了这个特殊分组
@@ -43,13 +45,13 @@ func (s *Store) LookupKey(ctx context.Context, keyHash string) (*KeyOwner, error
 			       JOIN user_group_members ugm ON ugm.user_group_id = gug.user_group_id
 			       WHERE gug.group_id = g.id AND ugm.user_id = u.id
 		       )),
-		       g.ratio::text, g.retry_count, u.balance::text, u.reserved::text, k.quota_limit::text, k.quota_used::text
+		       g.ratio::text, g.retry_count, u.balance::text, u.reserved::text, k.quota_limit::text, k.quota_used::text, k.expires_at
 		FROM api_keys k
 		JOIN users u ON u.id = k.user_id
 		JOIN groups g ON g.id = k.group_id
 		WHERE k.key_hash = $1`, keyHash,
 	).Scan(&o.KeyID, &o.KeyName, &o.UserID, &o.GroupID, &o.GroupName, &o.KeyEnabled, &o.UserEnabled, &o.GroupAllowed,
-		&ratio, &o.GroupRetries, &balance, &reserved, &limit, &used)
+		&ratio, &o.GroupRetries, &balance, &reserved, &limit, &used, &o.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -403,15 +405,15 @@ func (s *Store) ResetReservations(ctx context.Context) error {
 	return err
 }
 
-// CreateAPIKey 保存新 key 的哈希；quota 为 nil 表示不限额。
-func (s *Store) CreateAPIKey(ctx context.Context, userID int64, name, keyHash, keyPrefix string, groupID int64, quota *decimal.Decimal) (int64, error) {
+// CreateAPIKey 保存新 key 的哈希；quota 为 nil 表示不限额，expiresAt 为 nil 表示永不过期。
+func (s *Store) CreateAPIKey(ctx context.Context, userID int64, name, keyHash, keyPrefix string, groupID int64, quota *decimal.Decimal, expiresAt *time.Time) (int64, error) {
 	var id int64
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		return track(ctx, tx, keyEntity, &id, userID, func() error {
 			return tx.QueryRow(ctx, `
-				INSERT INTO api_keys (user_id, name, key_hash, key_prefix, group_id, quota_limit)
-				VALUES ($1, $2, $3, $4, $5, $6::numeric) RETURNING id`,
-				userID, name, keyHash, keyPrefix, groupID, decimalArg(quota),
+				INSERT INTO api_keys (user_id, name, key_hash, key_prefix, group_id, quota_limit, expires_at)
+				VALUES ($1, $2, $3, $4, $5, $6::numeric, $7) RETURNING id`,
+				userID, name, keyHash, keyPrefix, groupID, decimalArg(quota), expiresAt,
 			).Scan(&id)
 		})
 	})

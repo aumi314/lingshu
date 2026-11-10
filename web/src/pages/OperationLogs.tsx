@@ -54,7 +54,7 @@ function fieldLabel(t: T, field: string): string {
   return ({
     username: t('用户名', 'Username'), role: t('角色', 'Role'), enabled: t('状态', 'Status'), note: t('备注', 'Note'), keys: t('Key 列表', 'Keys'),
     password: t('密码', 'Password'), user_groups: t('用户分组', 'User groups'), name: t('名称', 'Name'), prefix: t('前缀', 'Prefix'),
-    group: t('服务分组', 'Service group'), quota_limit: t('限额', 'Quota'), ratio: t('倍率', 'Ratio'), is_public: t('所有用户可用', 'Open to all'),
+    group: t('服务分组', 'Service group'), quota_limit: t('限额', 'Quota'), expires_at: t('过期时间', 'Expires'), ratio: t('倍率', 'Ratio'), is_public: t('所有用户可用', 'Open to all'),
     description: t('说明', 'Description'), input_price: t('输入价', 'Input price'), output_price: t('输出价', 'Output price'),
     cache_read_price: t('缓存读价', 'Cache read price'), cache_write_price: t('缓存写价', 'Cache write price'), price_rules: t('价格规则', 'Price rules'), fast_multiplier: t('Fast 倍率', 'Fast multiplier'),
     template: t('模板', 'Template'), api_key: 'API key', priority: t('优先级', 'Priority'), base_url_chat: 'Chat URL',
@@ -68,12 +68,19 @@ function fieldLabel(t: T, field: string): string {
   } as Record<string, string>)[field] ?? field
 }
 
+// 操作日志里的时间戳可能是 RFC3339，也可能是数据库的文本格式，统一按本地时间显示
+function timeText(v: unknown): string {
+  const d = dayjs(String(v).replace(' ', 'T'))
+  return d.isValid() ? d.format('YYYY-MM-DD HH:mm') : String(v)
+}
+
 function valueText(t: T, money: Money, field: string, v: unknown): string {
   if (v === undefined || v === null || v === '') return '—'
   if (field === 'balance' || field === 'credit_usd') return money(v as string)
   if (field === 'provider') return paymentNames[v as string] ?? String(v)
   if (field.endsWith('_price') && typeof v === 'string') return money(v, 6)
   if (field === 'enabled') return v ? t('启用', 'Enabled') : t('停用', 'Disabled')
+  if (field === 'expires_at') return timeText(v)
   if (typeof v === 'boolean') return v ? t('是', 'Yes') : t('否', 'No')
   if (Array.isArray(v) && v.every((x) => typeof x !== 'object')) return v.length ? v.join('、') : t('（空）', '(none)')
   if (typeof v === 'object') return JSON.stringify(v)

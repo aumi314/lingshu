@@ -315,6 +315,10 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, proto usa
 		writeError(w, proto, http.StatusForbidden, "这个 API key 或所属账号已被停用，请联系管理员")
 		return nil, false
 	}
+	if owner.ExpiresAt != nil && !owner.ExpiresAt.After(time.Now()) {
+		writeError(w, proto, http.StatusUnauthorized, "API key 已过期，请在 API keys 页面延长有效期或创建新 key")
+		return nil, false
+	}
 	return owner, true
 }
 

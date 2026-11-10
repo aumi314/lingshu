@@ -174,6 +174,8 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 // writeStoreError 把数据层错误换成合适的状态码和提示，未知错误只记日志不外露。
 func writeStoreError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, store.ErrKeyExpiration):
+		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, store.ErrNotFound):
 		writeError(w, http.StatusNotFound, "要操作的记录不存在，可能已被删除，请刷新页面")
 	case errors.Is(err, store.ErrUsernameTaken):
