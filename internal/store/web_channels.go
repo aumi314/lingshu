@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -381,6 +382,7 @@ type APIKey struct {
 	QuotaLimit *decimal.Decimal `json:"quota_limit"`
 	QuotaUsed  decimal.Decimal  `json:"quota_used"`
 	Enabled    bool             `json:"enabled"`
+	ExpiresAt  *time.Time       `json:"expires_at"`
 	LastUsedAt *time.Time       `json:"last_used_at"`
 	CreatedAt  time.Time        `json:"created_at"`
 }
@@ -388,7 +390,7 @@ type APIKey struct {
 func (s *Store) ListAPIKeys(ctx context.Context, userID int64) ([]APIKey, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT k.id, k.name, k.key_prefix, k.group_id, g.name, k.quota_limit::text, k.quota_used::text,
-		       k.enabled, k.last_used_at, k.created_at
+		       k.enabled, k.last_used_at, k.created_at, k.expires_at
 		FROM api_keys k JOIN groups g ON g.id = k.group_id
 		WHERE k.user_id = $1 ORDER BY k.id DESC`, userID)
 	if err != nil {
@@ -398,28 +400,47 @@ func (s *Store) ListAPIKeys(ctx context.Context, userID int64) ([]APIKey, error)
 		var k APIKey
 		var limit *string
 		var used string
-		err := r.Scan(&k.ID, &k.Name, &k.Prefix, &k.GroupID, &k.GroupName, &limit, &used, &k.Enabled, &k.LastUsedAt, &k.CreatedAt)
+		err := r.Scan(&k.ID, &k.Name, &k.Prefix, &k.GroupID, &k.GroupName, &limit, &used, &k.Enabled, &k.LastUsedAt, &k.CreatedAt, &k.ExpiresAt)
 		k.QuotaLimit, k.QuotaUsed = optDecimal(limit), mustDecimal(used)
 		return k, err
 	})
 }
 
 type APIKeyPatch struct {
-	Name     *string
-	Enabled  *bool
-	GroupID  *int64
-	SetQuota bool // 为 true 时把限额改成 Quota（nil 表示不限）
-	Quota    *decimal.Decimal
+	Name         *string
+	Enabled      *bool
+	GroupID      *int64
+	SetQuota     bool // 为 true 时把限额改成 Quota（nil 表示不限）
+	Quota        *decimal.Decimal
+	SetExpiresAt bool // 为 true 时更新有效期，nil 表示永不过期
+	ExpiresAt    *time.Time
 }
 
-// UpdateAPIKey 在一个事务里改名称、启停、分组和限额，要么全改要么全不改。
+var ErrKeyExpiration = errors.New("过期时间要晚于现在")
+
+// UpdateAPIKey 在一个事务里改名称、启停、分组、限额和有效期，要么全改要么全不改。
 func (s *Store) UpdateAPIKey(ctx context.Context, userID, keyID int64, p APIKeyPatch) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		return track(ctx, tx, keyEntity, &keyID, userID, func() error {
+			if p.SetExpiresAt && p.ExpiresAt != nil && !p.ExpiresAt.After(time.Now()) {
+				var current *time.Time
+				if err := tx.QueryRow(ctx, `SELECT expires_at FROM api_keys WHERE id = $1 AND user_id = $2 FOR UPDATE`, keyID, userID).Scan(&current); err != nil {
+					if errors.Is(err, pgx.ErrNoRows) {
+						return ErrNotFound
+					}
+					return err
+				}
+				// 浏览器时间精度为毫秒；原有效期未变时，过期后仍可编辑其他字段。
+				if current == nil || !current.Truncate(time.Millisecond).Equal(p.ExpiresAt.Truncate(time.Millisecond)) {
+					return ErrKeyExpiration
+				}
+				p.ExpiresAt = current
+			}
 			return execOne(ctx, tx, `
 				UPDATE api_keys SET name = COALESCE($3, name), enabled = COALESCE($4, enabled), group_id = COALESCE($5, group_id),
-				       quota_limit = CASE WHEN $6 THEN $7::numeric ELSE quota_limit END
-				WHERE id = $2 AND user_id = $1`, userID, keyID, p.Name, p.Enabled, p.GroupID, p.SetQuota, decimalArg(p.Quota))
+				       quota_limit = CASE WHEN $6 THEN $7::numeric ELSE quota_limit END,
+				       expires_at = CASE WHEN $8 THEN $9::timestamptz ELSE expires_at END
+				WHERE id = $2 AND user_id = $1`, userID, keyID, p.Name, p.Enabled, p.GroupID, p.SetQuota, decimalArg(p.Quota), p.SetExpiresAt, p.ExpiresAt)
 		})
 	})
 }

@@ -116,6 +116,8 @@ export type APIKey = {
   quota_used: string
   enabled: boolean
   last_used_at: string | null
+  /** 过期时间（可空），空表示永不过期 */
+  expires_at: string | null
   created_at: string
 }
 

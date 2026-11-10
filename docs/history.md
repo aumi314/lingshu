@@ -606,3 +606,11 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 关闭后进入或刷新钱包隐藏兑换码卡片，余额、在线充值与充值记录保留；后端直接兑换返回 403，不核销、不入账、不累计猜码失败。管理员仍可生成、查看、撤销兑换码；重新开启后有效码恢复兑换。开关修改进入操作日志，保存其他设置不覆盖它，保存失败保留界面原状态。
 - 验收：独立 PostgreSQL 容器 `lingshu-redeem-toggle-test`（本地端口 25439，数据库 `lingshu_redeem_test`）上 `go vet ./...` 与 `go test -count=1 -p 1 ./...` 全通过；新增接口回归覆盖默认开启、权限、两个开关组合、局部保存、关闭不消费及重新开启只兑一次。`npm run build` 与扩展的 `redeem.browser.cjs` 通过，覆盖开关保存/刷新/失败、关闭钱包入口、保留其他卡片、关闭时生成以及重新开启兑换。保留既有 Vite 单包体积提示。
 - 按 neat-freak 同步 decisions、payments 与 plan 钱包状态，代码和文档合同一致；使用独立 worktree `~/worktrees/lingshu-redeem-toggle`、分支 `codex/redeem-toggle` 交付 PR，待合并发布。共享主仓库原有内容保留，未操作线上；规则和用户记忆无需变更，worktree 与测试库保留复核。
+
+
+## 2026-11-11：API key 可选过期时间
+
+- 创建和编辑 API key 增加日期与时刻选择，按浏览器本地时间显示，以带时区时间戳提交；留空为永不过期，可清除或延长，列表展示过期时刻与已过期标签。新增迁移 `0036_api_key_expiration`，只增加可空 `expires_at`，已有 key 继续永不过期。CLI 创建 key 保持原默认行为。
+- 四个调用入口、模型列表、余额查询和 Responses WebSocket 升级复用同一鉴权；过期返回 401，在请求上游和预扣前拒绝，不扣费、不写调用日志。已接收的请求照常处理。新设的时间必须晚于现在；局部更新省略字段保留原值，显式 null 清空；已过期 key 可原样保留时间并修改资料，浏览器毫秒往返保留数据库原微秒精度。有效期修改沿用同事务操作日志，前端按本地时间展示。
+- 验收：独立测试库 `lingshu_key_expiration_test` 上全量 `go test -count=1 -p 1 ./...` 与 `go vet ./...` 通过；新增接口和网关回归覆盖创建 / 更新 / 清空 / 非法时间 / 所有权 / 操作日志、四协议拒绝、余额不变、请求间过期识别及 WebSocket 握手拒绝。`npm run build`（含类型检查）、`npm test`、`keys.browser.cjs` 和既有 `activity-logs.browser.cjs` 通过；浏览器覆盖默认永不过期、本地时间转换、编辑回填与清空、已过期 key 改名、过去时刻校验和新建表单重置，深色编辑窗口已截图核对。保留 Vite 既有单包体积提示。
+- 按 neat-freak 核对代码、决策、计划字段和 CI 浏览器入口；规则无须变更，用户记忆只读。分支 `codex/api-key-expiration` 交付 PR，待合并发布；本轮未操作线上，独立 worktree 和测试库保留复核。

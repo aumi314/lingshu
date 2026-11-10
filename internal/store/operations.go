@@ -62,7 +62,7 @@ var (
 		FROM users u WHERE u.id = $1`, []string{"password"}}
 	keyEntity = entity{"api_key", "name", `
 		SELECT jsonb_build_object('name', k.name, 'prefix', k.key_prefix, 'enabled', k.enabled, 'group', g.name,
-		       'quota_limit', k.quota_limit::text)
+		       'quota_limit', k.quota_limit::text, 'expires_at', k.expires_at)
 		FROM api_keys k JOIN groups g ON g.id = k.group_id WHERE k.id = $1`, nil}
 	groupEntity = entity{"group", "name", `
 		SELECT jsonb_build_object('name', g.name, 'ratio', g.ratio::text, 'enabled', g.enabled, 'is_public', g.is_public, 'retry_count', g.retry_count,

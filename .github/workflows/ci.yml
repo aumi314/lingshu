@@ -81,6 +81,7 @@ jobs:
           node tests/users.browser.cjs
           node tests/models.browser.cjs
           node tests/redeem.browser.cjs
+          node tests/keys.browser.cjs
           node tests/calls.browser.cjs
           node tests/registration.browser.cjs
           node tests/auth-security.browser.cjs
