@@ -621,3 +621,12 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - API keys 移除行内“编辑”，复用现有 `rowEditing`，点击行的非操作区域或键盘 Enter / Space 打开编辑；开关、删除确认和取消、文字选择保持各自行为。
 - 验收：`npm run build`（含类型检查）、`npm test`、`users.browser.cjs` 和 `keys.browser.cjs` 通过；新增桌面右侧定位、滚动时顶部按钮固定、390 px 窄屏布局、行键盘操作、文字选择及开关 / 删除隔离回归。既有用户权限、保存失败与取消、额度提交、API key 有效期回归全部通过；桌面、手机及深色 API key 编辑截图已核对。保留既有 Vite 单包体积提示。
 - 按 neat-freak 核对 decisions、plan、实现和 CI 浏览器入口；改动仅涉及这两处交互、相关回归和文档，补入现有 PR #76，待合并发布。未操作线上，工作区保留复核。
+
+
+## 2026-11-11：API key 有效期与编辑交互发布
+
+- 用户授权合并发布 PR #76，squash 为 `7f66ca29928b223713ef13a24c2d3f8ac7e5a3d1`；main CI `42865921936` 的 Go 全量测试、前端与浏览器回归、Caddy 隔离回归全部通过，Release `42866481555` 成功。DMIT 于 2026-11-10T17:39:19Z（Asia/Shanghai 11 月 11 日 01:39:19）完成发布。
+- `/opt/lingshu/release.json` 的提交与发布目标一致，运行程序 SHA-256 与 GitHub 清单均为 `07371cfd66e83fd33cfffa02daf8ce3b0f71bb92596688bb371737c1658c4eaf`。迁移已到 `0036_api_key_expiration`，`expires_at` 为可空 `timestamp with time zone`；当次核对原有 6 把 key 均未设置有效期。
+- 发布前备份 `lingshu-deploy-20261110T173856Z-7f66ca2.dump` 的 SHA-256 校验通过，`pg_restore --list` 可读且包含 26 张表数据。应用、数据库、发布 timer 和备份 timer 均 active，PostgreSQL 就绪；内部和公开 `/healthz` 为 200，用户与 API keys 页均 200，匿名管理接口 401。
+- 公网两个页面均加载 `/assets/index-B-fNZ40d.js`（SHA-256 `a29d8d511bb38e833170f8be948487df5b994dc77542b1ce84df9df5616ecd36`）和配套 CSS。对公网站点提供的前端成品重跑用户编辑与 API key 浏览器回归，通过右侧抽屉、顶部固定按钮、390 px 手机布局、权限与提交保护、行点击 / 键盘编辑、开关 / 删除 / 文字选择隔离和有效期往返；API 请求由测试夹具拦截，未用这些交互改写生产数据，未发起付费模型调用。公网手机截图已复核。
+- 按 neat-freak 核对代码、发布清单、运行状态与现行规则，更新 plan 当前状态；规则无须调整，用户记忆只读。保留工作区、测试库和截图供复核；本次未进行清场，既有 Vite 单包体积提示保留。
