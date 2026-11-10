@@ -5,6 +5,7 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { del, get, patch, post, type APIKey, type Group, type PricedModel } from '../api'
 import { useApp } from '../app'
 import { magpieImportURL } from '../guide'
+import { rowEditing } from '../rowEditing'
 
 type KeyForm = { name: string; group_id: number; quota_limit?: number | null; expires_at?: Dayjs | null }
 
@@ -131,6 +132,7 @@ export default function Keys() {
         rowKey="id"
         loading={loading}
         dataSource={keys}
+        onRow={(k) => rowEditing(() => openEdit(k), `${t('编辑 API key', 'Edit API key')} · ${k.name}`)}
         pagination={false}
         locale={{ emptyText: t('还没有 key，点右上角创建一个', 'No keys yet. Create one from the top right.') }}
         columns={[
@@ -168,19 +170,14 @@ export default function Keys() {
             title: '',
             align: 'right',
             render: (_, k) => (
-              <Space>
-                <Button size="small" type="link" onClick={() => openEdit(k)}>
-                  {t('编辑', 'Edit')}
+              <Popconfirm
+                title={t('删除后用这个 key 的程序会立即失效，确定删除？', 'Apps using this key will stop working immediately. Delete it?')}
+                onConfirm={() => remove(k)}
+              >
+                <Button size="small" type="link" danger>
+                  {t('删除', 'Delete')}
                 </Button>
-                <Popconfirm
-                  title={t('删除后用这个 key 的程序会立即失效，确定删除？', 'Apps using this key will stop working immediately. Delete it?')}
-                  onConfirm={() => remove(k)}
-                >
-                  <Button size="small" type="link" danger>
-                    {t('删除', 'Delete')}
-                  </Button>
-                </Popconfirm>
-              </Space>
+              </Popconfirm>
             ),
           },
         ]}

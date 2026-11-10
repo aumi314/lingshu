@@ -1,4 +1,4 @@
-// API key 有效期：创建、回填、清空、过期校验与本地时区往返。
+// API key 行点击编辑和有效期：创建、回填、清空、过期校验与本地时区往返。
 const { chromium } = require('playwright')
 const assert = require('node:assert/strict')
 const { spawn } = require('node:child_process')
@@ -14,6 +14,7 @@ const path = require('node:path')
     }
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, timezoneId: 'Asia/Shanghai' })
     const writes = []
+    const deletes = []
     const errors = []
     page.on('pageerror', (e) => errors.push(e.message))
     const common = { prefix: 'sk-ls-fixture', group_id: 1, group_name: 'default', quota_limit: null, quota_used: '0', enabled: true, last_used_at: null, created_at: '2026-01-01T00:00:00Z' }
@@ -43,6 +44,12 @@ const path = require('node:path')
         Object.assign(keys.find((k) => k.id === Number(p.split('/').at(-1))), body)
         return json({ ok: true })
       }
+      if (p.startsWith('/api/me/keys/') && req.method() === 'DELETE') {
+        const id = Number(p.split('/').at(-1))
+        deletes.push(id)
+        keys.splice(keys.findIndex((k) => k.id === id), 1)
+        return json({ ok: true })
+      }
       return json({})
     })
     const row = (id) => page.locator(`tr[data-row-key="${id}"]`)
@@ -58,12 +65,33 @@ const path = require('node:path')
       await dialog().getByRole('button', { name: /取\s*消/ }).click()
       await dialog().waitFor({ state: 'hidden' })
     }
-    const edit = async (id) => { await row(id).getByRole('button', { name: /编\s*辑/ }).click(); await input().waitFor(); await page.waitForTimeout(350) }
+    const edit = async (id) => { await row(id).locator('td').first().click(); await input().waitFor(); await page.waitForTimeout(350) }
     const create = async () => { await page.getByRole('button', { name: /创建 API key/ }).click(); await input().waitFor(); await page.waitForTimeout(350) }
     await page.goto('http://127.0.0.1:25197/console/keys')
     await row(1).getByText('永不过期', { exact: true }).waitFor()
     await row(2).getByText('2099-12-25 17:30', { exact: true }).waitFor()
     await row(3).getByText('已过期', { exact: true }).waitFor()
+    assert.equal(await page.getByRole('button', { name: /编\s*辑/ }).count(), 0)
+    assert.equal(await row(1).getAttribute('aria-label'), '编辑 API key · permanent')
+    assert.equal(await row(1).getAttribute('tabindex'), '0')
+    for (const key of ['Enter', 'Space']) {
+      await row(1).focus()
+      await row(1).press(key)
+      await input().waitFor()
+      assert.equal(await dialog().getByLabel('名称', { exact: true }).inputValue(), 'permanent')
+      await cancel()
+    }
+    // 选中文字保留复制行为。
+    await row(1).locator('td').first().evaluate((cell) => {
+      const range = document.createRange()
+      range.selectNodeContents(cell)
+      const selection = window.getSelection()
+      selection.removeAllRanges()
+      selection.addRange(range)
+    })
+    await row(1).locator('td').first().dispatchEvent('click')
+    assert.equal(await dialog().count(), 0)
+    await page.evaluate(() => window.getSelection().removeAllRanges())
 
     await create()
     assert.equal(await input().inputValue(), '')
@@ -120,12 +148,33 @@ const path = require('node:path')
     assert.equal(writes.length, previous)
     await cancel()
 
+    // 行内开关和删除独立操作，不打开编辑；确认框里的操作也不冒泡。
+    const beforeToggle = writes.length
+    await row(1).getByRole('switch').click()
+    await page.waitForFunction(() => document.querySelector('tr[data-row-key="1"] [role="switch"]')?.getAttribute('aria-checked') === 'false')
+    assert.equal(writes.length, beforeToggle + 1)
+    assert.deepEqual(writes.at(-1), { enabled: false })
+    assert.equal(await dialog().count(), 0)
+    const confirmation = page.locator('.ant-popconfirm:visible')
+    await row(4).getByRole('button', { name: /删\s*除/ }).click()
+    await confirmation.waitFor()
+    assert.equal(await dialog().count(), 0)
+    await confirmation.getByRole('button', { name: /取\s*消/ }).click()
+    await confirmation.waitFor({ state: 'hidden' })
+    assert.deepEqual(deletes, [])
+    assert.equal(await dialog().count(), 0)
+    await row(4).getByRole('button', { name: /删\s*除/ }).click()
+    await confirmation.getByRole('button', { name: /确\s*定/ }).click()
+    await row(4).waitFor({ state: 'hidden' })
+    assert.deepEqual(deletes, [4])
+    assert.equal(await dialog().count(), 0)
+
     await edit(5)
     if (process.env.KEYS_TEST_SCREENSHOT) await page.screenshot({ path: process.env.KEYS_TEST_SCREENSHOT, fullPage: true })
     const box = await dialog().boundingBox()
     assert.ok(box && box.y >= 0 && box.y + box.height <= 1000, '编辑窗口应在可见区域内')
     assert.deepEqual(errors, [])
-    console.log('API key expiration browser regression passed')
+    console.log('API key row editing and expiration browser regression passed')
   } finally {
     await browser.close()
     server.kill()
