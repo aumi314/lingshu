@@ -113,7 +113,7 @@ lingshu/
 
 ## 5. 当前状态（2026-11-11）
 
-线上 `https://gateway.piqode.com`（DMIT）已发布开放注册、首轮安全加固、Responses → Messages 转接及引用内容下载超时换渠道修复（应用 `22e1f60`，2026-11-09 11:06；Caddy 防护 02:13），渠道列表恢复“协议”与浅色转接标签（PR #66），Messages → Responses 反向转接已实现，两项均已发布（最新应用 `d379ef2`，2026-11-09 12:17）；API key 可选过期时间、点击行编辑与用户编辑右侧抽屉已随 PR #76 发布（应用 `7f66ca2`，2026-11-11 01:39，Asia/Shanghai）；真实 Claude Code 反向转接端到端验收待做。
+线上 `https://gateway.piqode.com`（DMIT）已发布开放注册、首轮安全加固、Messages / Responses 双向转接、引用内容下载超时换渠道和浅色协议标签；API key 可选过期时间、点击行编辑与用户编辑右侧抽屉随 PR #76 上线（当前应用 `7f66ca2`，2026-11-11 01:39，Asia/Shanghai）；真实 Claude Code 反向转接端到端验收待做。
 
 | 模块 | 现在有什么 |
 |---|---|
