@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +29,28 @@ func (s *Server) myModels(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeStoreError(w, err)
 		return
+	}
+	// 调用设置里关掉的转接方向不再列出（Responses 入口靠 Messages 渠道 / Messages 入口靠 Responses 渠道）
+	limits, err := s.Store.CallLimits(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	for i := range models {
+		kept, bridged := []string{}, []string{}
+		for _, p := range models[i].BridgedProtocols {
+			if (p == "responses" && !limits.BridgeResponsesToMessages) || (p == "messages" && !limits.BridgeMessagesToResponses) {
+				continue
+			}
+			bridged = append(bridged, p)
+		}
+		for _, p := range models[i].Protocols {
+			if slices.Contains(models[i].BridgedProtocols, p) && !slices.Contains(bridged, p) {
+				continue
+			}
+			kept = append(kept, p)
+		}
+		models[i].Protocols, models[i].BridgedProtocols = kept, bridged
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"groups": groups, "models": models})
 }

@@ -80,6 +80,7 @@ type RouteKey struct {
 type Route struct {
 	ChannelID   int64
 	ChannelName string
+	Priority    int // 渠道优先级，大的先试；同一档内按会话固定（relay/keys.go 的 orderAttempts）
 	Template    string
 	BaseURL     string
 	// UpstreamProtocol 是实际发给上游的协议；Messages 与 Responses 可以互相转接。
@@ -123,7 +124,7 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 		filter = "(c.base_url_messages <> '' OR c.base_url_responses <> '')"
 	}
 	rows, err := s.Pool.Query(ctx, fmt.Sprintf(`
-		SELECT c.id, c.name, c.template, %[1]s, %[2]s,
+		SELECT c.id, c.name, c.priority, c.template, %[1]s, %[2]s,
 		       (SELECT json_agg(json_build_object('id', k.id, 'key', k.api_key) ORDER BY k.sort_order, k.id)
 		        FROM channel_keys k WHERE k.channel_id = c.id AND k.enabled),
 		       c.proxy_url, COALESCE(NULLIF(cm.upstream_name, ''), m.name),
@@ -145,7 +146,7 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 		var fast *string
 		var keys []byte
 		var upstreamProtocol string
-		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.Template, &rt.BaseURL, &upstreamProtocol, &keys, &rt.ProxyURL, &rt.UpstreamModel, &in, &out, &cr, &cw,
+		if err := r.Scan(&rt.ChannelID, &rt.ChannelName, &rt.Priority, &rt.Template, &rt.BaseURL, &upstreamProtocol, &keys, &rt.ProxyURL, &rt.UpstreamModel, &in, &out, &cr, &cw,
 			&rt.PriceRules, &fast); err != nil {
 			return rt, err
 		}
@@ -159,14 +160,13 @@ func (s *Store) FindRoutes(ctx context.Context, groupID int64, protocol, model s
 	})
 }
 
-// ModelProtocols 返回分组内这个模型能用哪些协议，用来提示用户换入口。
-// Messages 与 Responses 可以互相转接，任一原生地址都提供这两个入口。
+// ModelProtocols 返回分组内这个模型原生提供哪些协议，用来提示用户换入口；能转接的入口由网关按转接开关补上。
 func (s *Store) ModelProtocols(ctx context.Context, groupID int64, model string) ([]string, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT DISTINCT p FROM (
 			SELECT CASE WHEN c.base_url_chat <> '' THEN 'chat' END AS p1,
-			       CASE WHEN c.base_url_messages <> '' OR c.base_url_responses <> '' THEN 'messages' END AS p2,
-			       CASE WHEN c.base_url_responses <> '' OR c.base_url_messages <> '' THEN 'responses' END AS p3,
+			       CASE WHEN c.base_url_messages <> '' THEN 'messages' END AS p2,
+			       CASE WHEN c.base_url_responses <> '' THEN 'responses' END AS p3,
 			       CASE WHEN c.base_url_systemone <> '' THEN 'systemone' END AS p4
 			FROM models m
 			JOIN channel_models cm ON cm.model_id = m.id

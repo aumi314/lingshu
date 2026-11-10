@@ -676,13 +676,18 @@ type CallLimits struct {
 	Concurrency   int64 `json:"user_concurrency"`
 	RPM           int64 `json:"user_rpm"`
 	ReserveOutput int64 `json:"reserve_output_tokens"`
+	// 协议转接的应急开关（默认开）：Responses 客户端（Codex）用只有 Messages 地址的渠道，
+	// 以及 Messages 客户端（Claude Code）用只有 Responses 地址的渠道。关掉后只走原生协议
+	BridgeResponsesToMessages bool `json:"bridge_responses_to_messages"`
+	BridgeMessagesToResponses bool `json:"bridge_messages_to_responses"`
 }
 
-var DefaultCallLimits = CallLimits{Concurrency: 10, RPM: 120, ReserveOutput: 8192}
+var DefaultCallLimits = CallLimits{Concurrency: 10, RPM: 120, ReserveOutput: 8192, BridgeResponsesToMessages: true, BridgeMessagesToResponses: true}
 
 func (s *Store) CallLimits(ctx context.Context) (CallLimits, error) {
 	l := DefaultCallLimits
-	rows, err := s.Pool.Query(ctx, `SELECT key, value FROM settings WHERE key IN ('user_concurrency', 'user_rpm', 'reserve_output_tokens')`)
+	rows, err := s.Pool.Query(ctx, `SELECT key, value FROM settings WHERE key IN ('user_concurrency', 'user_rpm', 'reserve_output_tokens',
+		'bridge_responses_to_messages', 'bridge_messages_to_responses')`)
 	if err != nil {
 		return l, err
 	}
@@ -691,6 +696,14 @@ func (s *Store) CallLimits(ctx context.Context) (CallLimits, error) {
 		var k, v string
 		if err := rows.Scan(&k, &v); err != nil {
 			return l, err
+		}
+		switch k {
+		case "bridge_responses_to_messages":
+			l.BridgeResponsesToMessages = v != "false"
+			continue
+		case "bridge_messages_to_responses":
+			l.BridgeMessagesToResponses = v != "false"
+			continue
 		}
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || n < 0 {
