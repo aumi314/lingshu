@@ -307,6 +307,18 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 迁移 0035：`groups.is_collection`、`collection_groups`。`store.ModelSource` 按模型找集合成员，网关用成员的渠道和倍率（重试次数仍按集合），`GroupModels`、`PricedModels` 展开成员；渠道不能挂集合，集合不能包含集合，类型创建后不改，操作日志快照带成员。前端：分组页“创建集合”、集合行标签和成员、编辑时选包含的分组；渠道页不列集合；key 和模型价格页对集合不显示倍率。测试：`TestCollectionRoutesByModel`（按模型选成员、排序优先、停用跳过、/v1/models 合集、日志分组名）、`TestCollectionSave`（成员规则、类型不变、集合不能挂渠道、用户端价格）、`models.browser.cjs` 集合部分。
 
+### 转接兼容默认客户端与提示缓存（2026-11-10，PR #73）
+
+审查 Codex 写的转接时，本地用假服务器抓到 Codex 0.160、Claude Code 2.1.322 默认配置的请求，发现两个方向都被拒：Codex 默认带 `web_search` 工具；Claude Code 默认带 `context_management`，并在 messages 里插 `role: system`。另外 Responses → Messages 完全没打缓存断点，Messages → Responses 没有 `prompt_cache_key`。修复后，重新抓到的 7 个真实请求逐个转换通过；`testdata` 放了两份去掉标识的样本，抓包脚本在 `scripts/capture-client-request.py`。删掉只在测试里用的 `bridge.Stream.ObserveBody`，整段 JSON 上游不再重复记用量。
+
+线上验收（临时 key，用完即删，合计约 $0.002）：
+- Claude Code 经转接调 gpt-6-luna（OpenAI Platform）：两轮都成功，第二轮输入 11957 token 里 9628 命中缓存，费用 $0.00144 → $0.00040。
+- Codex 调 Claude：请求已转换并送达上游，但当时没有能完成调用的只有 Messages 地址的 Claude 渠道。kirisame 原生调用也返回 `OAuth refresh failed`，是号池授权过期；Anthropic Platform 余额不足。缓存断点留待有可用渠道时再实测。
+
+### 调用设置与渠道亲和（2026-11-10，PR #74）
+
+系统设置新增“调用设置”标签：调用限制从运营设置搬来；协议转接两个方向的应急开关（`bridge_responses_to_messages` / `bridge_messages_to_responses`，默认开）；渠道亲和说明；违禁词拦截占位。渠道亲和：同一优先级内按“灵枢 key + 会话编号”的最高随机权重哈希固定渠道（`store.Route` 加 `Priority`，`orderAttempts` 排序），取代原来同档随机。`ModelProtocols` 改为只返回原生协议，转接入口由网关按开关补上。测试：`TestChannelAffinity`、`TestBridgeSwitchOff`、`TestBridgeSwitches`、`calls.browser.cjs`；按新规则更新 `TestSamePriorityChannelsShareTraffic`。
+
 ### 改为自动发布前的手动发布记录
 
 2026-11-05 发布并复核（概览页改版）：DMIT 已发布提交 `b5090dcb1881e60bdaa1f28b8e368ea7192a0505`，运行中程序 SHA-256 为 `995c0f0635ac55fb8830db57aa06dd3b8cf036f2e012109afc7da837200e8f29`，属主 `lingshu:lingshu` 0755。发布前备份 `/var/backups/lingshu/lingshu-20261105T160124Z.dump`，SHA-256 为 `ab5105544efe475be997872e7e65a9e12e143fc319029ba90cb2e23b62080194`，`pg_restore --list` 可读（20 张表数据）。旧程序、配置与发布标记保留为 `prev-b5090dc`。只改前端，无迁移，schema 仍为 `0020_commercial_relay_mode`；回滚换回 `prev-b5090dc` 程序即可。内网与公网健康检查通过，公网入口资源 `index-DRFHDpk-.js` 与干净构建产物 SHA-256 `54ea3d0fd1851a35d5c296af7f8fc9f935b3e7b5abbec83227362855b7c184c0` 一致，服务日志无 ERROR。压缩成品上传约 9 分钟；部署方式拟改为 GitHub Actions 构建、DMIT 下载成品（仓库为公开仓库，下载无需 token），待确认。
