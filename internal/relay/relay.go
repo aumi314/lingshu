@@ -45,10 +45,12 @@ var entryPaths = map[string]string{
 }
 
 type Handler struct {
-	Store  *store.Store
-	Client *http.Client
-	Health *router.Health    // 渠道整体的健康（5xx、超时）
-	Keys   *router.KeyHealth // 渠道里单把 key 的冷却和失效（429、401 / 402 / 403）
+	// Disguise 是模型检测的伪装配置（真实客户端的请求头、系统提示、工具）；nil 表示用简版伪装
+	Disguise *ProbeDisguise
+	Store    *store.Store
+	Client   *http.Client
+	Health   *router.Health    // 渠道整体的健康（5xx、超时）
+	Keys     *router.KeyHealth // 渠道里单把 key 的冷却和失效（429、401 / 402 / 403）
 
 	// 等上游响应头的时限，超时就换渠道。流式请求上游通常几秒内就会回响应头；
 	// 非流式的推理模型要等全部生成完才回，所以给得长。

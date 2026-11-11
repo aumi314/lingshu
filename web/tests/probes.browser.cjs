@@ -18,7 +18,7 @@ const path = require('node:path')
     const noURL = { ...channel, id: 26, name: 'no-url', base_url_chat: '' } // 两个协议地址都没有，不能检测，不出现在下拉里
     const base = { id: 7, created_at: '2026-11-07T08:43:00Z', finished_at: null, created_by: 'admin', channel_id: 24, channel_name: 'relay-fixture', model: 'gpt-6.1-sol', upstream_model: 'gpt-6.1-sol', baseline: 'gpt-6.1-sol', preset: 'quick', score: null, verdict: '', cost: '0' }
     const report = {
-      baseline: 'gpt-6.1-sol', score: 88, verdict: '基本达标，1 项需要关注',
+      baseline: 'gpt-6.1-sol', protocol: 'responses', disguise: true, score: 88, verdict: '基本达标，1 项需要关注',
       items: [
         { key: 'tokens', title: '分词指纹', status: 'pass', summary: '12 / 12 段探针文本的 token 数和官方一致' },
         { key: 'fingerprint', title: '单词指纹', status: 'pass', summary: '答案分布和 gpt-6.1-sol 最接近（距离 0.21）', details: { ranking: [{ model: 'gpt-6.1-sol', distance: 0.21, prompts: 40 }, { model: 'gpt-6.1-terra', distance: 0.49, prompts: 40 }] } },
@@ -58,7 +58,7 @@ const path = require('node:path')
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: 'messages-only' }).click()
     await page.locator('#model').click()
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option:not(.ant-select-item-option-disabled)').filter({ hasText: 'claude-opus-5-5（协议检测）' }).waitFor()
-    await page.locator('.ant-select-dropdown:visible .ant-select-item-option-disabled').filter({ hasText: 'gpt-6.1-sol（渠道没有 Chat 地址）' }).waitFor()
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option-disabled').filter({ hasText: 'gpt-6.1-sol（渠道没有 Responses / Chat 地址）' }).waitFor()
     // 有官方样本的 Claude 不再标“协议检测”
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option:not(.ant-select-item-option-disabled)').filter({ hasText: /^claude-sonnet-5-5$/ }).waitFor()
     await page.keyboard.press('Escape')
@@ -86,6 +86,7 @@ const path = require('node:path')
     await page.getByText('请求质量（不计分）', { exact: true }).waitFor()
     await page.getByText('19.8K', { exact: true }).waitFor()
     await page.getByText('14.5 tok/s', { exact: true }).waitFor()
+    await page.getByText('完整伪装（真实客户端的提示和工具）').waitFor()
     // 展开单词指纹看各型号距离
     await page.getByText('单词指纹', { exact: true }).click()
     await page.getByText('gpt-6.1-terra：0.490（40 题）', { exact: true }).waitFor()

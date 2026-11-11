@@ -121,6 +121,14 @@ func serve() error {
 		w.Write([]byte("ok"))
 	})
 	h := relay.NewHandler(s)
+	if cfg.ProbeDisguiseFile != "" {
+		if d, err := relay.LoadProbeDisguise(cfg.ProbeDisguiseFile); err != nil {
+			slog.Warn("模型检测伪装配置读不了，用简版伪装", "file", cfg.ProbeDisguiseFile, "err", err)
+		} else {
+			h.Disguise = d
+			slog.Info("模型检测伪装配置已加载", "file", cfg.ProbeDisguiseFile)
+		}
+	}
 	mux.Handle("POST /v1/chat/completions", h.Serve(usage.Chat))
 	mux.Handle("POST /v1/messages", h.Serve(usage.Messages))
 	mux.Handle("POST /v1/responses", h.Serve(usage.Responses))

@@ -13,6 +13,8 @@ type Config struct {
 	Listen      string // 监听地址
 	DatabaseURL string
 	PublicURL   string // 支付回调使用的显式外部地址
+	// ProbeDisguiseFile 是模型检测伪装配置的路径（服务器上的文件，不进仓库）；空表示用简版伪装
+	ProbeDisguiseFile string
 }
 
 func Load() (Config, error) {
@@ -20,6 +22,8 @@ func Load() (Config, error) {
 		Listen:      getenv("LINGSHU_LISTEN", "127.0.0.1:8300"),
 		DatabaseURL: os.Getenv("LINGSHU_DATABASE_URL"),
 		PublicURL:   strings.TrimRight(os.Getenv("LINGSHU_PUBLIC_URL"), "/"),
+
+		ProbeDisguiseFile: os.Getenv("LINGSHU_PROBE_DISGUISE_FILE"),
 	}
 	if c.DatabaseURL == "" {
 		return c, errors.New("没有设置 LINGSHU_DATABASE_URL，例如 postgres://lingshu:密码@127.0.0.1:5432/lingshu")

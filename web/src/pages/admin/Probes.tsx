@@ -13,7 +13,7 @@ type Call = {
   error?: string; input_tokens: number; cached_tokens: number; output_tokens: number; reasoning_tokens: number
   id?: string; service_tier?: string; first_token_ms: number; total_ms: number
 }
-type Report = { baseline: string; mode?: 'protocol'; score: number; verdict: string; items: Item[]; observations: Item[]; metrics: Record<string, number>; calls: Call[] }
+type Report = { baseline: string; mode?: 'protocol'; protocol?: 'responses' | 'chat' | 'messages'; disguise?: boolean; score: number; verdict: string; items: Item[]; observations: Item[]; metrics: Record<string, number>; calls: Call[] }
 type Run = {
   id: number; created_at: string; finished_at: string | null; created_by: string; channel_id: number | null; channel_name: string
   model: string; upstream_model: string; baseline: string; preset: 'quick' | 'full'; status: 'running' | 'done' | 'failed'
@@ -66,7 +66,7 @@ export default function Probes() {
   }, [running, selected, loadRuns, open])
 
   // GPT 走 Chat、和官方样本比；Claude 走 Messages、只做协议层检测
-  const probeChannels = channels.filter((c) => (c.base_url_chat || c.base_url_messages) && c.models.length > 0)
+  const probeChannels = channels.filter((c) => (c.base_url_responses || c.base_url_chat || c.base_url_messages) && c.models.length > 0)
   const channel = probeChannels.find((c) => c.id === channelID)
   const models = channel?.models ?? []
   const modelNote = (name: string) => {
@@ -74,7 +74,7 @@ export default function Probes() {
       if (!channel?.base_url_messages) return { ok: false, note: t('（渠道没有 Messages 地址）', ' (no Messages URL)') }
       return { ok: true, note: baselines.includes(name) ? '' : t('（协议检测）', ' (protocol check)') }
     }
-    if (baselines.includes(name)) return channel?.base_url_chat ? { ok: true, note: '' } : { ok: false, note: t('（渠道没有 Chat 地址）', ' (no Chat URL)') }
+    if (baselines.includes(name)) return channel?.base_url_responses || channel?.base_url_chat ? { ok: true, note: '' } : { ok: false, note: t('（渠道没有 Responses / Chat 地址）', ' (no Responses / Chat URL)') }
     return { ok: false, note: t('（暂无官方样本）', ' (no baseline)') }
   }
 
@@ -232,6 +232,7 @@ function Result({ run, protocol, statusIcon, statusText }: { run: Run; protocol:
             <div>{dayjs(run.created_at).format('YYYY-MM-DD HH:mm')}</div>
             <div>{run.channel_name} · <span className="mono">{run.model}</span>{run.upstream_model !== run.model && <> ← <span className="mono">{run.upstream_model}</span></>}</div>
             <div>{r.mode === 'protocol' ? t('协议层检测，暂无官方样本', 'Protocol check, no baseline') : <>{t('对照', 'Baseline')} <span className="mono">{run.baseline}</span></>} · {run.preset === 'full' ? t('完整', 'Full') : t('快速', 'Quick')} · {t('花费约', 'Cost ~')} {money(run.cost, 4)}</div>
+            {r.protocol && <div>{t('走', 'Via')} <span className="mono">{{ responses: 'Responses', chat: 'Chat', messages: 'Messages' }[r.protocol]}</span> · {r.disguise ? t('完整伪装（真实客户端的提示和工具）', 'full client disguise') : t('简版伪装', 'minimal disguise')}</div>}
           </div>
         </Col>
         <Col xs={24} md={18}>
