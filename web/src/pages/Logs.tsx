@@ -68,15 +68,20 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
   const [detail, setDetail] = useState<RequestActivity | null>(null)
   // 对话留存（只有管理员能看）：打开请求详情时取回这次调用的请求和回复
   const [conversation, setConversation] = useState<ConversationData | null>(null)
+  const [conversationError, setConversationError] = useState('')
+  const [conversationRetry, setConversationRetry] = useState(0)
   useEffect(() => {
     setConversation(null)
+    setConversationError('')
     if (!admin || !detail) return
     let live = true
-    get<ConversationData>(`/api/admin/logs/${detail.id}/conversation`).then((c) => live && setConversation(c)).catch(() => {})
+    get<ConversationData>(`/api/admin/logs/${detail.id}/conversation`).then((c) => live && setConversation(c)).catch((e) => {
+      if (live) setConversationError(e instanceof Error ? e.message : String(e))
+    })
     return () => {
       live = false
     }
-  }, [admin, detail])
+  }, [admin, detail, conversationRetry])
   // 管理员的请求详情分两页：明细和对话内容（对话长，放在明细下面要滚很远）
   const withConversation = (details: ReactNode) =>
     !admin || !detail ? details : (
@@ -86,7 +91,10 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
           {
             key: 'conversation',
             label: t('对话内容', 'Conversation'),
-            children: conversation ? <Conversation protocol={detail.protocol} requestID={detail.request_id} data={conversation} /> : <Typography.Text type="secondary">{t('加载中…', 'Loading…')}</Typography.Text>,
+            children: conversationError ? (
+              <Alert type="error" showIcon title={t('读取失败，请重试', 'Could not load conversation. Try again.')} description={conversationError}
+                action={<Button size="small" onClick={() => setConversationRetry((n) => n + 1)}>{t('重试', 'Retry')}</Button>} />
+            ) : conversation ? <Conversation protocol={detail.protocol} requestID={detail.request_id} data={conversation} /> : <Typography.Text type="secondary">{t('加载中…', 'Loading…')}</Typography.Text>,
           },
         ]}
       />

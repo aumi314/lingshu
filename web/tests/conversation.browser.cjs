@@ -6,11 +6,11 @@ const { spawn } = require('node:child_process')
 const path = require('node:path')
 
 ;(async () => {
-  const server = spawn(process.execPath, [path.join(__dirname, '../node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '25198', '--strictPort'], { cwd: path.join(__dirname, '..'), stdio: 'ignore' })
+  const server = spawn(process.execPath, [path.join(__dirname, '../node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '25218', '--strictPort'], { cwd: path.join(__dirname, '..'), stdio: 'ignore' })
   const browser = await chromium.launch({ headless: true })
   try {
     for (let i = 0; i < 100; i++) {
-      try { if ((await fetch('http://127.0.0.1:25198')).ok) break } catch {}
+      try { if ((await fetch('http://127.0.0.1:25218')).ok) break } catch {}
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
     const user = { id: 1, username: 'admin', role: 'admin', balance: '8', preferences: { language: 'zh', theme: 'dark' }, enabled: true, user_group_ids: [], created_at: new Date().toISOString() }
@@ -29,6 +29,7 @@ const path = require('node:path')
     }
     const summary = { requests: 2, failed: 0, cost: '0.02', input_tokens: 20, cache_read_tokens: 0, output_tokens: 10, topup_total: '0', adjustment_net: '0', peak_rpm: 1, peak_rpm_at: '2026-11-11T04:00:00Z', peak_tpm: 30, peak_tpm_at: '2026-11-11T04:00:00Z', median_first_token_ms: 100, median_total_ms: 200 }
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true })
+    let captureReads = 0
     const errors = []
     page.on('pageerror', (e) => errors.push(e.message))
     await page.route('**/api/**', (route) => {
@@ -36,16 +37,24 @@ const path = require('node:path')
       const json = (b, status = 200) => route.fulfill({ json: b, status })
       if (url.pathname === '/api/me') return json({ user, cny_per_usd: '6.7' })
       if (url.pathname === '/api/admin/users') return json([user])
-      if (url.pathname === '/api/admin/logs/11/conversation') return json(saved)
+      if (url.pathname === '/api/admin/logs/11/conversation') {
+        captureReads++
+        if (captureReads === 1) return json({ error: 'capture temporarily unavailable' }, 500)
+        return json(saved)
+      }
       if (url.pathname === '/api/admin/logs/12/conversation') return json({ captured: false })
       if (url.pathname.endsWith('/logs')) return json({ logs: url.searchParams.get('type') === 'request' ? logs : [], total: 2, summary, models: [] })
       return json({})
     })
 
-    await page.goto('http://127.0.0.1:25198/console/admin/logs')
+    await page.goto('http://127.0.0.1:25218/console/admin/logs')
     await page.getByText('saved-model', { exact: true }).click()
     const drawer = page.locator('.ant-drawer-section')
     await drawer.getByRole('tab', { name: '对话内容' }).click()
+    await drawer.getByText('读取失败，请重试', { exact: true }).waitFor()
+    await drawer.getByText('capture temporarily unavailable', { exact: true }).waitFor()
+    assert.equal(await drawer.getByText('加载中…', { exact: true }).count(), 0)
+    await drawer.getByRole('button', { name: /重\s*试/ }).click()
     for (const text of ['你是编码助手', '把 README 的标题改一下', 'exec_command({"cmd":"cat README.md"})', '# 旧标题', '改好了', 'sess-1']) await drawer.getByText(text, { exact: true }).waitFor()
     for (const tag of ['system', 'user', 'assistant', 'tool', '本次回复']) assert.ok((await drawer.getByText(tag, { exact: true }).count()) > 0, tag)
     const [download] = await Promise.all([page.waitForEvent('download'), drawer.getByRole('button', { name: /下载原文/ }).click()])
@@ -53,13 +62,25 @@ const path = require('node:path')
     const file = JSON.parse(require('node:fs').readFileSync(await download.path(), 'utf8'))
     assert.equal(file.request.instructions, '你是编码助手')
     assert.equal(file.session, 'sess-1')
+    assert.equal(file.response_truncated, false)
+    assert.equal(captureReads, 2)
+
+    saved.response_truncated = true
+    await page.locator('.ant-drawer-close').click()
+    await page.getByText('saved-model', { exact: true }).click()
+    await drawer.getByRole('tab', { name: '对话内容' }).click()
+    await drawer.getByText('超过 8 MiB，已截断', { exact: true }).waitFor()
+    const [cutDownload] = await Promise.all([page.waitForEvent('download'), drawer.getByRole('button', { name: /下载原文/ }).click()])
+    const cutFile = JSON.parse(require('node:fs').readFileSync(await cutDownload.path(), 'utf8'))
+    assert.equal(cutFile.response_truncated, true)
+    assert.equal(cutFile.response, saved.response)
 
     await page.locator('.ant-drawer-close').click()
     await page.getByText('plain-model', { exact: true }).click()
     await drawer.getByRole('tab', { name: '对话内容' }).click()
     await drawer.getByText(/这次调用没有留存对话/).waitFor()
     assert.deepEqual(errors, [])
-    console.log('PASS: admin sees saved conversation turns (system, user, tool call and result, reply) with session and raw download; uncaptured call shows where the switch is')
+    console.log('PASS: admin sees saved conversation turns (system, user, tool call and result, reply) with session, failed reads retry successfully, raw downloads preserve both truncation states; uncaptured call shows where the switch is')
   } finally {
     await browser.close()
     server.kill()
