@@ -54,6 +54,7 @@ type Handler struct {
 	// 非流式的推理模型要等全部生成完才回，所以给得长。
 	StreamHeaderTimeout time.Duration
 	BodyHeaderTimeout   time.Duration
+	RetryBudget         time.Duration // 换渠道重试的总时限，见 router.RetryBudget
 
 	limits *limiter // 每个用户的并发数和每分钟请求数
 
@@ -78,6 +79,7 @@ func NewHandler(s *store.Store) *Handler {
 		Keys:                router.NewKeyHealth(),
 		StreamHeaderTimeout: 60 * time.Second,
 		BodyHeaderTimeout:   5 * time.Minute,
+		RetryBudget:         router.RetryBudget,
 		limits:              newLimiter(),
 	}
 }
@@ -447,7 +449,7 @@ func (h *Handler) attemptAll(w http.ResponseWriter, r *http.Request, c *call, re
 		if keysTried[route.ChannelID] >= maxKeysPerChannel && otherChannel(usable[i+1:], route.ChannelID) {
 			continue
 		}
-		if n > 0 && time.Since(c.start) > router.RetryBudget {
+		if n > 0 && time.Since(c.start) > h.RetryBudget {
 			break
 		}
 		n++
@@ -598,6 +600,7 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 	}
 	timer := time.AfterFunc(timeout, cancel)
 	c.log.UpstreamStartMS = max(int(time.Since(c.start).Milliseconds()), 1) // 换渠道时以最后一次为准
+	c.log.UpstreamHeaderMS = 0
 	client := h.clientFor(route.ProxyURL)
 	if route.Template == openCodeTemplate {
 		client = h.openCodeClientFor(route.ProxyURL)
@@ -622,6 +625,7 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 	}
 	defer resp.Body.Close()
 	c.gotResp = true
+	c.log.UpstreamHeaderMS = max(int(time.Since(c.start).Milliseconds()), 1)
 
 	if resp.StatusCode >= 400 {
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))

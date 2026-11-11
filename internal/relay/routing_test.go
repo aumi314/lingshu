@@ -370,3 +370,46 @@ func TestReferencedContentTimeoutClassification(t *testing.T) {
 		})
 	}
 }
+
+// 上游卡死（等不到响应头）时，超时后要换到下一个渠道，不能因为重试总时限和等待时限一样长就直接失败
+// （2026-11-11 超超 gpt 连续 5 次 60 秒超时，后面三个渠道一个都没试）。
+func TestStreamHeaderTimeoutStillFailsOver(t *testing.T) {
+	e := newEnv(t)
+	release := make(chan struct{})
+	defer close(release)
+	hang := func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}
+	_, backupHits := e.withBackup(hang, func(w http.ResponseWriter, r *http.Request) {
+		sse(w, `{"choices":[{"delta":{"content":"hi"}}]}`, `{"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}`, `[DONE]`)
+	})
+	e.handler.StreamHeaderTimeout = 300 * time.Millisecond
+	e.handler.RetryBudget = 3 * e.handler.StreamHeaderTimeout
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat","stream":true}`, nil)
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || backupHits.Load() != 1 {
+		t.Fatalf("主渠道超时后应换到兜底渠道: %d，兜底 %d 次", resp.StatusCode, backupHits.Load())
+	}
+	if l := e.logRow(resp.Header.Get("X-Lingshu-Request-Id")); l.channel != 3 || l.attempts != 2 {
+		t.Errorf("日志 = %+v", l)
+	}
+}
+
+// 日志记下上游响应头到达的时刻（用来定等响应头的时限）。
+func TestLogsUpstreamHeaderTime(t *testing.T) {
+	e := newEnv(t)
+	e.upstream = okUpstream
+	resp := e.post("/v1/chat/completions", `{"model":"std-chat"}`, nil)
+	resp.Body.Close()
+	id := resp.Header.Get("X-Lingshu-Request-Id")
+	e.waitLog(id)
+	var start, header, total int
+	e.store.Pool.QueryRow(context.Background(), `SELECT upstream_start_ms, upstream_header_ms, total_ms FROM request_logs WHERE request_id = $1`, id).Scan(&start, &header, &total)
+	if header < start || header == 0 || header > total {
+		t.Errorf("响应头时刻应在发出请求之后、结束之前: start %d header %d total %d", start, header, total)
+	}
+}
