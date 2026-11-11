@@ -297,6 +297,10 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 - pikaqiu gpt 测 astra（检测 59）指纹 444 题全部 HTTP 400“Unsupported value: 'none'”，原重试条件只认报错里的 reasoning 字样，没重试；aresai gpt 测 astra（检测 60）上游把 Chat 转成 Responses，none 时回空流（对方后台显示 0 token）。改为两种都换 low 重试、按规则决定是否整次降档，指纹大部分降档时只作参考。测试：`TestTokensFixedOffsetIsInjection`、`TestProbeChatRetriesUnsupportedNone`、`TestProbeChatRetriesNoneOnEmptyStream`、`TestFingerprintLoweredEffortIsOnlyAdvisory`。
 - 本轮复核四个 GPT 渠道：超超 gpt 100（未挂分组，没生效）；pikaqiu 100、93、79（一次会话像 luna，偶发混池）；aresai 93、79、86、93、93（指纹一直离官方 0.46–0.60，两次有会话像 terra）；code 86、86、86、93（指纹稳定是 sol，推理常 3/4）。aresai、pikaqiu 是官方 API 环境（基准 11 token），和 Codex 环境的官方样本有环境差，需要补官方 API 环境样本（渠道 16 OpenAI Platform）。
 
+### 借鉴 ztest、cctest（2026-11-11）
+
+用户用 key「检测抓取」让 ztest（Claude、GPT 各一轮）、cctest（Claude 三轮、GPT 两轮成功）测灵枢，抓包存 `references/probe-sites/`（原 `references/hvoy/` 改名）。cctest 判超超 gpt 疑似替换，用官方 Codex 重放其数字题证实超超 gpt 混了别的模型（详见 `research/model-probe.md`）。本次落地：`relay.CollapseDoubleV1`（`/v1/v1/…` 按 `/v1/…` 处理）；工具调用题工具名随机化；`probe.py` 加数字序列题（`--only numbers`，Claude 长回答 max_tokens 8192）。数字序列指纹用 6 个官方样本评估只认对 21/34，暂不接入检测，GPT 加采中。测试：`TestCollapseDoubleV1`、`TestToolNameIsRandom`，接口测试的模拟上游改为回传请求里的工具名。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 登录与注册页重新设计（2026-11-09）

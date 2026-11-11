@@ -295,5 +295,13 @@
     "samples": 2,
     "prompt": "创建一个HTML，内容是SVG，绘制一个鹈鹕骑自行车的2D动画，不用验证。不调用用任何skills，也不允许联网搜索。",
     "judge_prompt": "This is a screenshot of an SVG animation that was supposed to show a pelican riding a bicycle. Judge only the drawing's structure, not its style. Answer each check with true or false and reply with JSON only, no other text: {\"two_wheels_on_ground\": two wheels, both resting on the ground and attached to the frame; \"frame_connected\": frame, fork, handlebar and seat are joined into one bicycle; \"rider_on_bike\": the pelican sits on or over the bicycle seat; \"limbs_plausible\": no legs or wings in impossible places (e.g. coming out of the beak, hanging below the wheels), feet near the pedals; \"pelican_recognizable\": a bird with a long beak and throat pouch; \"no_floating_parts\": no detached or floating pieces, nothing badly misplaced; \"notes\": one short sentence}"
+  },
+  "numbers": {
+    "note": "数字序列指纹（2026-11-11 借鉴 cctest）：让模型凭第一反应写一长串 1 到 max 的整数，型号的“随机”偏好很固定，一个请求几百个样本。count 每次在区间里随机取，防止中转按题面缓存。GPT 用 effort（官方 API 环境都支持 low），Claude 不开 thinking。",
+    "prompt": "不借助任何工具，凭第一反应依次写出 {count} 个 1 到 {max} 之间的整数（含两端）。每个数都单独决定，不要按顺序、等差或循环规律排列，允许重复，写出后不要排序或修改。用英文逗号分隔，只输出数字。",
+    "count": [290, 330],
+    "max": 355,
+    "effort": "low",
+    "samples": 3
   }
 }

@@ -123,7 +123,7 @@ func (p *plan) buildProtocol() {
 	cities := []string{"Reykjavik", "Montevideo", "Ljubljana", "Windhoek", "Valparaiso", "Hobart", "Tromso", "Cusco"}
 	p.city = cities[p.rng.IntN(len(cities))]
 	p.spread(Request{Item: "tool", MaxTokens: 512, Prompt: fmt.Sprintf("What is the weather in %s right now? Use the tool.", p.city),
-		Tools: []map[string]any{{"name": "get_weather", "description": "Get the current weather for a city.",
+		Tools: []map[string]any{{"name": p.newToolName(), "description": "Get the current weather for a city.",
 			"input_schema": map[string]any{"type": "object", "properties": map[string]any{"city": map[string]any{"type": "string", "description": "City name"}}, "required": []string{"city"}}}}})
 	words := []string{"vvv", "kiwi", "zephyr", "quartz", "nimbus"}
 	p.onlyWord = words[p.rng.IntN(len(words))]

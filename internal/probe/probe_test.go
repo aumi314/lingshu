@@ -118,7 +118,7 @@ func fakeUpstream(t *testing.T, model string, seed uint64) Caller {
 			c.Text = nonce.FindStringSubmatch(req.Prompt)[1]
 		case "tool":
 			city := strings.TrimSuffix(strings.TrimPrefix(req.Prompt, "What is the weather in "), " right now? Use the tool.")
-			c.ToolCalls = []ToolCall{{Name: "get_weather", Arguments: `{"city":"` + city + `"}`}}
+			c.ToolCalls = []ToolCall{{Name: toolNameOf(req), Arguments: `{"city":"` + city + `"}`}}
 		case "instruction":
 			if w := regexp.MustCompile(`single word (\w+)`).FindStringSubmatch(req.System); w != nil {
 				c.Text = w[1]
@@ -268,7 +268,7 @@ func fakeClaude(real bool) Caller {
 			}
 		case "tool":
 			city := strings.TrimSuffix(strings.TrimPrefix(req.Prompt, "What is the weather in "), " right now? Use the tool.")
-			c.ToolCalls, c.FinishReason = []ToolCall{{Name: "get_weather", Arguments: `{"city":"` + city + `"}`}}, "tool_use"
+			c.ToolCalls, c.FinishReason = []ToolCall{{Name: toolNameOf(req), Arguments: `{"city":"` + city + `"}`}}, "tool_use"
 		case "instruction":
 			if w := regexp.MustCompile(`single word (\w+)`).FindStringSubmatch(req.System); w != nil {
 				c.Text = w[1]
@@ -482,5 +482,46 @@ func TestFingerprintLoweredEffortIsOnlyAdvisory(t *testing.T) {
 	r, _ = Run(context.Background(), terra, Spec{Baseline: "gpt-6.1-sol", Quick: true, Seed: 93}, nil)
 	if itemOf(r, "fingerprint").Status != Fail {
 		t.Errorf("没降档时应不通过: %+v", itemOf(r, "fingerprint"))
+	}
+}
+
+// toolNameOf 取请求里声明的工具名（Chat 格式在 function.name 下，Anthropic 格式直接是 name）。
+func toolNameOf(req Request) string {
+	if len(req.Tools) == 0 {
+		return ""
+	}
+	if f, ok := req.Tools[0]["function"].(map[string]any); ok {
+		return f["name"].(string)
+	}
+	return req.Tools[0]["name"].(string)
+}
+
+// 工具名每次随机，写死 get_weather 的中转答不对。
+func TestToolNameIsRandom(t *testing.T) {
+	var names []string
+	for seed := uint64(1); seed <= 3; seed++ {
+		r, _ := Run(context.Background(), fakeUpstream(t, "gpt-6.1-sol", seed), Spec{Baseline: "gpt-6.1-sol", Quick: true, Seed: 100 + seed}, nil)
+		for _, c := range r.Calls {
+			if c.Item == "tool" && len(c.ToolCalls) > 0 {
+				names = append(names, c.ToolCalls[0].Name)
+			}
+		}
+		if it := itemOf(r, "structured"); it.Status != Pass {
+			t.Errorf("回对随机工具名应通过: %+v", it)
+		}
+	}
+	if len(names) != 3 || names[0] == names[1] || !strings.HasPrefix(names[0], "get_weather_") {
+		t.Errorf("工具名应带随机后缀且每次不同: %v", names)
+	}
+	hardcoded := func(ctx context.Context, req Request) Call {
+		c := fakeUpstream(t, "gpt-6.1-sol", 9)(ctx, req)
+		if req.Item == "tool" {
+			c.ToolCalls[0].Name = "get_weather"
+		}
+		return c
+	}
+	r, _ := Run(context.Background(), hardcoded, Spec{Baseline: "gpt-6.1-sol", Quick: true, Seed: 110}, nil)
+	if it := itemOf(r, "structured"); it.Status == Pass {
+		t.Errorf("写死 get_weather 不应通过: %+v", it)
 	}
 }

@@ -39,7 +39,7 @@
 
 ## 参考 hvoy 的检测项（2026-11-07）
 
-用灵枢自己的 key（id 36「模型测试」）让 hvoy 检测，在 DMIT 上抓 Caddy → 灵枢这一段的明文，只提取这把 key 的请求，原始抓包随即删除。共 8 次检测（gpt-6-astra、gpt-6.1-sol 各 4 次），每次 8 个请求。资料在 `references/hvoy/`（不进 git），提取脚本 `extract.py`。
+用灵枢自己的 key（id 36「模型测试」）让 hvoy 检测，在 DMIT 上抓 Caddy → 灵枢这一段的明文，只提取这把 key 的请求，原始抓包随即删除。共 8 次检测（gpt-6-astra、gpt-6.1-sol 各 4 次），每次 8 个请求。资料在 `references/probe-sites/`（原 `references/hvoy/`，不进 git），提取脚本 `extract.py`。
 
 **hvoy 的 8 项和出题方式**
 
@@ -73,4 +73,20 @@
 再按检测脚本的单次调用方式，官方 astra（本机 Magpie）xhigh 生成 3 份：结构评判 3 份全过；腿部 1 份真实蹬踏（推理 token 5523，三份里最多），2 份伸缩（各节长度变化 50–60%），但脚都踩在踏板上（距离变化 ≤ 8.5 像素）。medium 下官方 10 份没有一份真实蹬踏，且有“没踩板”。
 
 结论：推理强度越高越可能蹬对，但 xhigh 单次也只有约三分之一，单份鹈鹕不能作为推理强度是否被降的判据。完整档里鹈鹕只展示结构评判和腿部测量，作参考、不计分；要量化得多份统计，xhigh 每份约 9–12k 输出 token、3–5 分钟，成本高。样本存 `references/pelican/`（不进 git）。
+
+## ztest、cctest 抓包（2026-11-11）
+
+用 key「检测抓取」让两家检测站测灵枢（都落到「超超 claude」「1、超超 gpt」），逐条说明在 `references/probe-sites/out/ztest-detail.md`、`cctest-detail.md`。
+
+- ztest：GPT、Claude 同一套 14 题通用模板（连通、原样复述、数 1 到 N 看假流式、自报身份、JSON、逻辑小题、几千 token 的捞针、字符串操作、随机后缀的工具名、四则运算、PDF、只回某词、长串字母核对用量）。GPT 那轮 13/14 非流式且带 `temperature: 0`，真 Codex 不会这样，容易被中转认出；除一道算术题外推理 token 都是 0，测不出降推理。借鉴：工具名随机化（已做）、核对上游报的输入 token（抓虚报用量）、GPT Responses 响应里官方才有的字段。
+- cctest：伪装几乎是真的 Claude Code（完整系统提示、全套工具、回放一段固定的真实会话含带签名 thinking）；测服务端工具 web_search、code_execution，图片验证码识别，`output_config.format`，以及“凭第一反应列 300 多个整数”的数字序列（三种说法各一次）。三轮对比：题型和回放会话固定，编号、PDF 文字、验证码、数字个数随机。测 GPT 只发 3 个数字序列请求，判超超 gpt“疑似被替换（像 gpt-5.5）”。
+- 用官方 Codex 原样重放 cctest 的数字题：官方 sol / astra 开头 247，terra 217、43，luna 214、37；超超 gpt 一轮像 sol 家族（247, 18, 331）、一轮 47, 312, 86 四个官方型号都不像——超超 gpt 混了别的模型，和 cctest 的结论一致（我们的检测 64 和 ztest 都碰巧打到真 sol）。
+
+## 数字序列指纹评估（2026-11-11，暂不接入检测）
+
+suite.json 追加 `numbers`（自己的题面，count 每次 290–330 随机，max 355；GPT effort low，Claude 不开 thinking），`probe.py --only numbers` 采官方样本：GPT 四个型号各 6 次（Magpie codex/*），Opus、Sonnet 各 6 次（OpenRouter 锁 Anthropic，约 $0.5；第一次因 max_tokens 1024 被思考吃光而作废，改为 8192 重采）。
+
+- 开头套路大量撞车：217, 43 在 sol、astra、terra、luna 都出现；247, 18 在 astra 和 Sonnet 都有；17, 284 在 Opus 和 luna 都有。换题面后官方 sol 多从 217 开头（cctest 题面下是 247）。只看开头会认错。
+- 留一法、按整体分布比（数值分成 36 段）只认对 21/34，领先幅度中位数 0.004；偏爱的数、开头 20 个、相邻差值、尾数更差（7–14/34）。错误里 sol / astra 互认 5 次（同底子，预期内），也有 Opus→astra、terra→Opus 这类跨家族错误。
+- 结论：6 个样本不够，cctest 能认出 gpt-5.5 靠的是大样本库。暂不接入检测；GPT 四个型号各加采 24 次（免费）后重新评估，可行再考虑 Claude 加采（约 $2）。
 
