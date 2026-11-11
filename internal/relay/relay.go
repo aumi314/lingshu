@@ -73,11 +73,13 @@ func newTransport(proxy func(*http.Request) (*url.URL, error)) *http.Transport {
 
 func NewHandler(s *store.Store) *Handler {
 	return &Handler{
-		Store:               s,
-		Client:              &http.Client{Transport: newTransport(http.ProxyFromEnvironment)},
-		Health:              router.NewHealth(),
-		Keys:                router.NewKeyHealth(),
-		StreamHeaderTimeout: 60 * time.Second,
+		Store:  s,
+		Client: &http.Client{Transport: newTransport(http.ProxyFromEnvironment)},
+		Health: router.NewHealth(),
+		Keys:   router.NewKeyHealth(),
+		// 30 秒没回响应头就换渠道（2026-11-11 用户定，原 60 秒）：响应头先于首字，近两周首字超过 30 秒的成功请求占 3.7%，
+		// 是误判的上限；按 upstream_header_ms 的分布复核，正常请求的响应头真有超过 30 秒的再调到 45 秒
+		StreamHeaderTimeout: 30 * time.Second,
 		BodyHeaderTimeout:   5 * time.Minute,
 		RetryBudget:         router.RetryBudget,
 		limits:              newLimiter(),
