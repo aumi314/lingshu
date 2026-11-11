@@ -134,7 +134,7 @@ lingshu/
 
 - **模型检测完善**
   - 鹈鹕只作参考、不进页面检测（xhigh 单次也只有约三分之一真实蹬踏，见 `research/model-probe.md`）。
-  - 第三方检测站（hvoy、ztest、cctest）的抓包在 `references/probe-sites/`，结论见 `research/model-probe.md`。借鉴项还剩：更逼真的 Claude Code / Codex 伪装、Claude 服务端工具（web_search、code_execution）和图片输入；数字序列指纹在扩大官方样本后重新评估（6 个样本时只认对 21/34）。
+  - 第三方检测站（hvoy、ztest、cctest）的抓包在 `references/probe-sites/`，结论见 `research/model-probe.md`。借鉴项还剩：更逼真的 Claude Code / Codex 伪装、Claude 服务端工具（web_search、code_execution）和图片输入。数字序列指纹已评估，分不清具体型号，不接入（见 `research/model-probe.md`）。
   - 知识时效题库：提示词要求直接回答、禁止联网搜索、禁止参考对话；用官方账号采集四个型号的样本。
   - 官方 API 环境（无 Codex 注入提示词）的样本：luna 在 API 环境下距离 0.44，贴近阈值。
   - 更可靠的推理强度降级检测（现有 low / high 对比只作参考）。新增候选项“Juice”：官方 Codex 一律拒答，回答了就说明不是官方环境（咔咔 3/3 回答 48），见 `research/model-probe.md`。
