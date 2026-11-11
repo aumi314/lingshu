@@ -45,7 +45,7 @@ const path = require('node:path')
           if ('registration_email_required' in body) state.email = body.registration_email_required
           return json({})
         }
-        const settings = { cny_per_usd: '6.7', payment_enabled: false, api_base_url: '', deployment_mode: 'commercial_relay', fx_mode: 'manual', fx_status: { source: 'Frankfurter' }, call_limits: { user_concurrency: 10, user_rpm: 120, reserve_output_tokens: 8192 } }
+        const settings = { cny_per_usd: '6.7', payment_enabled: false, api_base_url: '', fx_mode: 'manual', fx_status: { source: 'Frankfurter' }, call_limits: { user_concurrency: 10, user_rpm: 120, reserve_output_tokens: 8192 } }
         if (state.legacy) return json({ ...settings, registration_mode: legacyMode() })
         return json({ ...settings, registration_enabled: state.open, registration_code_required: state.code, registration_email_required: state.email })
       }

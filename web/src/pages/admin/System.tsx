@@ -14,7 +14,7 @@ type GeneratedCode = { id: number; prefix: string; code: string }
 
 type FXStatus = { source: string; date?: string; rate?: string; checked_at?: string; error?: string }
 type CallLimits = { user_concurrency: number; user_rpm: number; reserve_output_tokens: number; bridge_responses_to_messages?: boolean; bridge_messages_to_responses?: boolean }
-type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; redeem_enabled: boolean; registration_enabled?: boolean; registration_code_required?: boolean; registration_email_required?: boolean; registration_mode?: string; api_base_url: string; deployment_mode: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string; user_agreement?: string; privacy_policy?: string }
+type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; redeem_enabled: boolean; registration_enabled?: boolean; registration_code_required?: boolean; registration_email_required?: boolean; registration_mode?: string; api_base_url: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string; user_agreement?: string; privacy_policy?: string }
 
 // 协议正文最长 10 万字，和后端一致
 const maxLegalLength = 100000
@@ -46,8 +46,6 @@ export default function System() {
   const [privacyForm] = Form.useForm<{ privacy_policy: string }>()
   const [savingAgreement, setSavingAgreement] = useState(false)
   const [savingPrivacy, setSavingPrivacy] = useState(false)
-  const [deploymentMode, setDeploymentMode] = useState<'commercial_relay'>('commercial_relay')
-  const [savingDeploymentMode, setSavingDeploymentMode] = useState(false)
   const [loading, setLoading] = useState(true)
   const [paymentEnabled, setPaymentEnabled] = useState(false)
   const [savingPayment, setSavingPayment] = useState(false)
@@ -80,7 +78,6 @@ export default function System() {
     noticeForm.setFieldsValue({ announcement: s.announcement ?? '' })
     agreementForm.setFieldsValue({ user_agreement: s.user_agreement ?? '' })
     privacyForm.setFieldsValue({ privacy_policy: s.privacy_policy ?? '' })
-    setDeploymentMode(s.deployment_mode === 'commercial_relay' ? s.deployment_mode : 'commercial_relay')
     setPaymentEnabled(s.payment_enabled)
     setRedeemEnabled(s.redeem_enabled)
     setRegFlags(normalizeRegistration({ enabled: s.registration_enabled, code_required: s.registration_code_required, email_required: s.registration_email_required, mode: s.registration_mode }))
@@ -176,18 +173,6 @@ export default function System() {
       message.error((e as Error).message)
     } finally {
       setSavingNotice(false)
-    }
-  }
-
-  const saveDeploymentMode = async () => {
-    setSavingDeploymentMode(true)
-    try {
-      await put('/api/admin/settings', { deployment_mode: deploymentMode })
-      message.success(t('已保存', 'Saved'))
-    } catch (e) {
-      message.error((e as Error).message)
-    } finally {
-      setSavingDeploymentMode(false)
     }
   }
 
@@ -313,21 +298,6 @@ export default function System() {
         items={[
           { key: 'operations', label: t('运营设置', 'Operations'), forceRender: true, children: (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <Card title={t('使用模式', 'Usage mode')}>
-              <Typography.Paragraph type="secondary">
-                {t('灵枢当前以商业中转方式运行：用户预付余额、在线充值，按模型标价和服务分组倍率扣费。公司团队网关的专用功能正在开发。', 'Lingshu currently runs as a commercial relay: users prepay, top up online and are charged at list price times the service group ratio. Company team gateway features are in development.')}
-              </Typography.Paragraph>
-              <Radio.Group value={deploymentMode} onChange={(event) => setDeploymentMode(event.target.value)}>
-                <Space direction="vertical" size={12}>
-                  <Radio value="personal" disabled>{t('自用', 'Personal use')} <Typography.Text type="secondary">{t('个人账户自行使用模型服务', 'For individual use with personal accounts')}</Typography.Text> <Tag>{t('暂未开放', 'Unavailable')}</Tag></Radio>
-                  <Radio value="company_team_gateway" disabled>{t('公司团队网关', 'Company team gateway')} <Typography.Text type="secondary">{t('团队成员统一接入，由管理员管理', 'Shared access managed by a team administrator')}</Typography.Text> <Tag>{t('开发中', 'In development')}</Tag></Radio>
-                  <Radio value="commercial_relay">{t('商业中转', 'Commercial relay')} <Typography.Text type="secondary">{t('为外部客户提供模型中转服务', 'Model relay service for external customers')}</Typography.Text> <Tag color="blue">{t('当前模式', 'Current')}</Tag></Radio>
-                </Space>
-              </Radio.Group>
-              <div style={{ marginTop: 20 }}>
-                <Button type="primary" loading={savingDeploymentMode} disabled={loading} onClick={saveDeploymentMode}>{t('保存', 'Save')}</Button>
-              </div>
-            </Card>
             <Card title={t('汇率', 'Exchange rate')}>
               <Typography.Paragraph type="secondary">
                 {t(

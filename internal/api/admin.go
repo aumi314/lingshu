@@ -714,13 +714,6 @@ func (s *Server) adminLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
-	deploymentMode, err := s.Store.Setting(r.Context(), "deployment_mode")
-	if errors.Is(err, store.ErrNotFound) {
-		deploymentMode = "commercial_relay"
-	} else if err != nil {
-		writeStoreError(w, err)
-		return
-	}
 	payment, err := s.Store.Setting(r.Context(), "payment_enabled")
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		writeStoreError(w, err)
@@ -760,7 +753,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"call_limits": limits, "redeem_enabled": redeem,
-		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode, "registration_enabled": registration.Enabled, "registration_code_required": registration.CodeRequired, "registration_email_required": registration.EmailRequired, "api_base_url": apiBaseURL, "deployment_mode": deploymentMode,
+		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode, "registration_enabled": registration.Enabled, "registration_code_required": registration.CodeRequired, "registration_email_required": registration.EmailRequired, "api_base_url": apiBaseURL,
 		"fx_mode": s.fxMode(r.Context()), "fx_status": s.fxStatus(r.Context()), "announcement": s.announcement(r.Context()),
 		"user_agreement": legal.UserAgreement, "privacy_policy": legal.PrivacyPolicy, "legal_version": legal.Version,
 	})
@@ -826,7 +819,6 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		RegistrationCodeRequired  *bool            `json:"registration_code_required"`
 		RegistrationEmailRequired *bool            `json:"registration_email_required"`
 		APIBaseURL                *string          `json:"api_base_url"`
-		DeploymentMode            *string          `json:"deployment_mode"`
 		FXMode                    *string          `json:"fx_mode"`
 		Concurrency               *int64           `json:"user_concurrency"`
 		RPM                       *int64           `json:"user_rpm"`
@@ -925,10 +917,6 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		registrationValues = [][2]string{{"registration_mode", mode}, {"registration_enabled", strconv.FormatBool(flags.Enabled)}, {"registration_code_required", strconv.FormatBool(flags.CodeRequired)}, {"registration_email_required", strconv.FormatBool(flags.EmailRequired)}}
 	}
-	if in.DeploymentMode != nil && *in.DeploymentMode != "commercial_relay" {
-		writeError(w, http.StatusBadRequest, "当前只开放商业中转模式，公司团队网关还在开发")
-		return
-	}
 	if in.APIBaseURL != nil {
 		value, valid := validAPIBaseURL(*in.APIBaseURL)
 		if !valid {
@@ -959,9 +947,6 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var kv [][2]string // 一次保存的多项设置在同一事务里写，操作日志记一条
-	if in.DeploymentMode != nil {
-		kv = append(kv, [2]string{"deployment_mode", *in.DeploymentMode})
-	}
 	if in.FXMode != nil {
 		kv = append(kv, [2]string{"fx_mode", *in.FXMode})
 	}

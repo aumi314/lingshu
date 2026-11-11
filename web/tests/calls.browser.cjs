@@ -24,13 +24,13 @@ const path = require('node:path')
       const json = (b, status = 200) => route.fulfill({ json: b, status })
       if (p === '/api/me') return json({ user: { id: 1, username: 'admin', role: 'admin', balance: '1', enabled: true, user_group_ids: [1], preferences: { theme: 'dark', language: 'zh' }, created_at: '2026-10-25' }, cny_per_usd: '6.7' })
       if (p === '/api/admin/settings' && req.method() === 'PUT') { writes.push(req.postDataJSON()); return json({ ok: true }) }
-      if (p === '/api/admin/settings') return json({ redeem_enabled: true, cny_per_usd: '6.7', payment_enabled: false, registration_mode: 'manual', api_base_url: '', deployment_mode: 'commercial_relay', fx_mode: 'manual', fx_status: { source: 'Frankfurter' }, call_limits: limits })
+      if (p === '/api/admin/settings') return json({ redeem_enabled: true, cny_per_usd: '6.7', payment_enabled: false, registration_mode: 'manual', api_base_url: '', fx_mode: 'manual', fx_status: { source: 'Frankfurter' }, call_limits: limits })
       return json([])
     })
 
     // 运营设置里不再有调用限制
     await page.goto('http://127.0.0.1:25196/console/admin/system')
-    await page.getByText('使用模式', { exact: true }).waitFor()
+    await page.getByRole('tab', { name: '运营设置' }).waitFor()
     assert.equal(await page.getByRole('tabpanel').getByText('调用限制', { exact: true }).count(), 0)
 
     // 调用设置：四张卡片；调用限制读回原值并能保存
