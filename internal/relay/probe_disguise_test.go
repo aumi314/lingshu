@@ -205,3 +205,30 @@ func mustJSON(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)
 }
+
+// 完整伪装下不需要工具的题加“不要用工具”；工具题不加；custom_tool_call 识别成工具调用。
+func TestDisguiseNoToolsSuffixAndCustomTool(t *testing.T) {
+	var got map[string]any
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"output\":[{\"type\":\"custom_tool_call\",\"name\":\"exec\",\"input\":\"1+1\"}]}}\n\n")
+	}))
+	defer up.Close()
+	d, _ := LoadProbeDisguise(writeDisguise(t, testDisguise))
+	h := &Handler{Client: up.Client(), Disguise: d}
+	ch := &store.Channel{BaseURLResponses: up.URL, APIKey: "k"}
+	c := h.ProbeResponses(context.Background(), ch, "m", "s", probe.Request{Prompt: "What is 2+2?"})
+	input := got["input"].([]any)
+	if last := mustJSON(input[len(input)-1]); !strings.Contains(last, "do not use any tools") {
+		t.Errorf("应加不用工具: %s", last)
+	}
+	if len(c.ToolCalls) != 1 || c.ToolCalls[0].Name != "exec" || c.ToolCalls[0].Arguments != "1+1" {
+		t.Errorf("custom_tool_call: %+v", c.ToolCalls)
+	}
+	h.ProbeResponses(context.Background(), ch, "m", "s", probe.Request{Prompt: "Use the tool.", Tools: []map[string]any{{"type": "function", "function": map[string]any{"name": "get_weather_ab12"}}}})
+	input = got["input"].([]any)
+	if last := mustJSON(input[len(input)-1]); strings.Contains(last, "do not use any tools") {
+		t.Errorf("工具题不应加: %s", last)
+	}
+}

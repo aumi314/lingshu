@@ -538,7 +538,9 @@
   - 模型看得到的层：Claude 带完整的 Claude Code 系统提示和 28 个工具，Codex 带真实的 input 前缀（工具、开发者说明、环境），检测自己的系统指令接在最后。
   - GPT 改走 Responses（真实 Codex 只走这个接口），渠道没配 Responses 地址才退回 Chat；不传 temperature 和 max_output_tokens。
   - 伪装内容是 Anthropic / OpenAI 客户端原文，不进公开仓库：由 `references/probe-sites/build_disguise.py` 从抓包生成（去掉原用户的路径、Git 信息、AGENTS.md、记忆、技能列表），放在服务器上，`LINGSHU_PROBE_DISGUISE_FILE` 指定；读不到就退回简版伪装。报告记录走的协议和是否完整伪装。
-  - 完整伪装带着整套工具，检测题回答只有工具调用时记成请求失败。
+  - 完整伪装带着整套工具，模型遇到算术题会去调 Bash / exec（官方 sol、kirisame 的 Opus 都会，2026-11-11 实测），所以不需要工具的检测题发给上游时末尾加 “Answer directly; do not use any tools.”（报告里记原题，单词指纹匹配不受影响）；加了之后官方 sol 直接答对。回答仍只有工具调用时记成请求失败；Codex 的 custom_tool_call 也算工具调用。
+  - 注入项：伪装下基准请求本身带着客户端提示（Codex 约 1.4 万、Claude Code 约 3.4 万 token），暂无官方伪装环境的基准，只作参考；部分短请求多出一截仍报需关注。
+  - 指令层级不受伪装影响：官方 sol 在完整 Codex 伪装下 4/4 守住“只回某词”。
   - 代价：每个请求多约 2 万输入 token（多数命中缓存），完整档检测花费约是原来的 3–10 倍，平时用快速档。官方样本是在简版伪装下采的，单词指纹可能受影响，待用小样本验证后决定是否重采（分词指纹不受影响）。
 - 所有检测请求都用流式。经 Cloudflare 的非流式请求超过 100 秒会被 524 断开，灵枢自身也有这个限制，待定。
 - 已知局限：官方样本走 Codex，前面有约 4000 token 的注入提示词。Codex 号池类渠道可以直接比；走正规 API 的渠道（OpenRouter、OpenAI Platform）没有这段提示词，单词指纹这类对提示词敏感的项目不能直接比，需要另建样本。

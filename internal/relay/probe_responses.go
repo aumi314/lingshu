@@ -50,7 +50,7 @@ func (h *Handler) probeResponsesOnce(ctx context.Context, ch *store.Channel, ups
 		if d.Codex.ReasoningContext != "" {
 			reasoning["context"] = d.Codex.ReasoningContext
 		}
-		body["input"] = d.codexInput(req.System, req.Prompt, now)
+		body["input"] = d.codexInput(req.System, d.directPrompt(req.Prompt, len(req.Tools) > 0, true), now)
 		var clientMeta map[string]any
 		turnMeta, clientMeta = d.codexSessionMeta(session, upstreamModel, req.Effort, now)
 		body["client_metadata"] = clientMeta
@@ -133,6 +133,7 @@ func (h *Handler) probeResponsesOnce(ctx context.Context, ch *store.Channel, ups
 		Type      string `json:"type"`
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
+		Input     string `json:"input"` // custom_tool_call（Codex 的 exec 等自定义工具）的参数
 		Content   []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
@@ -221,6 +222,8 @@ func (h *Handler) probeResponsesOnce(ctx context.Context, ch *store.Channel, ups
 		switch it.Type {
 		case "function_call":
 			c.ToolCalls = append(c.ToolCalls, probe.ToolCall{Name: it.Name, Arguments: it.Arguments})
+		case "custom_tool_call":
+			c.ToolCalls = append(c.ToolCalls, probe.ToolCall{Name: it.Name, Arguments: it.Input})
 		case "message":
 			if c.Text == "" {
 				for _, part := range it.Content {

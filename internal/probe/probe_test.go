@@ -525,3 +525,15 @@ func TestToolNameIsRandom(t *testing.T) {
 		t.Errorf("写死 get_weather 不应通过: %+v", it)
 	}
 }
+
+// 完整伪装下注入项只作参考；部分短请求多出一截仍报需关注。
+func TestDisguiseInjectionAdvisory(t *testing.T) {
+	obs := []Item{{Key: "injection", Status: Warn, Summary: "每个请求带约 14061 个输入 token", Details: map[string]any{"anchor_tokens": int64(14061)}}}
+	if got := disguiseInjection(obs, true); got[0].Status != Info || !strings.Contains(got[0].Summary, "14061") {
+		t.Errorf("伪装下只作参考: %+v", got[0])
+	}
+	obs = []Item{{Key: "injection", Status: Warn, Summary: "x；另有 3 / 60 个短请求多出约 4000 个输入 token", Details: map[string]any{"anchor_tokens": int64(30000)}}}
+	if got := disguiseInjection(obs, true); got[0].Status != Warn || !strings.Contains(got[0].Summary, "另有 3 / 60") {
+		t.Errorf("多出一截仍需关注: %+v", got[0])
+	}
+}

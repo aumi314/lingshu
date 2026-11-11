@@ -305,6 +305,8 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 本机假上游录下 Codex 0.160 的请求（7 条 input、77KB），cctest 抓包提供 Claude Code 2.1.281 的请求；`build_disguise.py` 生成去掉个人信息的伪装配置。新增 `relay.ProbeDisguise`（读取、填模型名和日期、生成 Codex turn 元数据）、`relay.ProbeResponses`（GPT 走 Responses），`ProbeMessages` 接入完整伪装，推理强度降档重试抽成 `effortFallback` 两边共用。本地对着假上游比对：请求头和真实客户端逐个一致，请求体字段一致。测试：`TestLoadProbeDisguise`、`TestProbeMessagesWithDisguise`、`TestProbeResponsesShapeAndParse`、`TestProbeResponsesFailures`。
 
+上线（`a7f5997`）后实测：kirisame 快速档 86（推理 2/2 失败：Opus 调了 Bash 算题）、code gpt 完整档 71（推理 1/4：3 次调了 Codex 的 exec，custom_tool_call 没被识别成工具调用而成了空答案；指令层级回了“5”）。用官方 sol 在同样伪装下验证：原题也会调工具，加“不要用工具”后答对；只回某词 4/4 守住——code gpt 的指令层级问题是真的。随后修正（加不用工具提示、识别 custom_tool_call、伪装下注入只作参考）。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 登录与注册页重新设计（2026-11-09）

@@ -46,11 +46,11 @@ func (h *Handler) ProbeMessages(ctx context.Context, ch *store.Channel, upstream
 			system = append(system, map[string]any{"type": "text", "text": req.System})
 		}
 	}
-	var content any = req.Prompt
+	var content any = d.directPrompt(req.Prompt, len(req.Tools) > 0, d.hasClaude() && len(d.Claude.Tools) > 0)
 	if req.Document != "" {
 		content = []map[string]any{
 			{"type": "document", "source": map[string]any{"type": "base64", "media_type": "application/pdf", "data": req.Document}},
-			{"type": "text", "text": req.Prompt},
+			{"type": "text", "text": content},
 		}
 	}
 	device := make([]byte, 32)
