@@ -20,7 +20,7 @@ const path = require('node:path')
       legalFails: false,
       user: null,
       registrations: [],
-      settings: { cny_per_usd: '6.7', payment_enabled: false, api_base_url: '', deployment_mode: 'commercial_relay', fx_mode: 'manual', fx_status: { source: 'Frankfurter' }, call_limits: { user_concurrency: 10, user_rpm: 120, reserve_output_tokens: 8192 } },
+      settings: { cny_per_usd: '6.7', payment_enabled: false, api_base_url: '', fx_mode: 'manual', fx_status: { source: 'Frankfurter' }, call_limits: { user_concurrency: 10, user_rpm: 120, reserve_output_tokens: 8192 } },
       settingsSaves: [],
     }
     const admin = { id: 1, username: 'admin', role: 'super_admin', balance: '1', enabled: true, user_group_ids: [1], preferences: { language: 'zh', theme: 'dark' }, created_at: '2026-11-08' }

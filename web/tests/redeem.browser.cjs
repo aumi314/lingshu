@@ -27,7 +27,7 @@ const path = require('node:path')
         state.redeemEnabled = input.redeem_enabled
         return json({ ok: true })
       }
-      if (p === '/api/admin/settings') return json({ redeem_enabled: state.redeemEnabled, cny_per_usd: '6.7', payment_enabled: false, registration_mode: 'manual', api_base_url: '', deployment_mode: 'commercial_relay', fx_mode: 'manual', fx_status: { source: 'Frankfurter' }, call_limits: { user_concurrency: 10, user_rpm: 120, reserve_output_tokens: 8192 } })
+      if (p === '/api/admin/settings') return json({ redeem_enabled: state.redeemEnabled, cny_per_usd: '6.7', payment_enabled: false, registration_mode: 'manual', api_base_url: '', fx_mode: 'manual', fx_status: { source: 'Frankfurter' }, call_limits: { user_concurrency: 10, user_rpm: 120, reserve_output_tokens: 8192 } })
       if (p === '/api/admin/redeem-codes' && req.method() === 'POST') {
         state.posted = req.postDataJSON()
         state.codes = [{ id: 1, prefix: 'ABCDEFGHIJ', amount: '5', note: state.posted.note, expires_at: null, created_at: '2026-11-06T00:00:00Z', used_by: '', used_at: null, revoked_at: null }]
