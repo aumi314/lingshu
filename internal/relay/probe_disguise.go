@@ -53,6 +53,18 @@ func LoadProbeDisguise(path string) (*ProbeDisguise, error) {
 	return &d, nil
 }
 
+// noToolsSuffix 接在不需要工具的检测题后面：完整伪装带着客户端的整套工具，模型遇到算术题会去调 Bash / exec 算
+// （2026-11-11 官方 sol 和 kirisame 的 Opus 都这样），这是真实客户端的正常行为，不是渠道的问题。只在发给上游时加，报告里记原题。
+const noToolsSuffix = "\n\nAnswer directly; do not use any tools."
+
+// directPrompt 返回发给上游的题面：有伪装工具、检测题自己没声明工具时加上 noToolsSuffix。
+func (d *ProbeDisguise) directPrompt(prompt string, hasProbeTools, hasDisguiseTools bool) string {
+	if hasDisguiseTools && !hasProbeTools {
+		return prompt + noToolsSuffix
+	}
+	return prompt
+}
+
 func (d *ProbeDisguise) hasClaude() bool { return d != nil && len(d.Claude.System) > 0 }
 func (d *ProbeDisguise) hasCodex() bool  { return d != nil && len(d.Codex.Input) > 0 }
 

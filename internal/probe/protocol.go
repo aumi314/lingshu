@@ -190,7 +190,7 @@ func (p *plan) reportProtocol(calls []Call) *Report {
 	if len(by["needle"]) > 0 {
 		r.Items = append(r.Items, p.judgeNeedle(by["needle"]))
 	}
-	r.Observations = observe(calls, by["anchor"][:min(1, len(by["anchor"]))], by["anchor"], nil, nearest)
+	r.Observations = disguiseInjection(observe(calls, by["anchor"][:min(1, len(by["anchor"]))], by["anchor"], nil, nearest), p.spec.Disguise)
 	r.Metrics = metrics(calls)
 	finalize(r, hint)
 	return r

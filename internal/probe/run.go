@@ -71,6 +71,7 @@ type Spec struct {
 	Baseline      string // 对照的官方型号，如 gpt-6.1-sol；协议检测时是站内模型名
 	UpstreamModel string // 渠道上的模型名，协议检测核对响应里的 model
 	Quick         bool   // 快速档：单词指纹少抽一些题，不做大海捞针
+	Disguise      bool   // 请求带了真实客户端的完整伪装（基准请求本身就有上万 token 的客户端提示）
 	Seed          uint64 // 随机种子（抽题、出题参数、随机校验码）；0 表示随机
 }
 
@@ -365,7 +366,7 @@ func (p *plan) report(calls []Call) *Report {
 	if len(by["needle"]) > 0 {
 		r.Items = append(r.Items, p.judgeNeedle(by["needle"]))
 	}
-	r.Observations = observe(calls, by["tokens"], by["anchor"], base, sessionNearest)
+	r.Observations = disguiseInjection(observe(calls, by["tokens"], by["anchor"], base, sessionNearest), p.spec.Disguise)
 	r.Metrics = metrics(calls)
 	finalize(r, hint)
 	return r
@@ -401,6 +402,30 @@ func finalize(r *Report, hint string) {
 	default:
 		r.Verdict = "达到标准"
 	}
+}
+
+// disguiseInjection：完整伪装下基准请求本身带着客户端的系统提示和工具（约 1–3 万 token），和官方简版环境比没有意义，
+// 注入项只作参考；但“部分短请求多出一大截”（各请求之间比）照常报需关注。官方伪装环境的基准还没标定。
+func disguiseInjection(obs []Item, disguise bool) []Item {
+	if !disguise {
+		return obs
+	}
+	for i := range obs {
+		if obs[i].Key != "injection" {
+			continue
+		}
+		anchor := obs[i].Details["anchor_tokens"]
+		extra := ""
+		if j := strings.Index(obs[i].Summary, "；另有"); j >= 0 {
+			extra = obs[i].Summary[j:]
+		}
+		obs[i].Summary = fmt.Sprintf("完整伪装下基准请求带着客户端提示，共 %v 个输入 token，暂无官方伪装环境的基准可比，只作参考", anchor) + extra
+		obs[i].Status = Info
+		if extra != "" {
+			obs[i].Status = Warn
+		}
+	}
+	return obs
 }
 
 func failedCalls(cs []Call) int {

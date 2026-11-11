@@ -205,7 +205,7 @@ func (s *Server) runProbe(run store.ProbeRun, ch *store.Channel) {
 		}
 		return c
 	}
-	report, err := probe.Run(ctx, caller, probe.Spec{Baseline: run.Baseline, UpstreamModel: run.UpstreamModel, Quick: run.Preset == "quick"}, func(done, total int) {
+	report, err := probe.Run(ctx, caller, probe.Spec{Baseline: run.Baseline, UpstreamModel: run.UpstreamModel, Quick: run.Preset == "quick", Disguise: s.Relay.Disguise != nil}, func(done, total int) {
 		s.probeProgress.Store(run.ID, [2]int{done, total})
 	})
 	if report != nil {
