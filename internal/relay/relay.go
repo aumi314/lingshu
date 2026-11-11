@@ -93,8 +93,12 @@ type call struct {
 	log     store.RequestLog
 	tracker *usage.Tracker
 	body    []byte // 客户端原始请求体，上游没给 usage 时用来估算输入
-	retries int    // 渠道级失败后最多重试几次（服务分组设置）
-	gotResp bool   // 是否收到了上游的响应头（收到才说明上游开始处理了）
+	// 对话留存：开关打开时记下客户端原始请求体（body 会被换成发往上游的版本）、会话编号和客户端收到的回复
+	clientBody []byte
+	session    string
+	capture    *captureWriter
+	retries    int  // 渠道级失败后最多重试几次（服务分组设置）
+	gotResp    bool // 是否收到了上游的响应头（收到才说明上游开始处理了）
 
 	basePrices billing.Prices // 模型基础价，结算时按价格规则换成实际单价
 	rules      []billing.PriceRule
@@ -126,6 +130,10 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 	c.log.UserID, c.log.APIKeyID, c.log.GroupID, c.log.KeyName, c.log.GroupName = owner.UserID, owner.KeyID, owner.GroupID, owner.KeyName, owner.GroupName
 	c.log.ClientIP = auth.ClientIP(r)
 	defer h.finish(r.Context(), c)
+	if h.limits.limits(r.Context(), h.Store).CaptureConversations {
+		c.capture = &captureWriter{ResponseWriter: w}
+		w = c.capture
+	}
 
 	readStart := time.Now()
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
@@ -141,6 +149,10 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 	}
 	c.log.Model, c.log.Stream, c.log.ReasoningEffort = req.model, req.stream, req.effort
 	c.body = body
+	c.session = sessionOf(r, req)
+	if c.capture != nil {
+		c.clientBody = body
+	}
 	if c.proto == usage.Responses && hasCompactionTrigger(req.fields["input"]) {
 		c.log.Operation = "compaction"
 	}
@@ -195,7 +207,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		return
 	}
 	// 同一会话固定用同一把 key（按“灵枢 key + 会话编号”），坏 key 和冷却中的渠道排到后面
-	sticky := strconv.FormatInt(owner.KeyID, 10) + "\x00" + sessionOf(r, req)
+	sticky := strconv.FormatInt(owner.KeyID, 10) + "\x00" + c.session
 	var pinKey int64
 	previousID := req.previousResponseID
 	if previousID == "" {
@@ -848,6 +860,14 @@ func (h *Handler) finish(reqCtx context.Context, c *call) {
 	defer cancel()
 	if err := h.Store.SettleRequest(ctx, &c.log); err != nil {
 		slog.Error("结算失败", "request_id", c.log.RequestID, "cost", c.log.Cost, "err", err)
+		return
+	}
+	// 对话留存在结算之后、失败不影响计费：调用日志写好才能挂上（外键）
+	if c.capture != nil && c.clientBody != nil {
+		if err := h.Store.SaveCapture(ctx, store.Capture{RequestID: c.log.RequestID, Session: c.session, Request: c.clientBody,
+			Response: c.capture.buf, ResponseTruncated: c.capture.truncated}); err != nil {
+			slog.Warn("对话留存失败", "request_id", c.log.RequestID, "err", err)
+		}
 	}
 }
 

@@ -13,7 +13,7 @@ type RegistrationCode = { id: number; prefix: string; created_at: string; used_b
 type GeneratedCode = { id: number; prefix: string; code: string }
 
 type FXStatus = { source: string; date?: string; rate?: string; checked_at?: string; error?: string }
-type CallLimits = { user_concurrency: number; user_rpm: number; reserve_output_tokens: number; bridge_responses_to_messages?: boolean; bridge_messages_to_responses?: boolean }
+type CallLimits = { user_concurrency: number; user_rpm: number; reserve_output_tokens: number; bridge_responses_to_messages?: boolean; bridge_messages_to_responses?: boolean; capture_conversations?: boolean }
 type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; redeem_enabled: boolean; registration_enabled?: boolean; registration_code_required?: boolean; registration_email_required?: boolean; registration_mode?: string; api_base_url: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string; user_agreement?: string; privacy_policy?: string }
 
 // 协议正文最长 10 万字，和后端一致
@@ -54,6 +54,9 @@ export default function System() {
   // 协议转接的应急开关（调用设置），默认两个方向都开
   const [bridge, setBridge] = useState({ bridge_responses_to_messages: true, bridge_messages_to_responses: true })
   const [savingBridge, setSavingBridge] = useState('')
+  // 对话留存（调用设置），默认关
+  const [capture, setCapture] = useState(false)
+  const [savingCapture, setSavingCapture] = useState(false)
   const [regFlags, setRegFlags] = useState({ enabled: false, code_required: false, email_required: false })
   const [savingRegistration, setSavingRegistration] = useState(false)
   const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([])
@@ -68,9 +71,10 @@ export default function System() {
   const fill = (s: Settings) => {
     form.setFieldsValue({ cny_per_usd: Number(s.cny_per_usd) })
     if (s.call_limits) {
-      const { bridge_responses_to_messages = true, bridge_messages_to_responses = true, ...limits } = s.call_limits
+      const { bridge_responses_to_messages = true, bridge_messages_to_responses = true, capture_conversations = false, ...limits } = s.call_limits
       limitsForm.setFieldsValue(limits)
       setBridge({ bridge_responses_to_messages, bridge_messages_to_responses })
+      setCapture(capture_conversations)
     }
     setFXMode(s.fx_mode === 'live' ? 'live' : 'manual')
     setFXStatus(s.fx_status ?? { source: 'Frankfurter' })
@@ -225,6 +229,19 @@ export default function System() {
       message.error((e as Error).message)
     } finally {
       setSavingBridge('')
+    }
+  }
+
+  const saveCapture = async (enabled: boolean) => {
+    setSavingCapture(true)
+    try {
+      await put('/api/admin/settings', { capture_conversations: enabled })
+      setCapture(enabled)
+      message.success(enabled ? t('已开启，10 秒内对新的调用生效', 'On; applies to new calls within 10 seconds') : t('已关闭，已存的对话保留', 'Off; saved conversations are kept'))
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSavingCapture(false)
     }
   }
 
@@ -430,6 +447,18 @@ export default function System() {
                   <Switch aria-label={label} checked={bridge[key]} loading={savingBridge === key} disabled={loading} onChange={(v) => saveBridge(key, v)} />
                 </Space>
               ))}
+            </Card>
+            <Card title={t('对话留存', 'Conversation saving')}>
+              <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Typography.Text>{t('保存每次调用的请求和回复原文', 'Save the request and reply of every call')}</Typography.Text>
+                <Switch aria-label={t('对话留存', 'Conversation saving')} checked={capture} loading={savingCapture} disabled={loading} onChange={saveCapture} />
+              </Space>
+              <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                {t(
+                  '用来分析和优化：哪类请求费钱、缓存为什么没命中、把真实对话换个模型重放对比、失败的请求原样复现。按会话增量存，每轮重复发送的历史只存一次，体积约为原样存储的几十分之一。只有管理员能在「全站日志」的请求详情里查看和下载。关闭后不再保存新的调用，已存的保留。',
+                  'For analysis and tuning: which calls cost most, why the cache missed, replaying real conversations on another model, reproducing failures. Saved per session so history resent every turn is stored once, a small fraction of storing each request whole. Only admins can view and download them from a request in Logs. Turning it off stops saving new calls and keeps what is saved.',
+                )}
+              </Typography.Paragraph>
             </Card>
             <Card title={<Space>{t('渠道亲和', 'Channel affinity')}<Tag color="green">{t('自动生效', 'Always on')}</Tag></Space>}>
               <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>

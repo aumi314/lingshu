@@ -64,6 +64,7 @@ lingshu/
 | `channel_models` | channel_id、model_id、upstream_name | 名称映射；upstream_name 为空表示和标准名相同 |
 | `api_keys` | user_id、name、key_hash、key_prefix、group_id、quota_limit、quota_used、enabled、expires_at、last_used_at | 只存哈希，完整 key 创建时只显示一次 |
 | `request_logs` | 见下 | 一个客户端请求一行 |
+| `request_captures` / `conversation_blobs` | 骨架、回复 / 去重的内容块 | 对话留存：每次调用一条骨架，消息和 system、tools 按 SHA-256 去重存块（gzip） |
 | `balance_adjustments` | user_id、amount、balance_after、operator_id、note、topup_order_id | 管理员调整及自动充值流水，订单关联唯一 |
 | `payment_config_versions` / `payment_services` | provider、config、secrets / enabled、version_id | 不可变商户配置版本与当前服务开关 |
 | `topup_orders` | user_id、provider、version_id、environment、credit_usd、amount、currency、unit_price、status | 报价、支付会话及到账状态 |
@@ -138,7 +139,7 @@ lingshu/
   - 官方 API 环境（无 Codex 注入提示词）的样本：luna 在 API 环境下距离 0.44，贴近阈值。
   - 更可靠的推理强度降级检测（现有 low / high 对比只作参考）。新增候选项“Juice”：官方 Codex 一律拒答，回答了就说明不是官方环境（咔咔 3/3 回答 48），见 `research/model-probe.md`。
   - Claude 官方样本已采（Opus、Sonnet 各一轮，OpenRouter 锁定 Anthropic）；需要时补第二轮；Sonnet 单独检测、知识时效题未做。
-- **对话留存**（开发中）：按会话增量存请求和回复，作为优化和分析的基础；默认关闭，在系统设置里开。
+- **对话留存**：第一版已做（系统设置「调用设置」开关，默认关；管理员在全站日志请求详情里看和下载）。后续：按会话浏览、成员看自己的、批量导出、保留期限与清理、密钥打码、告知用户。
 - **团队额度**：成组共用额度池，团队名下的 Key 扣团队额度；在对话留存之后做。研究见 `research/team-gateway.md`（Codex 分支，未合并）。
 - **自有号池**：现用 sub2api 反代质量不够；作为灵枢的兄弟项目单独做，不急，灵枢只把它当渠道接。
 - **Claude 渠道**：kirisame（渠道 23，Account Pool）2026-11-11 返回 `OAuth refresh failed`（号池授权过期，待朋友处理）；Anthropic Platform 余额不足；现役是 Relay-claude 分组的超超 claude（检测 67 完整档 94 分）。任一只有 Messages 地址的 Claude 渠道恢复后，补做 Codex → Claude 转接的真实调用和缓存命中验收。
