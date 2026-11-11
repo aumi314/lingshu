@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// 协议文本存在 settings 表里，和公告一样由管理员在运营设置里改。
+// 协议文本存在 settings 表里，和公告一样由管理员在主设置里改。
 const (
 	LegalUserAgreementKey = "user_agreement"
 	LegalPrivacyPolicyKey = "privacy_policy"

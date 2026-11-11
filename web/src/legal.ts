@@ -1,4 +1,4 @@
-// 用户协议和隐私政策：管理员在运营设置里填写，公开接口 /api/auth/legal 返回，注册页按需强制勾选。
+// 用户协议和隐私政策：管理员在主设置里填写，公开接口 /api/auth/legal 返回，注册页按需强制勾选。
 import { get } from './api'
 
 export type LegalDocs = {

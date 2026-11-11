@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 公告：管理员在运营设置里填，所有登录用户在概览页顶部看到；去掉首尾空白、最多 500 字、留空表示不显示。
+// 公告：管理员在主设置里填，所有登录用户在概览页顶部看到；去掉首尾空白、最多 500 字、留空表示不显示。
 func TestAnnouncement(t *testing.T) {
 	e := newEnv(t)
 	admin, bob := e.login("admin"), e.login("bob")
