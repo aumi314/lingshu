@@ -178,8 +178,8 @@ export default function Groups() {
             label={t('失败重试次数', 'Retries on failure')}
             rules={[{ required: true }]}
             extra={t(
-              '渠道出故障（5xx、超时、断流）时换下一个渠道重试几次；没有别的渠道时等 1 秒同渠道再试。key 被限流或失效时换同渠道的其他 key，不占次数。只在还没给用户返回内容之前能重试，上游 60 秒没响应算超时，换下一个渠道；整个请求最多重试 2 分钟。',
-              'Retries on channel failures (5xx, timeouts, broken streams), moving to the next channel, or retrying the same one after 1s when it is the only one. Switching keys on rate limits or invalid keys does not count. Retries happen only before any output reaches the user; no response within 60s counts as a timeout, and retries stop after 2 minutes per request.',
+              '渠道出故障（5xx、超时、断流）时换下一个渠道重试几次；没有别的渠道时等 1 秒同渠道再试。key 被限流或失效时换同渠道的其他 key，不占次数。只在还没给用户返回内容之前能重试，上游 30 秒没响应算超时，换下一个渠道；整个请求最多重试 2 分钟。',
+              'Retries on channel failures (5xx, timeouts, broken streams), moving to the next channel, or retrying the same one after 1s when it is the only one. Switching keys on rate limits or invalid keys does not count. Retries happen only before any output reaches the user; no response within 30s counts as a timeout, and retries stop after 2 minutes per request.',
             )}
           >
             <InputNumber min={0} max={4} precision={0} style={{ width: 120 }} />

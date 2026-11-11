@@ -11,7 +11,7 @@ const (
 	FailureThreshold = 3               // 连续失败几次进入冷却
 	CooldownDuration = 5 * time.Minute // 冷却多久
 	// RetryBudget 是一个请求换渠道、换 key 重试的总时限（重试次数由服务分组设置），超过后不再开始新的尝试。
-	// 必须明显长于等响应头的时限（relay 的 StreamHeaderTimeout，60 秒）：原来两者都是 60 秒，
+	// 必须明显长于等响应头的时限（relay 的 StreamHeaderTimeout，现为 30 秒）：原来两者都是 60 秒，
 	// 上游卡死时第一次尝试就把预算耗光，后面的渠道一个都没试（2026-11-11 超超 gpt 连续 5 次）。
 	// 2 分钟保证卡死超时后还能换一个渠道再跑一次；只在上游出故障时才会用到这么久（以前是 60 秒后直接报错）。
 	// 等响应头的时限会按日志里的 upstream_header_ms 分布再缩短
