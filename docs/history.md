@@ -301,6 +301,10 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 用户用 key「检测抓取」让 ztest（Claude、GPT 各一轮）、cctest（Claude 三轮、GPT 两轮成功）测灵枢，抓包存 `references/probe-sites/`（原 `references/hvoy/` 改名）。cctest 判超超 gpt 疑似替换，用官方 Codex 重放其数字题证实超超 gpt 混了别的模型（详见 `research/model-probe.md`）。本次落地：`relay.CollapseDoubleV1`（`/v1/v1/…` 按 `/v1/…` 处理）；工具调用题工具名随机化；`probe.py` 加数字序列题（`--only numbers`，Claude 长回答 max_tokens 8192）。数字序列指纹用 6 个官方样本评估只认对 21/34，暂不接入检测，GPT 加采中。测试：`TestCollapseDoubleV1`、`TestToolNameIsRandom`，接口测试的模拟上游改为回传请求里的工具名。
 
+### 检测请求伪装成真实客户端（2026-11-11）
+
+本机假上游录下 Codex 0.160 的请求（7 条 input、77KB），cctest 抓包提供 Claude Code 2.1.281 的请求；`build_disguise.py` 生成去掉个人信息的伪装配置。新增 `relay.ProbeDisguise`（读取、填模型名和日期、生成 Codex turn 元数据）、`relay.ProbeResponses`（GPT 走 Responses），`ProbeMessages` 接入完整伪装，推理强度降档重试抽成 `effortFallback` 两边共用。本地对着假上游比对：请求头和真实客户端逐个一致，请求体字段一致。测试：`TestLoadProbeDisguise`、`TestProbeMessagesWithDisguise`、`TestProbeResponsesShapeAndParse`、`TestProbeResponsesFailures`。
+
 ## 二、部署与发布证据（原 `docs/deploy.md`）
 
 ### 登录与注册页重新设计（2026-11-09）
