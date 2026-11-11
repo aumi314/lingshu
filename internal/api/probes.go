@@ -141,8 +141,8 @@ func (s *Server) startProbe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, in.Model+" 的检测走 Messages 协议，这个渠道没有配置 Messages 地址")
 		return
 	}
-	if !protocol && secret.BaseURLChat == "" {
-		writeError(w, http.StatusBadRequest, "检测目前走 Chat 协议，这个渠道没有配置 Chat 地址")
+	if !protocol && secret.BaseURLResponses == "" && secret.BaseURLChat == "" {
+		writeError(w, http.StatusBadRequest, "GPT 的检测走 Responses 协议（没有时退回 Chat），这个渠道两个地址都没配")
 		return
 	}
 	if n, err := s.Store.CountRunningProbes(r.Context()); err != nil || n >= maxRunningProbes {
@@ -173,17 +173,25 @@ func (s *Server) runProbe(run store.ProbeRun, ch *store.Channel) {
 	// 明确返回 400 立刻认定；只是空流要几乎全军覆没（至少 5 次且占 80%）才认定——kinght 这类渠道约 7% 的流会随机断，不能因此整次降档
 	var noneUnsupported atomic.Bool
 	var noneTried, noneEmpty atomic.Int32
+	// GPT 优先走 Responses（真实 Codex 只走这个接口），渠道没配 Responses 地址才退回 Chat
+	gpt, protocolName := s.Relay.ProbeChat, "chat"
+	if ch.BaseURLResponses != "" {
+		gpt, protocolName = s.Relay.ProbeResponses, "responses"
+	}
+	if probe.IsProtocolModel(run.Baseline) {
+		protocolName = "messages"
+	}
 	caller := func(ctx context.Context, req probe.Request) probe.Call {
 		if probe.IsProtocolModel(run.Baseline) {
 			return s.Relay.ProbeMessages(ctx, ch, run.UpstreamModel, sessions[req.Session%len(sessions)], req)
 		}
 		if req.Effort == "none" && noneUnsupported.Load() {
 			req.Effort = "low"
-			c := s.Relay.ProbeChat(ctx, ch, run.UpstreamModel, sessions[req.Session%len(sessions)], req)
+			c := gpt(ctx, ch, run.UpstreamModel, sessions[req.Session%len(sessions)], req)
 			c.EffortSent = "low"
 			return c
 		}
-		c := s.Relay.ProbeChat(ctx, ch, run.UpstreamModel, sessions[req.Session%len(sessions)], req)
+		c := gpt(ctx, ch, run.UpstreamModel, sessions[req.Session%len(sessions)], req)
 		if req.Effort == "none" {
 			tried := noneTried.Add(1)
 			switch c.NoneRejectedBy {
@@ -200,6 +208,10 @@ func (s *Server) runProbe(run store.ProbeRun, ch *store.Channel) {
 	report, err := probe.Run(ctx, caller, probe.Spec{Baseline: run.Baseline, UpstreamModel: run.UpstreamModel, Quick: run.Preset == "quick"}, func(done, total int) {
 		s.probeProgress.Store(run.ID, [2]int{done, total})
 	})
+	if report != nil {
+		report.Protocol = protocolName
+		report.Disguise = s.Relay.Disguise != nil
+	}
 	finish := context.Background()
 	if err != nil {
 		if e := s.Store.FinishProbeRun(finish, run.ID, "failed", nil, err.Error(), decimal.Zero, nil); e != nil {

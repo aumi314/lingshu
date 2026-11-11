@@ -109,7 +109,9 @@ type Item struct {
 // Report 是一次检测的完整结果。
 type Report struct {
 	Baseline     string         `json:"baseline"`
-	Mode         string         `json:"mode,omitempty"` // protocol：没有官方样本，只做协议层检测
+	Mode         string         `json:"mode,omitempty"`     // protocol：没有官方样本，只做协议层检测
+	Protocol     string         `json:"protocol,omitempty"` // 这次走的协议：responses / chat / messages
+	Disguise     bool           `json:"disguise,omitempty"` // 用了完整伪装（真实客户端的系统提示和工具）
 	SuiteVersion int            `json:"suite_version"`
 	Score        int            `json:"score"` // 0–100：通过记 1、警告记 0.5、不通过记 0
 	Verdict      string         `json:"verdict"`
@@ -162,6 +164,10 @@ func Run(ctx context.Context, call Caller, spec Spec, progress Progress) (*Repor
 			} else {
 				calls[i] = call(ctx, req)
 				calls[i].Item, calls[i].Session, calls[i].System, calls[i].Prompt, calls[i].Effort = req.Item, req.Session, req.System, storedPrompt(req.Prompt), req.Effort
+				// 完整伪装带着客户端的整套工具，模型可能不直接回答而去调工具：检测题没声明工具、回答只有工具调用时记成失败，不当成空答案
+				if c := &calls[i]; len(req.Tools) == 0 && c.Error == "" && strings.TrimSpace(c.Text) == "" && len(c.ToolCalls) > 0 {
+					c.Error = "模型调用了工具 " + c.ToolCalls[0].Name + "，没有直接回答"
+				}
 			}
 			if progress != nil {
 				progress(int(done.Add(1)), len(plan.reqs))

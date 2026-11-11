@@ -33,12 +33,18 @@ func (h *Handler) ProbeMessages(ctx context.Context, ch *store.Channel, upstream
 		c.Error = "这个渠道没有配置 Messages 协议的地址"
 		return c
 	}
-	system := []map[string]any{
-		{"type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.319.781; cc_entrypoint=cli;"},
-		{"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."},
-	}
-	if req.System != "" {
-		system = append(system, map[string]any{"type": "text", "text": req.System})
+	d := h.Disguise
+	var system []map[string]any
+	if d.hasClaude() { // 完整伪装：真实 Claude Code 的系统提示，检测自己的系统指令接在最后
+		system = d.claudeSystem(upstreamModel, req.System)
+	} else {
+		system = []map[string]any{
+			{"type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.319.781; cc_entrypoint=cli;"},
+			{"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."},
+		}
+		if req.System != "" {
+			system = append(system, map[string]any{"type": "text", "text": req.System})
+		}
 	}
 	var content any = req.Prompt
 	if req.Document != "" {
@@ -53,6 +59,9 @@ func (h *Handler) ProbeMessages(ctx context.Context, ch *store.Channel, upstream
 	maxTokens := req.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = 4096 // Messages 协议必须给 max_tokens
+		if d.hasClaude() && d.Claude.MaxTokens > 0 {
+			maxTokens = d.Claude.MaxTokens
+		}
 	}
 	body := map[string]any{"model": upstreamModel, "max_tokens": maxTokens, "stream": true, "system": system,
 		"messages": []map[string]any{{"role": "user", "content": content}}, "metadata": map[string]any{"user_id": string(userID)}}
@@ -60,8 +69,12 @@ func (h *Handler) ProbeMessages(ctx context.Context, ch *store.Channel, upstream
 		body["thinking"] = map[string]any{"type": "adaptive"}
 		body["output_config"] = map[string]any{"effort": req.Effort}
 	}
-	if len(req.Tools) > 0 {
-		body["tools"] = req.Tools
+	var tools []map[string]any
+	if d.hasClaude() {
+		tools = append(tools, d.Claude.Tools...)
+	}
+	if tools = append(tools, req.Tools...); len(tools) > 0 {
+		body["tools"] = tools
 	}
 	raw, _ := json.Marshal(body)
 
@@ -74,10 +87,18 @@ func (h *Handler) ProbeMessages(ctx context.Context, ch *store.Channel, upstream
 	}
 	hd := httpReq.Header
 	hd.Set("Content-Type", "application/json")
-	hd.Set("Accept", "text/event-stream")
-	hd.Set("User-Agent", probeClaudeUA)
-	hd.Set("X-App", "cli")
-	hd.Set("Anthropic-Beta", probeClaudeBeta)
+	if d.hasClaude() { // 真实 Claude Code 的请求头（SDK 标识、beta 列表等），会话编号按检测会话、请求编号每次新生成
+		for k, v := range d.Claude.Headers {
+			hd.Set(k, v)
+		}
+		hd.Set("X-Claude-Code-Session-Id", session)
+		hd.Set("X-Client-Request-Id", NewProbeSession())
+	} else {
+		hd.Set("Accept", "text/event-stream")
+		hd.Set("User-Agent", probeClaudeUA)
+		hd.Set("X-App", "cli")
+		hd.Set("Anthropic-Beta", probeClaudeBeta)
+	}
 	setUpstreamAuth(hd, usage.Messages, ch.APIKey)
 
 	start := time.Now()

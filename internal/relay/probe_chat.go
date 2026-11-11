@@ -31,24 +31,28 @@ func NewProbeSession() string {
 // ProbeChat 向渠道发一次检测请求（Chat 协议、流式），直接用渠道自己的地址、key 和代理：不走路由、不计费、不写调用日志、不影响渠道健康状态。
 // 上游不支持请求里的推理强度（比如不支持 none）时，去掉推理强度重试一次。
 func (h *Handler) ProbeChat(ctx context.Context, ch *store.Channel, upstreamModel, session string, req probe.Request) probe.Call {
-	c := h.probeChatOnce(ctx, ch, upstreamModel, session, req)
+	return effortFallback(ctx, req, func(r probe.Request) probe.Call { return h.probeChatOnce(ctx, ch, upstreamModel, session, r) })
+}
+
+// effortFallback 处理上游不认推理强度的情况，Chat 和 Responses 两种检测请求共用。
+// 官方 API 环境的 gpt-6.1-sol / gpt-6-astra 有时不支持 none（2026-11-08）：有的返回 400（“Unsupported value: 'none'…”，报错里没有
+// reasoning 字样），有的中转什么都不回、流没有结束标记。两种都先换成最低的 low（最接近 none）重试；别的推理强度报错（或 low 也不行）去掉推理强度再试。
+func effortFallback(ctx context.Context, req probe.Request, once func(probe.Request) probe.Call) probe.Call {
+	c := once(req)
 	if req.Effort == "" || ctx.Err() != nil {
 		return c
 	}
-	// 官方 API 环境的 gpt-6.1-sol / gpt-6-astra 有时不支持 none（2026-11-08）：有的返回 400（“Unsupported value: 'none'…”，报错里没有
-	// reasoning 字样），有的中转把 Chat 转成 Responses 后什么都不回、流没有结束标记。两种都先换成最低的 low（最接近 none）重试
 	if by := noneRejected(c); req.Effort == "none" && by != "" {
 		req.Effort = "low"
-		c = h.probeChatOnce(ctx, ch, upstreamModel, session, req)
+		c = once(req)
 		c.EffortSent, c.NoneRejectedBy = "low", by
 		if c.HTTPStatus != http.StatusBadRequest {
 			return c
 		}
 	}
-	// 别的推理强度报错（或 low 也不行）：去掉推理强度再试一次
 	if msg := strings.ToLower(c.Error); c.HTTPStatus == http.StatusBadRequest && (strings.Contains(msg, "reasoning") || strings.Contains(msg, "'"+req.Effort+"'")) {
 		req.Effort = ""
-		c = h.probeChatOnce(ctx, ch, upstreamModel, session, req)
+		c = once(req)
 		c.EffortSent = "default"
 	}
 	return c
