@@ -109,8 +109,19 @@ export default function Channels() {
   const modelByID = useMemo(() => new Map(models.map((m) => [m.id, m])), [models])
   const groupByID = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups])
 
-  // 上游名和站内名一致（不区分大小写）时自动对上，管理员只需确认
-  const matchModel = (upstream: string) => models.find((m) => m.name.toLowerCase() === upstream.toLowerCase())?.id
+  // 完整名优先，其次去掉一层厂商前缀，最后兼容数字版本分隔符；只自动选择唯一候选。
+  const matchModel = (upstream: string) => {
+    const name = upstream.trim().toLowerCase()
+    if (!name) return undefined
+    const exact = models.filter((m) => m.name.trim().toLowerCase() === name)
+    if (exact.length) return exact.length === 1 ? exact[0].id : undefined
+    const bare = name.replace(/^[^/]+\//, '')
+    const same = models.filter((m) => m.name.trim().toLowerCase() === bare)
+    if (same.length) return same.length === 1 ? same[0].id : undefined
+    const version = (value: string) => value.replace(/(\d)\.(?=\d)/g, '$1-')
+    const candidates = models.filter((m) => version(m.name.trim().toLowerCase()) === version(bare))
+    return candidates.length === 1 ? candidates[0].id : undefined
+  }
 
   const addRows = (names: string[]) => {
     setRows((old) => {
@@ -616,7 +627,7 @@ export default function Channels() {
 
         <Divider titlePlacement="start">{t('模型映射', 'Model mapping')}</Divider>
         <Typography.Paragraph type="secondary">
-          {t('左边是上游的模型名，右边选它对应的站内模型。名字相同的会自动对上。', 'Upstream model name on the left, the site model it maps to on the right. Identical names are matched automatically.')}
+          {t('左边是上游的模型名，右边是对应的站内模型。会自动识别厂商前缀和版本号写法；有多个候选时请手动选择。', 'Upstream model name on the left, its site model on the right. Provider prefixes and version separators are matched automatically; choose manually when multiple models match.')}
         </Typography.Paragraph>
         <Space style={{ marginBottom: 12 }}>
           <Button loading={fetching} onClick={fetchModels}>

@@ -29,6 +29,14 @@ const path = require('node:path')
       { ...base, id: 4, name: 'idle', stats: null },
       { ...base, id: 5, name: 'empty', models: [], stats: null },
     ]
+    const siteModels = [
+      { id: 1, name: 'gpt-6-sol', input_price: '1', output_price: '2', cache_read_price: '0', cache_write_price: '0', price_rules: [], fast_multiplier: null },
+      { id: 2, name: 'gpt-6.1-terra', input_price: '1', output_price: '2', cache_read_price: '0', cache_write_price: '0', price_rules: [], fast_multiplier: null },
+      { id: 3, name: 'claude-fable-5-2', input_price: '1', output_price: '2', cache_read_price: '0', cache_write_price: '0', price_rules: [], fast_multiplier: null },
+      { id: 4, name: 'foo-1.2-3', input_price: '1', output_price: '2', cache_read_price: '0', cache_write_price: '0', price_rules: [], fast_multiplier: null },
+      { id: 5, name: 'foo-1-2.3', input_price: '1', output_price: '2', cache_read_price: '0', cache_write_price: '0', price_rules: [], fast_multiplier: null },
+      { id: 6, name: 'provider/gpt-6-sol', input_price: '1', output_price: '2', cache_read_price: '0', cache_write_price: '0', price_rules: [], fast_multiplier: null },
+    ]
     let saved = null
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
     await page.route('**/api/**', (route) => {
@@ -38,6 +46,8 @@ const path = require('node:path')
       if (p === '/api/admin/channels/1' && route.request().method() === 'PUT') { saved = route.request().postDataJSON(); return json({ id: 1, keys_deduped: 1 }) }
       if (p === '/api/admin/channels') return json(channels)
       if (p === '/api/admin/groups') return json([{ id: 1, name: 'default', ratio: '1', enabled: true, is_public: true, user_group_ids: [], description: '' }])
+      if (p === '/api/admin/models') return json(siteModels)
+      if (p === '/api/admin/channels/fetch-models') return json(['openai/gpt-6.1-terra', 'anthropic/claude-fable-5.2', 'provider/unknown'])
       return json([])
     })
     await page.goto('http://127.0.0.1:25190/console/admin/channels')
@@ -74,6 +84,48 @@ const path = require('node:path')
     await drawer.getByText(/^冷却中（到 /).waitFor()
     await drawer.getByText(/^失效（/).waitFor()
     await drawer.getByText('12 / 0').waitFor()
+    // 自动匹配厂商前缀与版本号；完整名优先，歧义和不同型号不猜。
+    const mappingRows = () => drawer.locator('.ant-table-tbody').last().locator('tr')
+    const addMapping = async (name) => {
+      await drawer.getByRole('button', { name: /手动添加/ }).click()
+      const r = mappingRows().last()
+      await r.locator('input.mono').fill(name)
+      return r
+    }
+    for (const [upstream, site] of [
+      [' OPENAI/GPT-6.1-TERRA ', 'gpt-6.1-terra'],
+      ['anthropic/claude-fable-5.2', 'claude-fable-5-2'],
+      ['provider/gpt-6-sol', 'provider/gpt-6-sol'],
+      ['provider/foo-1.2-3', 'foo-1.2-3'],
+    ]) {
+      const r = await addMapping(upstream)
+      await r.locator('.ant-select').getByText(site, { exact: true }).waitFor()
+      await r.getByRole('button').click()
+    }
+    for (const upstream of ['provider/foo-1.2.3', 'openai/gpt-6.1-terra-mini', 'openai/gpt61terra']) {
+      const r = await addMapping(upstream)
+      await r.getByText('选择站内模型', { exact: true }).waitFor()
+      await r.getByRole('button').click()
+    }
+    // 手动选择优先，修改上游名不覆盖管理员指定的映射。
+    const manual = await addMapping('provider/unknown')
+    await manual.getByRole('combobox').click()
+    await page.locator('.ant-select-dropdown:visible').getByText('gpt-6-sol', { exact: true }).click()
+    await manual.locator('input.mono').fill('openai/gpt-6.1-terra')
+    await manual.locator('.ant-select').getByText('gpt-6-sol', { exact: true }).waitFor()
+    await manual.getByRole('button').click()
+    // 拉取列表中的“站内已有”和添加后的选择使用同一规则。
+    await drawer.getByRole('button', { name: '从上游拉取模型', exact: true }).click()
+    const picker = page.getByRole('dialog').filter({ hasText: '上游有 3 个模型' })
+    for (const name of ['openai/gpt-6.1-terra', 'anthropic/claude-fable-5.2']) {
+      const choice = picker.locator('label').filter({ hasText: name })
+      await choice.getByText('站内已有', { exact: true }).waitFor()
+      await choice.click()
+    }
+    assert.equal(await picker.locator('label').filter({ hasText: 'provider/unknown' }).getByText('站内已有', { exact: true }).count(), 0)
+    await picker.getByRole('button', { name: '添加 2 个', exact: true }).click()
+    await mappingRows().filter({ has: page.locator('input.mono[value="openai/gpt-6.1-terra"]') }).locator('.ant-select').getByText('gpt-6.1-terra', { exact: true }).waitFor()
+    await mappingRows().filter({ has: page.locator('input.mono[value="anthropic/claude-fable-5.2"]') }).locator('.ant-select').getByText('claude-fable-5-2', { exact: true }).waitFor()
     // 追加：粘贴里的重复当场去掉并提示
     await drawer.getByRole('button', { name: /添加 key/ }).click()
     const dlg = page.getByRole('dialog').filter({ hasText: '追加' })
@@ -96,6 +148,11 @@ const path = require('node:path')
     assert.deepEqual(saved.keys, [{ api_key: 'sk-only-one-12345678', enabled: true, note: '' }, { api_key: 'sk-a-same-as-old-123', enabled: true, note: '' }])
     assert.equal(saved.note, '质量好，0.15 倍')
     assert.equal(saved.api_key, undefined)
+    assert.deepEqual(saved.models.map(({ model_id, upstream_name }) => ({ model_id, upstream_name })), [
+      { model_id: 1, upstream_name: 'gpt-6-sol' },
+      { model_id: 2, upstream_name: 'openai/gpt-6.1-terra' },
+      { model_id: 3, upstream_name: 'anthropic/claude-fable-5.2' },
+    ])
     await page.getByText('渠道已保存，自动去掉了 1 把重复的 key', { exact: true }).waitFor()
     // 行里的操作各自独立，不打开编辑：删除（取消确认）、启用开关、拖动把手、额度
     const drawerTitle = page.getByText('编辑渠道 · healthy', { exact: true })
