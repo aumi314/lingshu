@@ -1,4 +1,4 @@
-// 调用设置回归：调用限制从运营设置搬到这里；协议转接两个应急开关切换即保存；渠道亲和、违禁词拦截的说明卡片。使用安装了 playwright 的 Node 环境运行。
+// 调用设置回归：调用限制从主设置搬到这里；协议转接两个应急开关切换即保存；渠道亲和、违禁词拦截的说明卡片。使用安装了 playwright 的 Node 环境运行。
 const { chromium } = require('playwright')
 const assert = require('node:assert/strict')
 const { spawn } = require('node:child_process')
@@ -28,9 +28,9 @@ const path = require('node:path')
       return json([])
     })
 
-    // 运营设置里不再有调用限制
+    // 主设置里不再有调用限制
     await page.goto('http://127.0.0.1:25196/console/admin/system')
-    await page.getByRole('tab', { name: '运营设置' }).waitFor()
+    await page.getByRole('tab', { name: '主设置' }).waitFor()
     assert.equal(await page.getByRole('tabpanel').getByText('调用限制', { exact: true }).count(), 0)
 
     // 调用设置：四张卡片；调用限制读回原值并能保存

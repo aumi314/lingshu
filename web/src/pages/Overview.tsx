@@ -16,7 +16,7 @@ export default function Overview() {
   const [keys, setKeys] = useState<APIKey[] | null>(null)
   const [topupOpen, setTopupOpen] = useState(false)
   const [apiBaseURL, setAPIBaseURL] = useState('')
-  const [announcement, setAnnouncement] = useState('') // 管理员在运营设置里填的公告，空就不显示
+  const [announcement, setAnnouncement] = useState('') // 管理员在主设置里填的公告，空就不显示
   const [error, setError] = useState('')
   const [showSteps, setShowSteps] = useState(false)
 

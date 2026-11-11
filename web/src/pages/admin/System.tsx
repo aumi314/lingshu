@@ -313,7 +313,7 @@ export default function System() {
         activeKey={tab}
         onChange={(k) => setParams(k === 'operations' ? {} : { tab: k }, { replace: true })}
         items={[
-          { key: 'operations', label: t('运营设置', 'Operations'), forceRender: true, children: (
+          { key: 'operations', label: t('主设置', 'Main settings'), forceRender: true, children: (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
             <Card title={t('汇率', 'Exchange rate')}>
               <Typography.Paragraph type="secondary">

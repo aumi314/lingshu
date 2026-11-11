@@ -150,7 +150,7 @@ Refresh Token 保存在数据库中，微软轮换后会自动写回。数据库
 
 ## 用户协议与隐私政策
 
-在“系统设置 → 运营设置”的公告下方分别编辑用户协议、隐私政策，支持纯文本多行内容。旧版 PiQode 原文来源为旧站数据库 `options` 中的 `legal.user_agreement` 和 `legal.privacy_policy`；读取后通过 Lingshu `PUT /api/admin/settings` 的 `user_agreement`、`privacy_policy` 字段导入，随后逐字核对返回内容。原文不放入公开仓库。
+在“系统设置 → 主设置”的公告下方分别编辑用户协议、隐私政策，支持纯文本多行内容。旧版 PiQode 原文来源为旧站数据库 `options` 中的 `legal.user_agreement` 和 `legal.privacy_policy`；读取后通过 Lingshu `PUT /api/admin/settings` 的 `user_agreement`、`privacy_policy` 字段导入，随后逐字核对返回内容。原文不放入公开仓库。
 
 公开阅读地址为 `/terms`、`/privacy`，无需登录。配置至少一份文档后，所有自助注册均要求勾选同意；后端校验文档版本，用户记录保存同意版本及时间。文档更新后，停留在旧注册页的用户需刷新阅读并重新同意。管理员手动创建和现有账号不补录注册同意。
 

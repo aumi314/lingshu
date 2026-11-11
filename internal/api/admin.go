@@ -762,7 +762,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 // maxAnnouncement 是公告的字数上限（概览页顶部一条提示，写客服方式、维护通知这类短文字）。
 const maxAnnouncement = 500
 
-// announcement 是管理员在运营设置里填的公告，所有登录用户在概览页顶部看到；没填就是空，不显示。
+// announcement 是管理员在主设置里填的公告，所有登录用户在概览页顶部看到；没填就是空，不显示。
 func (s *Server) announcement(ctx context.Context) string {
 	v, err := s.Store.Setting(ctx, "announcement")
 	if err != nil {

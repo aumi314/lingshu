@@ -140,7 +140,7 @@ lingshu/
   - 更可靠的推理强度降级检测（现有 low / high 对比只作参考）。新增候选项“Juice”：官方 Codex 一律拒答，回答了就说明不是官方环境（咔咔 3/3 回答 48），见 `research/model-probe.md`。
   - Claude 官方样本已采（Opus、Sonnet 各一轮，OpenRouter 锁定 Anthropic）；需要时补第二轮；Sonnet 单独检测、知识时效题未做。
 - **对话留存**：第一版已做（系统设置「调用设置」开关，默认关；管理员在全站日志请求详情里看和下载）。后续：按会话浏览、成员看自己的、批量导出、保留期限与清理、密钥打码、告知用户。
-- **团队额度**：成组共用额度池，团队名下的 Key 扣团队额度；在对话留存之后做。研究见 `research/team-gateway.md`（Codex 分支，未合并）。
+- **团队额度**：成组共用额度池，团队名下的 Key 扣团队额度；在对话留存之后做。研究见 `research/team-gateway.md`。
 - **自有号池**：现用 sub2api 反代质量不够；作为灵枢的兄弟项目单独做，不急，灵枢只把它当渠道接。
 - **Claude 渠道**：kirisame（渠道 23，Account Pool）2026-11-11 返回 `OAuth refresh failed`（号池授权过期，待朋友处理）；Anthropic Platform 余额不足；现役是 Relay-claude 分组的超超 claude（检测 67 完整档 94 分）。任一只有 Messages 地址的 Claude 渠道恢复后，补做 Codex → Claude 转接的真实调用和缓存命中验收。
 - **等响应头时限复核**：2026-11-11 起日志记 `upstream_header_ms`，多数中转要等首字才回响应头（上线首半小时中位数 7.3 秒）。几天后看被判超时、换渠道后成功的比例，误伤明显就把 30 秒调到 45 秒。
