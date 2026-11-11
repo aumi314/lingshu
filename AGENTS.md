@@ -123,6 +123,7 @@
 ## 运维约定（线上数据）
 - 项目维护环境为本机 WSL 与 DMIT 洛杉矶服务器，线上入口为 `https://gateway.piqode.com`。源码与构建在 WSL，部署、备份和恢复步骤以 `docs/deploy.md` 为准。
 - 发布走自动流程：PR 合并到 main 后 DMIT 每分钟拉取部署，部署前自动备份（流程见 `docs/deploy.md`「自动发布」）；只改文档、`deploy/`、`scripts/` 不发布。
+- 会发布的 PR 合并前，先单独查线上 `probe_runs` 有没有 `status='running'`（部署重启会中断检测，白花检测费），有就等它跑完；查询和 `gh pr merge` 不写在同一条命令里，看到结果再合并（2026-11-11 因此误合并过一次）。
 - 改线上数据前先确认有备份：DMIT 的 `/var/backups/lingshu/` 每天自动备份，另有每次发布前的 `lingshu-deploy-*.dump`；直接改库前手动执行 `/usr/local/bin/lingshu-backup`。恢复在 `lingshu-postgres` 容器内使用 `pg_restore`，具体步骤见 `docs/deploy.md`。
 - 运维 SQL 一律按 id 定位，不按名字：渠道、模型、用户的名字用户随时会在后台改。先查出 id 和当前名字确认对象，再 `WHERE id = …`，改完检查影响行数，0 行就停下来。
 - 能走管理接口的操作优先走接口（有校验），直接改库是最后手段。走接口的改动会记操作日志；直接改库不会，改之前先把改前的值记下来。
