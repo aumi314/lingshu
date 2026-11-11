@@ -638,3 +638,9 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 发布前备份 `lingshu-deploy-20261110T173856Z-7f66ca2.dump` 的 SHA-256 校验通过，`pg_restore --list` 可读且包含 26 张表数据。应用、数据库、发布 timer 和备份 timer 均 active，PostgreSQL 就绪；内部和公开 `/healthz` 为 200，用户与 API keys 页均 200，匿名管理接口 401。
 - 公网两个页面均加载 `/assets/index-B-fNZ40d.js`（SHA-256 `a29d8d511bb38e833170f8be948487df5b994dc77542b1ce84df9df5616ecd36`）和配套 CSS。对公网站点提供的前端成品重跑用户编辑与 API key 浏览器回归，通过右侧抽屉、顶部固定按钮、390 px 手机布局、权限与提交保护、行点击 / 键盘编辑、开关 / 删除 / 文字选择隔离和有效期往返；API 请求由测试夹具拦截，未用这些交互改写生产数据，未发起付费模型调用。公网手机截图已复核。
 - 按 neat-freak 核对代码、发布清单、运行状态与现行规则，更新 plan 当前状态；规则无须调整，用户记忆只读。保留工作区、测试库和截图供复核；本次未进行清场，既有 Vite 单包体积提示保留。
+
+## 2026-11-11：模型映射自动识别
+
+- 渠道拉取或手动填写上游模型名时，按完整名、去掉一层厂商前缀后的同名、数字版本点号 / 连字符依次查找，忽略大小写和首尾空白；仅唯一候选自动选中。`openai/gpt-6.1-terra` 对应 `gpt-6.1-terra`，`anthropic/claude-fable-5.2` 对应 `claude-fable-5-2`；手动选择保留，上游名不改，不自动创建模型和价格。
+- 验收：前端类型检查与构建、`channels.browser.cjs` 通过；覆盖手动粘贴、完整名优先、去前缀后的同名优先、版本号匹配、多候选留空、不同型号不匹配、保留手动选择、拉取列表“站内已有”提示、添加后的自动映射及保存请求。既有 key 管理、行操作和拖拽回归通过，保留 Vite 既有单包体积提示。
+- 按 neat-freak 对齐 decisions、plan、界面说明与回归，改动限于渠道模型映射；无需迁移或规则变更。独立 worktree `~/worktrees/lingshu-model-mapping`、分支 `codex/model-mapping-autodetect` 交付 PR，待合并发布，线上配置不变。
