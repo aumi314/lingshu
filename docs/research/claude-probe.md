@@ -102,3 +102,10 @@ OpenRouter 上 claude-opus-5.5 的服务方是 Anthropic、AWS Bedrock、Google 
 - 难题（Opus，high）：recurrence_hard、lattice_hard、subset_mod、digit_sum 各 3 次全对；推理中位数约 981、973、746、373。题库固定种子的题偏容易：下午那道随机参数的递推题官方推理 10878、kirisame 6–7.5k，所以推理量规则只抓极端降配，主判据是答对没有。
 - 这一轮是单次采样（每个型号 r1）；GPT 那边是两轮以上。以后有异常结论时，先补一轮官方样本再下结论。
 
+## 八、cctest 对 Claude 的做法（2026-11-11）
+
+详见 `references/probe-sites/out/cctest-detail.md`。值得借鉴、还没做的：
+- 伪装：完整 Claude Code 系统提示和全套工具（我们只有一句系统提示），中转更难单独放行检测请求；但 cctest 回放的是一段固定会话，能被认出来，我们的题每次随机，不重蹈。
+- 服务端工具 `web_search`、`code_execution`：在 Anthropic 后端执行，格式转换的中转做不出；Claude Code 的 WebSearch 就靠它，缺了是实打实的功能缺口。
+- 图片输入（验证码文字识别）：Claude Code 里贴截图很常见。
+

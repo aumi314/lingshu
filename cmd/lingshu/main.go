@@ -139,7 +139,7 @@ func serve() error {
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: relay.CollapseDoubleV1(mux), ReadHeaderTimeout: 10 * time.Second}
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(ln) }()
 	slog.Info("灵枢已启动", "listen", cfg.Listen)

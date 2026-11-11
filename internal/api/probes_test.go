@@ -66,7 +66,8 @@ func TestProbeRun(t *testing.T) {
 		}
 		if len(body.Tools) > 0 { // 工具调用分三片：名字、参数前半、参数后半
 			city := strings.TrimSuffix(strings.TrimPrefix(prompt, "What is the weather in "), " right now? Use the tool.")
-			chunk(`{"tool_calls":[{"index":0,"function":{"name":"get_weather","arguments":""}}]}`)
+			name := body.Tools[0].(map[string]any)["function"].(map[string]any)["name"].(string) // 工具名每次随机，回传请求里声明的名字
+			chunk(`{"tool_calls":[{"index":0,"function":{"name":"` + name + `","arguments":""}}]}`)
 			chunk(`{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}}]}`)
 			chunk(`{"tool_calls":[{"index":0,"function":{"arguments":"\"` + city + `\"}"}}]}`)
 		} else {

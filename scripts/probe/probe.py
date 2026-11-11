@@ -42,10 +42,11 @@ CLAUDE_HEADERS = {"User-Agent": "claude-cli/2.1.319.781 (external, cli)", "x-app
                   "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,effort-2025-11-24"}
 
 
-def call_messages(args, content, effort=None, retries=3):
+def call_messages(args, content, effort=None, retries=3, max_tokens=None):
     """流式调用 Anthropic Messages。effort 为空或 none 时不开 thinking，否则 adaptive thinking + 推理强度。
     --provider 只用于 OpenRouter：锁定服务方、不许换（官方样本必须来自 Anthropic 本家）。"""
-    body = {"model": args.model, "max_tokens": 16000 if effort and effort != "none" else 1024, "stream": True, "system": CLAUDE_SYSTEM,
+    # Opus / Sonnet 5.5 不开 thinking 也会先想一阵（约 800–1000 token），长回答（数字序列）要给足上限，否则正文被截断甚至一个字没有
+    body = {"model": args.model, "max_tokens": max_tokens or (16000 if effort and effort != "none" else 1024), "stream": True, "system": CLAUDE_SYSTEM,
             "messages": [{"role": "user", "content": content}],
             "metadata": {"user_id": json.dumps({"device_id": os.urandom(32).hex(), "account_uuid": str(random.getrandbits(128)), "session_id": args.session})}}
     if effort and effort != "none":
@@ -97,11 +98,11 @@ def call_messages(args, content, effort=None, retries=3):
     return {"error": err}
 
 
-def call(args, content, effort=None, model=None, base=None, retries=3):
+def call(args, content, effort=None, model=None, base=None, retries=3, max_tokens=None):
     """流式调用 chat completions，返回文本、用量和耗时。content 可以是字符串或多段内容（带图片）。
     --protocol messages 时改走 Anthropic Messages（看图评判仍走 chat，所以传了 model / base 的不转）。"""
     if getattr(args, "protocol", "chat") == "messages" and model is None and base is None:
-        return call_messages(args, content, effort=effort, retries=retries)
+        return call_messages(args, content, effort=effort, retries=retries, max_tokens=max_tokens)
     body = {"model": model or args.model, "messages": [{"role": "user", "content": content}],
             "stream": True, "stream_options": {"include_usage": True}}
     if effort:
@@ -470,7 +471,23 @@ def probe_pelican(args):
     return {"samples": parallel(args, one, range(p["samples"]))}
 
 
-PROBES = {"tokens": probe_tokens, "fingerprint": probe_fingerprint, "math": probe_math, "needle": probe_needle, "pelican": probe_pelican}
+# ---- 数字序列指纹：凭第一反应写一长串整数，型号的“随机”偏好很固定，一个请求几百个样本（借鉴 cctest，题面是自己的） ----
+
+def probe_numbers(args):
+    n = SUITE["numbers"]
+    effort = args.numbers_effort or n["effort"]
+    rng = random.Random()
+
+    def one(_):
+        count = rng.randint(*n["count"])
+        r = call(args, n["prompt"].format(count=count, max=n["max"]), effort=effort, max_tokens=8192)
+        values = [int(x) for x in re.findall(r"\d+", r.get("text", "")) if 1 <= int(x) <= n["max"]]
+        return {"count": count, "values": values, "reasoning_tokens": r.get("reasoning_tokens"), "error": r.get("error")}
+    return {"effort": effort, "runs": parallel(args, one, range(args.numbers_samples or n["samples"]))}
+
+
+PROBES = {"tokens": probe_tokens, "fingerprint": probe_fingerprint, "math": probe_math, "needle": probe_needle, "pelican": probe_pelican,
+          "numbers": probe_numbers}
 
 
 def run(args):
@@ -641,6 +658,8 @@ def main():
     r.add_argument("--math-kinds", default="", help="只发这些题型（逗号分隔）")
     r.add_argument("--math-repeats", type=int, default=0)
     r.add_argument("--math-effort", default="")
+    r.add_argument("--numbers-samples", type=int, default=0, help="数字序列采几次（0 表示用题库设定）")
+    r.add_argument("--numbers-effort", default="", help="数字序列的推理强度（Claude 用 none 不开 thinking）")
     r.add_argument("--model", required=True)
     r.add_argument("--round", type=int, default=1)
     r.add_argument("--out", required=True)

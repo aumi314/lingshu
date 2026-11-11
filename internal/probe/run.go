@@ -199,6 +199,7 @@ type plan struct {
 	nonce       string
 	nonceValue  int
 	city        string
+	toolName    string // 工具名带随机后缀（借鉴 ztest）：中转没法把这道题写死应付
 	onlyWord    string
 	marker      string
 
@@ -209,6 +210,12 @@ type plan struct {
 }
 
 func (p *plan) add(r Request) { p.reqs = append(p.reqs, r) }
+
+// newToolName 生成本次检测的工具名（get_weather_ 加 4 位随机十六进制）。
+func (p *plan) newToolName() string {
+	p.toolName = fmt.Sprintf("get_weather_%04x", p.rng.IntN(0x10000))
+	return p.toolName
+}
 
 // spread 按轮转把请求分到各个会话。
 func (p *plan) spread(r Request) {
@@ -300,7 +307,7 @@ func (p *plan) build() {
 	cities := []string{"Reykjavik", "Montevideo", "Ljubljana", "Windhoek", "Valparaiso", "Hobart", "Tromso", "Cusco"}
 	p.city = cities[p.rng.IntN(len(cities))]
 	p.spread(Request{Item: "tool", Effort: "none", MaxTokens: 256, Prompt: fmt.Sprintf("What is the weather in %s right now? Use the tool.", p.city),
-		Tools: []map[string]any{{"type": "function", "function": map[string]any{"name": "get_weather", "description": "Get the current weather for a city.",
+		Tools: []map[string]any{{"type": "function", "function": map[string]any{"name": p.newToolName(), "description": "Get the current weather for a city.",
 			"parameters": map[string]any{"type": "object", "properties": map[string]any{"city": map[string]any{"type": "string", "description": "City name"}}, "required": []string{"city"}}}}}})
 
 	// 指令层级：系统提示和用户要求冲突时守住系统提示；系统提示要求的固定结尾标记必须出现
@@ -711,7 +718,7 @@ func (p *plan) judgeStructured(js, tool []Call) Item {
 			notes = append(notes, "工具调用请求失败："+c.Error)
 		case len(c.ToolCalls) == 0:
 			notes = append(notes, "没有发起工具调用")
-		case c.ToolCalls[0].Name != "get_weather" || json.Unmarshal([]byte(c.ToolCalls[0].Arguments), &args) != nil:
+		case c.ToolCalls[0].Name != p.toolName || json.Unmarshal([]byte(c.ToolCalls[0].Arguments), &args) != nil:
 			notes = append(notes, "工具调用的名字或参数格式不对")
 		case !strings.EqualFold(fmt.Sprint(args["city"]), p.city):
 			notes = append(notes, fmt.Sprintf("工具参数 city 应为 %s，实际 %v", p.city, args["city"]))
