@@ -311,17 +311,17 @@ export default function System() {
         activeKey={tab}
         onChange={(k) => setParams(k === 'operations' ? {} : { tab: k }, { replace: true })}
         items={[
-          { key: 'operations', label: t('运营设置', 'Operations'), forceRender: true, children: (
+          { key: 'operations', label: t('主设置', 'Main settings'), forceRender: true, children: (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
             <Card title={t('使用模式', 'Usage mode')}>
               <Typography.Paragraph type="secondary">
-                {t('灵枢当前以商业中转方式运行：用户预付余额、在线充值，按模型标价和服务分组倍率扣费。公司团队网关的专用功能正在开发。', 'Lingshu currently runs as a commercial relay: users prepay, top up online and are charged at list price times the service group ratio. Company team gateway features are in development.')}
+                {t('灵枢当前以商业中转运营模式运行：用户预付余额、在线充值，按模型标价和服务分组倍率扣费。公司团队网关的专用功能正在开发。', 'Lingshu currently runs in commercial relay operations mode: users prepay, top up online and are charged at list price times the service group ratio. Company team gateway features are in development.')}
               </Typography.Paragraph>
               <Radio.Group value={deploymentMode} onChange={(event) => setDeploymentMode(event.target.value)}>
                 <Space direction="vertical" size={12}>
                   <Radio value="personal" disabled>{t('自用', 'Personal use')} <Typography.Text type="secondary">{t('个人账户自行使用模型服务', 'For individual use with personal accounts')}</Typography.Text> <Tag>{t('暂未开放', 'Unavailable')}</Tag></Radio>
                   <Radio value="company_team_gateway" disabled>{t('公司团队网关', 'Company team gateway')} <Typography.Text type="secondary">{t('团队成员统一接入，由管理员管理', 'Shared access managed by a team administrator')}</Typography.Text> <Tag>{t('开发中', 'In development')}</Tag></Radio>
-                  <Radio value="commercial_relay">{t('商业中转', 'Commercial relay')} <Typography.Text type="secondary">{t('为外部客户提供模型中转服务', 'Model relay service for external customers')}</Typography.Text> <Tag color="blue">{t('当前模式', 'Current')}</Tag></Radio>
+                  <Radio value="commercial_relay">{t('商业中转运营', 'Commercial relay operations')} <Typography.Text type="secondary">{t('为外部客户提供模型中转服务', 'Model relay service for external customers')}</Typography.Text> <Tag color="blue">{t('当前模式', 'Current')}</Tag></Radio>
                 </Space>
               </Radio.Group>
               <div style={{ marginTop: 20 }}>

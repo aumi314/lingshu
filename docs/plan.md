@@ -114,7 +114,7 @@ lingshu/
 
 ## 5. 当前状态（2026-11-11）
 
-线上 `https://gateway.piqode.com`（DMIT）当前应用 `eaa6b55`（2026-11-11）。近期上线：服务分组集合（#72）、转接兼容默认 Codex / Claude Code 并补提示缓存（#73，Claude Code → GPT 已真实验收，第二轮约八成输入命中缓存）、调用设置标签与渠道亲和（#74）、API key 过期时间（#76）、上游卡死时换渠道（#78 重试总时限 2 分钟、#79 等响应头 30 秒）。Codex → Claude 转接的真实调用和缓存还没验收：只有 Messages 地址的 Claude 渠道（kirisame 号池授权过期、Anthropic Platform 余额不足）当时都不可用。
+线上 `https://gateway.piqode.com`（DMIT）当前应用 `eaa6b55`（2026-11-11）。设置页已将“商业中转”更名为“商业中转运营”、“运营设置”更名为“主设置”（待 PR 合并）。近期上线：服务分组集合（#72）、转接兼容默认 Codex / Claude Code 并补提示缓存（#73，Claude Code → GPT 已真实验收，第二轮约八成输入命中缓存）、调用设置标签与渠道亲和（#74）、API key 过期时间（#76）、上游卡死时换渠道（#78 重试总时限 2 分钟、#79 等响应头 30 秒）。Codex → Claude 转接的真实调用和缓存还没验收：只有 Messages 地址的 Claude 渠道（kirisame 号池授权过期、Anthropic Platform 余额不足）当时都不可用。
 
 | 模块 | 现在有什么 |
 |---|---|
@@ -129,7 +129,7 @@ lingshu/
 
 ## 6. 下一步
 
-商业中转模式告一段落（2026-11-07 用户决定）。候选方向，顺序和范围待和用户对齐后写进 `decisions.md`：
+商业中转运营模式告一段落（2026-11-07 用户决定）。候选方向，顺序和范围待和用户对齐后写进 `decisions.md`：
 
 - **模型检测完善**
   - 鹈鹕只作参考、不进页面检测（xhigh 单次也只有约三分之一真实蹬踏，见 `research/model-probe.md`）。

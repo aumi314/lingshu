@@ -644,3 +644,9 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 渠道拉取或手动填写上游模型名时，按完整名、去掉一层厂商前缀后的同名、数字版本点号 / 连字符依次查找，忽略大小写和首尾空白；仅唯一候选自动选中。`openai/gpt-6.1-terra` 对应 `gpt-6.1-terra`，`anthropic/claude-fable-5.2` 对应 `claude-fable-5-2`；手动选择保留，上游名不改，不自动创建模型和价格。
 - 验收：前端类型检查与构建、`channels.browser.cjs` 通过；覆盖手动粘贴、完整名优先、去前缀后的同名优先、版本号匹配、多候选留空、不同型号不匹配、保留手动选择、拉取列表“站内已有”提示、添加后的自动映射及保存请求。既有 key 管理、行操作和拖拽回归通过，保留 Vite 既有单包体积提示。
 - 按 neat-freak 对齐 decisions、plan、界面说明与回归，改动限于渠道模型映射；无需迁移或规则变更。独立 worktree `~/worktrees/lingshu-model-mapping`、分支 `codex/model-mapping-autodetect` 交付 PR，待合并发布，线上配置不变。
+
+
+### 系统设置名称调整（2026-11-11）
+
+- 使用模式显示为“商业中转运营”，原“运营设置”标签显示为“主设置”；英文及支付汇率提示、现役决策文档同步。`commercial_relay` 设置值与 `operations` 标签参数不变。
+- 验证：前端 TypeScript + Vite 构建、现有调用设置浏览器回归、`git diff --check` 通过；保留既有构建分包大小提示。交付为 PR，尚未合并或发布。

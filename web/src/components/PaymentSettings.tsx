@@ -78,9 +78,9 @@ function ServiceForm({ service, onSave }: { service: PaymentService; onSave: () 
           <Form.Item name="enabled" label={t('启用', 'Enabled')} valuePropName="checked"><Switch /></Form.Item>
           {provider === 'epay' ? <Form.Item label={t('支付环境', 'Environment')}><Typography.Text>{t('生产', 'Production')}</Typography.Text></Form.Item> : <Form.Item name="environment" label={t('支付环境', 'Environment')}><Select style={{ width: 150 }} options={[{ value: 'prod', label: t('生产', 'Production') }, { value: 'test', label: t('测试（不增加真实余额）', 'Test (no wallet credit)') }]} /></Form.Item>}
           <Form.Item name="currency" label={t('收款币种', 'Currency')}><Input readOnly style={{ width: 90 }} /></Form.Item>
-          {/* 收人民币的服务单价跟随系统汇率（运营设置里的「汇率」），不单独填 */}
+          {/* 收人民币的服务单价跟随系统汇率（主设置里的「汇率」），不单独填 */}
           <Form.Item name="unit_price" label={t('每 $1 到账额度的实付金额', 'Payment per $1 wallet credit')} rules={[{ required: true }]}
-            extra={form.getFieldValue('currency') === 'CNY' ? t('跟随系统汇率，在「运营设置 → 汇率」里改', 'Follows the system exchange rate; change it under Operations → Exchange rate') : undefined}>
+            extra={form.getFieldValue('currency') === 'CNY' ? t('跟随系统汇率，在「主设置 → 汇率」里改', 'Follows the system exchange rate; change it under Main settings → Exchange rate') : undefined}>
             <InputNumber stringMode min="0.0000000001" style={{ width: 170 }} disabled={form.getFieldValue('currency') === 'CNY'} />
           </Form.Item>
           <Form.Item name="min_usd" label={t('最低到账额度（USD）', 'Minimum credit (USD)')} rules={[{ required: true }]}><InputNumber stringMode min="0.01" precision={2} /></Form.Item>
