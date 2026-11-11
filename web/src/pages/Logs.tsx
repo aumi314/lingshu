@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Alert, Button, Card, Col, DatePicker, Descriptions, Drawer, Row, Segmented, Select, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useSearchParams } from 'react-router-dom'
@@ -6,6 +6,7 @@ import { get, type LogEntry, type ActivityLogsResponse, type OperationLogsRespon
 import { priceText, tokens, useApp } from '../app'
 import { tierText } from '../pricing'
 import OperationLogTable, { targetLabel, targetTypes } from './OperationLogs'
+import Conversation, { type ConversationData } from '../components/Conversation'
 
 type Tab = 'calls' | 'operations'
 type Filter = { range: [Dayjs, Dayjs]; model?: string; status?: string; user_id?: number; target?: string }
@@ -65,6 +66,31 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [detail, setDetail] = useState<RequestActivity | null>(null)
+  // 对话留存（只有管理员能看）：打开请求详情时取回这次调用的请求和回复
+  const [conversation, setConversation] = useState<ConversationData | null>(null)
+  useEffect(() => {
+    setConversation(null)
+    if (!admin || !detail) return
+    let live = true
+    get<ConversationData>(`/api/admin/logs/${detail.id}/conversation`).then((c) => live && setConversation(c)).catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [admin, detail])
+  // 管理员的请求详情分两页：明细和对话内容（对话长，放在明细下面要滚很远）
+  const withConversation = (details: ReactNode) =>
+    !admin || !detail ? details : (
+      <Tabs
+        items={[
+          { key: 'details', label: t('详情', 'Details'), children: details },
+          {
+            key: 'conversation',
+            label: t('对话内容', 'Conversation'),
+            children: conversation ? <Conversation protocol={detail.protocol} requestID={detail.request_id} data={conversation} /> : <Typography.Text type="secondary">{t('加载中…', 'Loading…')}</Typography.Text>,
+          },
+        ]}
+      />
+    )
   const pageSize = 50
   const requestSequence = useRef(0)
 
@@ -332,8 +358,8 @@ export default function Logs({ admin = false }: { admin?: boolean }) {
 
       {tab === 'calls' ? calls : operations}
 
-      <Drawer open={!!detail} onClose={() => setDetail(null)} title={t('请求详情', 'Request details')} size={520}>
-        {detail && (
+      <Drawer open={!!detail} onClose={() => setDetail(null)} title={t('请求详情', 'Request details')} size={admin ? 720 : 520}>
+        {detail && withConversation(
           <Descriptions column={1} size="small" bordered>
             <Descriptions.Item label={t('请求 ID', 'Request ID')}>
               <Typography.Text copyable className="mono">{detail.request_id}</Typography.Text>

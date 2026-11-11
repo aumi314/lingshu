@@ -680,6 +680,8 @@ type CallLimits struct {
 	// 以及 Messages 客户端（Claude Code）用只有 Responses 地址的渠道。关掉后只走原生协议
 	BridgeResponsesToMessages bool `json:"bridge_responses_to_messages"`
 	BridgeMessagesToResponses bool `json:"bridge_messages_to_responses"`
+	// 对话留存（默认关）：存请求和回复原文，见 capture.go
+	CaptureConversations bool `json:"capture_conversations"`
 }
 
 var DefaultCallLimits = CallLimits{Concurrency: 10, RPM: 120, ReserveOutput: 8192, BridgeResponsesToMessages: true, BridgeMessagesToResponses: true}
@@ -687,7 +689,7 @@ var DefaultCallLimits = CallLimits{Concurrency: 10, RPM: 120, ReserveOutput: 819
 func (s *Store) CallLimits(ctx context.Context) (CallLimits, error) {
 	l := DefaultCallLimits
 	rows, err := s.Pool.Query(ctx, `SELECT key, value FROM settings WHERE key IN ('user_concurrency', 'user_rpm', 'reserve_output_tokens',
-		'bridge_responses_to_messages', 'bridge_messages_to_responses')`)
+		'bridge_responses_to_messages', 'bridge_messages_to_responses', 'capture_conversations')`)
 	if err != nil {
 		return l, err
 	}
@@ -703,6 +705,9 @@ func (s *Store) CallLimits(ctx context.Context) (CallLimits, error) {
 			continue
 		case "bridge_messages_to_responses":
 			l.BridgeMessagesToResponses = v != "false"
+			continue
+		case "capture_conversations":
+			l.CaptureConversations = v == "true"
 			continue
 		}
 		n, err := strconv.ParseInt(v, 10, 64)

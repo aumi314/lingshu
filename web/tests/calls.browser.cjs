@@ -14,7 +14,7 @@ const path = require('node:path')
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
     const writes = []
-    const limits = { user_concurrency: 10, user_rpm: 120, reserve_output_tokens: 8192, bridge_responses_to_messages: true, bridge_messages_to_responses: false }
+    const limits = { user_concurrency: 10, user_rpm: 120, reserve_output_tokens: 8192, bridge_responses_to_messages: true, bridge_messages_to_responses: false, capture_conversations: false }
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
     const errors = []
     page.on('pageerror', (e) => errors.push(e.message))
@@ -35,7 +35,7 @@ const path = require('node:path')
 
     // 调用设置：四张卡片；调用限制读回原值并能保存
     await page.getByRole('tab', { name: '调用设置' }).click()
-    for (const title of ['调用限制', '协议转接', '渠道亲和', '违禁词拦截']) await page.getByRole('tabpanel').getByText(title, { exact: true }).waitFor()
+    for (const title of ['调用限制', '协议转接', '对话留存', '渠道亲和', '违禁词拦截']) await page.getByRole('tabpanel').getByText(title, { exact: true }).waitFor()
     await page.getByText('自动生效', { exact: true }).waitFor()
     await page.getByText('规划中', { exact: true }).waitFor()
     assert.equal(new URL(page.url()).searchParams.get('tab'), 'calls')
@@ -57,11 +57,18 @@ const path = require('node:path')
     assert.equal(await m2r.getAttribute('aria-checked'), 'true')
     assert.equal(await r2m.getAttribute('aria-checked'), 'true')
 
+    // 对话留存：默认关，打开立即保存，只提交这一项
+    const capture = page.getByRole('switch', { name: '对话留存' })
+    assert.equal(await capture.getAttribute('aria-checked'), 'false')
+    await capture.click()
+    for (let i = 0; i < 100 && writes.length < 3; i++) await page.waitForTimeout(30)
+    assert.deepEqual(writes[2], { capture_conversations: true })
+
     // 刷新后仍在调用设置标签
     await page.reload()
     await page.getByRole('tabpanel').getByText('协议转接', { exact: true }).waitFor()
     assert.deepEqual(errors, [])
-    console.log('PASS: call limits moved to the Calls tab and saved, bridge switches read back and save individually, affinity and planned blocking cards, tab kept in URL')
+    console.log('PASS: call limits moved to the Calls tab and saved, bridge switches read back and save individually, conversation saving switch, affinity and planned blocking cards, tab kept in URL')
   } finally {
     await browser.close()
     server.kill()

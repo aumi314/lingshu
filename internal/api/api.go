@@ -109,6 +109,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/probes/{id}", s.admin(s.getProbe))
 
 	mux.HandleFunc("GET /api/admin/logs", s.admin(s.adminLogs))
+	mux.HandleFunc("GET /api/admin/logs/{id}/conversation", s.admin(s.logConversation))
 	mux.HandleFunc("GET /api/admin/settings", s.admin(s.getSettings))
 	mux.HandleFunc("PUT /api/admin/settings", s.admin(s.putSettings))
 
