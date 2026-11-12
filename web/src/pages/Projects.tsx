@@ -1,7 +1,9 @@
 // 我的项目（docs/decisions.md「项目额度」）：成员在这里加入项目、在项目下建 key；创建人管理额度池、规则和成员。
+// 上面一排是项目卡片，选中的项目直接在下面展开（选择记在网址 ?project=），不放进弹窗。
 // 项目 key 调用时花项目池的钱，不碰个人余额。
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, App, Button, Card, Col, Empty, Form, Input, InputNumber, Modal, Popconfirm, Progress, Row, Segmented, Select, Space, Table, Tabs, Tag, Typography } from 'antd'
+import { useSearchParams } from 'react-router-dom'
+import { Alert, App, Button, Card, Col, Empty, Form, Input, InputNumber, Modal, Popconfirm, Progress, Row, Segmented, Select, Space, Table, Tabs, Tag, Typography, theme } from 'antd'
 import { PlusOutlined, TeamOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { del, get, patch, post, type APIKey, type Group, type MyProjects, type Project, type ProjectMember } from '../api'
@@ -14,7 +16,8 @@ export default function Projects() {
   const { t, money, user } = useApp()
   const { message } = App.useApp()
   const [data, setData] = useState<MyProjects | null>(null)
-  const [open, setOpen] = useState<Project | null>(null)
+  const [params, setParams] = useSearchParams()
+  const { token } = theme.useToken()
   const [creating, setCreating] = useState(false)
   const [joinCode, setJoinCode] = useState('')
   const [form] = Form.useForm<{ name: string }>()
@@ -23,7 +26,6 @@ export default function Projects() {
     try {
       const r = await get<MyProjects>('/api/me/projects')
       setData(r)
-      setOpen((cur) => (cur ? r.projects.find((p) => p.id === cur.id) ?? null : null))
     } catch (e) {
       message.error((e as Error).message)
     }
@@ -51,12 +53,17 @@ export default function Projects() {
       setCreating(false)
       form.resetFields()
       await load()
-      setOpen(p)
+      select(p.id)
       message.success(t('项目已创建：先转入额度、选开放的分组，再把邀请码发给成员', 'Project created: add funds and pick groups, then share the invite code'))
     } catch (e) {
       message.error((e as Error).message)
     }
   }
+
+  const select = (id?: number) => setParams(id ? { project: String(id) } : {}, { replace: true })
+  // 选中的项目：网址里的那个，没有就默认第一个已加入的（待审批的不能展开）
+  const usable = data?.projects.filter((p) => p.my_status !== 'pending') ?? []
+  const selected = usable.find((p) => String(p.id) === params.get('project')) ?? usable[0]
 
   if (!data) return <div className="page" />
   if (!data.enabled) {
@@ -90,14 +97,13 @@ export default function Projects() {
       {data.projects.length === 0 ? (
         <Empty description={data.can_create ? t('还没有项目：创建一个，或者用邀请码加入', 'No projects yet: create one or join with an invite code') : t('还没有项目：向项目负责人要邀请码加入', 'No projects yet: ask a project owner for an invite code')} />
       ) : (
-        <Row gutter={[16, 16]}>
+        <div className="project-strip">
           {data.projects.map((p) => (
-            <Col key={p.id} xs={24} md={12} xl={8}>
-              <ProjectCard p={p} onOpen={() => p.my_status !== 'pending' && setOpen(p)} />
-            </Col>
+            <ProjectCard key={p.id} p={p} active={p.id === selected?.id} onOpen={() => p.my_status !== 'pending' && select(p.id)} />
           ))}
-        </Row>
+        </div>
       )}
+      {selected && <ProjectDetail key={selected.id} project={selected} meID={user?.id ?? 0} onGone={() => { select(); load() }} onChanged={load} money={money} />}
 
       <Modal open={creating} title={t('创建项目', 'Create project')} onOk={create} onCancel={() => setCreating(false)} okText={t('创建', 'Create')} destroyOnHidden>
         <Form form={form} layout="vertical" requiredMark={false}>
@@ -106,21 +112,28 @@ export default function Projects() {
           </Form.Item>
         </Form>
       </Modal>
-      {open && <ProjectDetail project={open} meID={user?.id ?? 0} onClose={() => setOpen(null)} onChanged={load} money={money} />}
     </div>
   )
 
-  function ProjectCard({ p, onOpen }: { p: Project; onOpen: () => void }) {
+  function ProjectCard({ p, active, onOpen }: { p: Project; active: boolean; onOpen: () => void }) {
     const avail = Number(p.balance) - Number(p.reserved)
     const limit = p.weekly_limit == null ? null : Number(p.weekly_limit)
     return (
-      <Card hoverable={p.my_status !== 'pending'} onClick={onOpen} title={<Space>{p.name}{statusTag(t, p.my_status)}{p.frozen && <Tag color="red">{t('已冻结', 'Frozen')}</Tag>}</Space>}>
+      <Card
+        size="small"
+        hoverable={p.my_status !== 'pending'}
+        onClick={onOpen}
+        aria-current={active || undefined}
+        className="project-card"
+        style={active ? { borderColor: token.colorPrimary, boxShadow: `0 0 0 1px ${token.colorPrimary}` } : undefined}
+        title={<Space size={6}>{p.name}{statusTag(t, p.my_status)}{p.frozen && <Tag color="red">{t('已冻结', 'Frozen')}</Tag>}</Space>}
+      >
         {p.my_status === 'pending' ? (
           <Typography.Text type="secondary">{t(`已申请，等待 ${p.owner_name} 审批`, `Waiting for ${p.owner_name} to approve`)}</Typography.Text>
         ) : (
           <Space direction="vertical" style={{ width: '100%' }} size={6}>
             <Typography.Text type="secondary">{t('池子可用', 'Pool available')}</Typography.Text>
-            <Typography.Text style={{ fontSize: 22 }}>{money(avail)}</Typography.Text>
+            <Typography.Text style={{ fontSize: 20 }}>{money(avail)}</Typography.Text>
             <Typography.Text type="secondary">
               {limit == null ? t(`本周已花 ${money(p.week_spent)}，不限上限`, `${money(p.week_spent)} spent this week, no cap`) : t(`本周已花 ${money(p.week_spent)} / ${money(limit)}`, `${money(p.week_spent)} / ${money(limit)} this week`)}
             </Typography.Text>
@@ -135,7 +148,7 @@ export default function Projects() {
   }
 }
 
-function ProjectDetail({ project, meID, onClose, onChanged, money }: { project: Project; meID: number; onClose: () => void; onChanged: () => void; money: (v: string | number, d?: number) => string }) {
+function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: Project; meID: number; onGone: () => void; onChanged: () => void; money: (v: string | number, d?: number) => string }) {
   const { t } = useApp()
   const { message, modal } = App.useApp()
   const owner = project.my_status === 'owner'
@@ -308,7 +321,7 @@ function ProjectDetail({ project, meID, onClose, onChanged, money }: { project: 
               content: t(`池子里剩下的 ${money(project.balance)} 会退回你的余额，所有项目 key 不能再用。不能撤销。`, `The remaining ${money(project.balance)} returns to your balance and every project key stops working. This cannot be undone.`),
               okButtonProps: { danger: true },
               okText: t('解散', 'Close'),
-              onOk: () => run(() => del(base), t('项目已解散，余额已退回', 'Project closed; funds returned')).then(onClose),
+              onOk: () => run(() => del(base), t('项目已解散，余额已退回', 'Project closed; funds returned')).then(onGone),
             })
           }
         >
@@ -319,7 +332,7 @@ function ProjectDetail({ project, meID, onClose, onChanged, money }: { project: 
   )
 
   return (
-    <Modal open title={<Space>{project.name}{statusTag(t, project.my_status)}{project.frozen && <Tag color="red">{t('已被管理员冻结', 'Frozen by admin')}</Tag>}</Space>} onCancel={onClose} footer={null} width={820} destroyOnHidden>
+    <Card style={{ marginTop: 20 }} title={<Space>{project.name}{statusTag(t, project.my_status)}{project.frozen && <Tag color="red">{t('已被管理员冻结', 'Frozen by admin')}</Tag>}<Typography.Text type="secondary" style={{ fontWeight: 400 }}>{t('负责人', 'Owner')} {project.owner_name}</Typography.Text></Space>}>
       <Tabs
         items={[
           { key: 'keys', label: t('我的 key', 'My keys'), children: keysTab },
@@ -333,7 +346,7 @@ function ProjectDetail({ project, meID, onClose, onChanged, money }: { project: 
         ]}
       />
       {!owner && (
-        <Popconfirm title={t('退出后你在项目下的 key 立即不能用，确定？', 'Your project keys stop working right away. Leave?')} onConfirm={() => run(() => del(`${base}/members/${meID}`), t('已退出项目', 'Left the project')).then(onClose)}>
+        <Popconfirm title={t('退出后你在项目下的 key 立即不能用，确定？', 'Your project keys stop working right away. Leave?')} onConfirm={() => run(() => del(`${base}/members/${meID}`), t('已退出项目', 'Left the project')).then(onGone)}>
           <Button danger type="link" style={{ padding: 0 }}>{t('退出项目', 'Leave project')}</Button>
         </Popconfirm>
       )}
@@ -342,6 +355,6 @@ function ProjectDetail({ project, meID, onClose, onChanged, money }: { project: 
         <Typography.Paragraph copyable={{ text: created }} className="mono" style={{ wordBreak: 'break-all' }}>{created}</Typography.Paragraph>
         <Typography.Text type="secondary">{t('用它调用时，花的是项目池的钱。', 'Calls with it spend the project pool.')}</Typography.Text>
       </Modal>
-    </Modal>
+    </Card>
   )
 }

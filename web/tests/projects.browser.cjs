@@ -43,7 +43,7 @@ const path = require('node:path')
     // 侧边栏入口和卡片：池子可用 = 余额 − 冻结，本周已花 / 上限
     await page.goto('http://127.0.0.1:25199/console/projects')
     await page.getByRole('menuitem', { name: '我的项目' }).waitFor()
-    await page.getByText('研发组', { exact: true }).waitFor()
+    await page.getByText('研发组', { exact: true }).first().waitFor()
     await page.getByText('$2.5000', { exact: true }).first().waitFor()
     await page.getByText('本周已花 $2.5000 / $10.0000', { exact: true }).waitFor()
     await page.getByText('已申请，等待 carol 审批', { exact: true }).waitFor()
@@ -54,13 +54,17 @@ const path = require('node:path')
     await page.getByText(/已申请加入「产品组」/).waitFor()
     assert.deepEqual(state.writes.at(-1), ['POST', '/api/me/projects/join', { code: 'wxyz6789' }])
 
-    // 待审批的项目点了不打开
-    await page.getByText('产品组', { exact: true }).click()
+    // 选中的项目直接在卡片下方展开（不是弹窗）：默认第一个已加入的；点待审批的不切换
+    const dialog = page.locator('.ant-card').filter({ has: page.getByRole('tab', { name: '我的 key' }) })
+    await dialog.getByText('负责人 bob', { exact: true }).waitFor()
     assert.equal(await page.getByRole('dialog').count(), 0)
+    await page.getByText('产品组', { exact: true }).click()
+    await dialog.getByText('负责人 bob', { exact: true }).waitFor()
+    assert.equal(new URL(page.url()).searchParams.get('project'), null)
+    await page.getByText('研发组', { exact: true }).first().click()
+    await page.waitForFunction(() => new URL(location.href).searchParams.get('project') === '1')
 
-    // 打开自己的项目：建 key 带 project_id，明文只显示一次
-    await page.getByText('研发组', { exact: true }).click()
-    const dialog = page.getByRole('dialog').first()
+    // 建 key 带 project_id，明文只显示一次
     await dialog.getByText('laptop', { exact: true }).waitFor()
     await dialog.getByPlaceholder('key 名称，例如：笔记本').fill('server')
     await dialog.locator('.ant-select').first().click()
@@ -97,7 +101,7 @@ const path = require('node:path')
     await page.getByText('项目功能没有开启，请联系管理员', { exact: true }).waitFor()
     assert.equal(await page.getByRole('menuitem', { name: '我的项目' }).count(), 0)
     assert.deepEqual(errors, [])
-    console.log('PASS: projects menu only when enabled, pool and weekly cards, join by code, pending not openable, project key with project_id shown once, transfer, approve with pending count, rules save with no cap, disabled notice')
+    console.log('PASS: projects menu only when enabled, selected project expands below the card strip (no dialog, kept in URL), pool and weekly cards, join by code, pending not openable, project key with project_id shown once, transfer, approve with pending count, rules save with no cap, disabled notice')
   } finally {
     await browser.close()
     server.kill()
