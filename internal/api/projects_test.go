@@ -55,8 +55,21 @@ func TestProjectFlow(t *testing.T) {
 	if code, _ := bob.do("PATCH", path, map[string]any{"group_ids": []int64{2}}, nil); code != 400 {
 		t.Errorf("开放自己没权用的分组应拒绝: %d", code)
 	}
-	if code, body := bob.do("PATCH", path, map[string]any{"group_ids": []int64{1}, "weekly_limit": "3"}, nil); code != 200 {
+	if code, body := bob.do("PATCH", path, map[string]any{"group_ids": []int64{1}, "period_limit": "3", "limit_period": "month"}, nil); code != 200 {
 		t.Fatalf("%d %s", code, body)
+	}
+	if code, _ := bob.do("PATCH", path, map[string]any{"limit_period": "year"}, nil); code != 400 {
+		t.Errorf("周期只能是天、周、月: %d", code)
+	}
+	var got struct {
+		Project struct {
+			PeriodLimit string `json:"period_limit"`
+			LimitPeriod string `json:"limit_period"`
+		} `json:"project"`
+	}
+	bob.do("GET", path, nil, &got)
+	if got.Project.LimitPeriod != "month" || got.Project.PeriodLimit != "3" {
+		t.Errorf("周期和上限应读回: %+v", got.Project)
 	}
 
 	// 转入：不能超过可用余额；转入后两边对账

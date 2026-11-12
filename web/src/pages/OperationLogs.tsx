@@ -65,7 +65,7 @@ function fieldLabel(t: T, field: string): string {
     registration_mode: t('注册方式', 'Registration'), fx_mode: t('汇率模式', 'Rate mode'), user_concurrency: t('每用户并发上限', 'Per-user concurrency'), user_rpm: t('每用户每分钟请求数', 'Per-user RPM'), reserve_output_tokens: t('默认预扣输出', 'Default held output'), api_base_url: t('接入地址', 'API base URL'), announcement: t('公告', 'Announcement'), deployment_mode: t('使用模式', 'Usage mode'),
     environment: t('环境', 'Environment'), currency: t('币种', 'Currency'), unit_price: t('单价', 'Unit price'),
     min_usd: t('最低额度', 'Min'), max_usd: t('最高额度', 'Max'), methods: t('支付方式', 'Methods'),
-    weekly_limit: t('每周上限', 'Weekly cap'), frozen: t('冻结', 'Frozen'), closed: t('已解散', 'Closed'), invite_code: t('邀请码', 'Invite code'),
+    weekly_limit: t('每周上限', 'Weekly cap'), period_limit: t('额度上限', 'Spending cap'), limit_period: t('额度周期', 'Cap period'), frozen: t('冻结', 'Frozen'), closed: t('已解散', 'Closed'), invite_code: t('邀请码', 'Invite code'),
     members: t('成员', 'Members'), pending: t('待审批', 'Pending'), can_create_projects: t('允许创建项目', 'Can create projects'), projects_enabled: t('项目功能', 'Projects'),
     capture_conversations: t('对话留存', 'Conversation saving'),
     credit_usd: t('到账额度', 'Credit'), pay_amount: t('应付', 'To pay'), provider: t('支付服务', 'Provider'), method: t('支付方式', 'Method'),

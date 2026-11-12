@@ -6,14 +6,22 @@ import { useSearchParams } from 'react-router-dom'
 import { Alert, App, Button, Card, Col, Empty, Form, Input, InputNumber, Modal, Popconfirm, Progress, Row, Segmented, Select, Space, Table, Tabs, Tag, Typography, theme } from 'antd'
 import { PlusOutlined, TeamOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { del, get, patch, post, type APIKey, type Group, type MyProjects, type Project, type ProjectMember } from '../api'
+import { del, get, patch, post, type APIKey, type Group, type LimitPeriod, type MyProjects, type Project, type ProjectMember } from '../api'
 import { useApp } from '../app'
+
+// 额度周期的说法：本周期叫什么、什么时候重置
+const periodText = (t: (zh: string, en: string) => string, p: LimitPeriod, zone: string) =>
+  ({
+    day: { now: t('今天', 'today'), reset: t(`${zone}每天 0 点重置`, `resets daily at 00:00 ${zone}`), pick: t('按天', 'Daily') },
+    week: { now: t('本周', 'this week'), reset: t(`${zone}每周一 0 点重置`, `resets Monday 00:00 ${zone}`), pick: t('按周', 'Weekly') },
+    month: { now: t('本月', 'this month'), reset: t(`${zone}每月 1 号 0 点重置`, `resets on the 1st at 00:00 ${zone}`), pick: t('按月', 'Monthly') },
+  })[p] ?? { now: t('本周', 'this week'), reset: '', pick: t('按周', 'Weekly') }
 
 const statusTag = (t: (zh: string, en: string) => string, s: Project['my_status']) =>
   ({ owner: <Tag color="gold">{t('创建人', 'Owner')}</Tag>, active: <Tag color="green">{t('成员', 'Member')}</Tag>, pending: <Tag>{t('待审批', 'Pending')}</Tag>, '': null })[s]
 
 export default function Projects() {
-  const { t, money, user } = useApp()
+  const { t, money, user, zone } = useApp()
   const { message } = App.useApp()
   const [data, setData] = useState<MyProjects | null>(null)
   const [params, setParams] = useSearchParams()
@@ -117,7 +125,8 @@ export default function Projects() {
 
   function ProjectCard({ p, active, onOpen }: { p: Project; active: boolean; onOpen: () => void }) {
     const avail = Number(p.balance) - Number(p.reserved)
-    const limit = p.weekly_limit == null ? null : Number(p.weekly_limit)
+    const limit = p.period_limit == null ? null : Number(p.period_limit)
+    const now = periodText(t, p.limit_period, zone).now
     return (
       <Card
         size="small"
@@ -135,9 +144,9 @@ export default function Projects() {
             <Typography.Text type="secondary">{t('池子可用', 'Pool available')}</Typography.Text>
             <Typography.Text style={{ fontSize: 20 }}>{money(avail)}</Typography.Text>
             <Typography.Text type="secondary">
-              {limit == null ? t(`本周已花 ${money(p.week_spent)}，不限上限`, `${money(p.week_spent)} spent this week, no cap`) : t(`本周已花 ${money(p.week_spent)} / ${money(limit)}`, `${money(p.week_spent)} / ${money(limit)} this week`)}
+              {limit == null ? t(`${now}已花 ${money(p.period_spent)}，不限上限`, `${money(p.period_spent)} spent ${now}, no cap`) : t(`${now}已花 ${money(p.period_spent)} / ${money(limit)}`, `${money(p.period_spent)} / ${money(limit)} ${now}`)}
             </Typography.Text>
-            {limit != null && <Progress percent={Math.min(100, Math.round((Number(p.week_spent) / limit) * 100))} size="small" showInfo={false} />}
+            {limit != null && <Progress percent={Math.min(100, Math.round((Number(p.period_spent) / limit) * 100))} size="small" showInfo={false} />}
             <Typography.Text type="secondary">
               <TeamOutlined /> {p.members} · {t('负责人', 'Owner')} {p.owner_name}
             </Typography.Text>
@@ -149,15 +158,16 @@ export default function Projects() {
 }
 
 function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: Project; meID: number; onGone: () => void; onChanged: () => void; money: (v: string | number, d?: number) => string }) {
-  const { t } = useApp()
+  const { t, zone } = useApp()
   const { message, modal } = App.useApp()
+  const period = periodText(t, project.limit_period, zone)
   const owner = project.my_status === 'owner'
   const [members, setMembers] = useState<ProjectMember[]>([])
   const [keys, setKeys] = useState<APIKey[]>([])
   const [groups, setGroups] = useState<Group[]>([]) // 创建人自己能用的分组，开放时从这里选
   const [created, setCreated] = useState('')
   const [keyForm] = Form.useForm<{ name: string; group_id: number }>()
-  const [rules] = Form.useForm<{ name: string; weekly_limit: number | null; group_ids: number[] }>()
+  const [rules] = Form.useForm<{ name: string; limit_period: LimitPeriod; period_limit: number | null; group_ids: number[] }>()
   const [amount, setAmount] = useState<number | null>(null)
   const [direction, setDirection] = useState<'in' | 'out'>('in')
 
@@ -175,7 +185,7 @@ function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: P
     if (owner) get<{ groups: Group[] }>('/api/me/models').then((r) => setGroups(r.groups)).catch(() => {})
   }, [loadDetail, owner])
   useEffect(() => {
-    rules.setFieldsValue({ name: project.name, weekly_limit: project.weekly_limit == null ? null : Number(project.weekly_limit), group_ids: project.group_ids })
+    rules.setFieldsValue({ name: project.name, limit_period: project.limit_period ?? 'week', period_limit: project.period_limit == null ? null : Number(project.period_limit), group_ids: project.group_ids })
   }, [project, rules])
 
   const run = async (fn: () => Promise<unknown>, ok: string) => {
@@ -202,7 +212,7 @@ function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: P
   }
   const saveRules = async () => {
     const v = await rules.validateFields()
-    run(() => patch(base, { name: v.name, group_ids: v.group_ids ?? [], ...(v.weekly_limit ? { weekly_limit: String(v.weekly_limit) } : { no_weekly_limit: true }) }), t('规则已保存', 'Rules saved'))
+    run(() => patch(base, { name: v.name, group_ids: v.group_ids ?? [], limit_period: v.limit_period, ...(v.period_limit ? { period_limit: String(v.period_limit) } : { no_period_limit: true }) }), t('规则已保存', 'Rules saved'))
   }
   const avail = Number(project.balance) - Number(project.reserved)
 
@@ -248,7 +258,7 @@ function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: P
       columns={[
         { title: t('成员', 'Member'), dataIndex: 'username' },
         { title: t('身份', 'Role'), dataIndex: 'status', render: (s) => statusTag(t, s) },
-        { title: t('本周花费', 'This week'), dataIndex: 'week_spent', render: (v, m) => (m.status === 'pending' ? '—' : money(v)) },
+        { title: t(`${period.now}花费`, `Spent ${period.now}`), dataIndex: 'period_spent', render: (v, m) => (m.status === 'pending' ? '—' : money(v)) },
         { title: t('累计花费', 'Total'), dataIndex: 'total_spent', render: (v, m) => (m.status === 'pending' ? '—' : money(v)) },
         {
           title: '',
@@ -278,7 +288,7 @@ function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: P
     <Space direction="vertical" style={{ width: '100%' }} size={16}>
       <Row gutter={16}>
         <Col span={12}><Card size="small"><Typography.Text type="secondary">{t('池子可用', 'Available')}</Typography.Text><div style={{ fontSize: 22 }}>{money(avail)}</div>{Number(project.reserved) > 0 && <Typography.Text type="secondary">{t(`进行中冻结 ${money(project.reserved)}`, `${money(project.reserved)} held by calls in progress`)}</Typography.Text>}</Card></Col>
-        <Col span={12}><Card size="small"><Typography.Text type="secondary">{t('本周已花', 'Spent this week')}</Typography.Text><div style={{ fontSize: 22 }}>{money(project.week_spent)}</div><Typography.Text type="secondary">{project.weekly_limit == null ? t('不限上限', 'No cap') : t(`上限 ${money(project.weekly_limit)}，每周一 0 点重置`, `Cap ${money(project.weekly_limit)}, resets Monday 00:00 (UTC+8)`)}</Typography.Text></Card></Col>
+        <Col span={12}><Card size="small"><Typography.Text type="secondary">{t(`${period.now}已花`, `Spent ${period.now}`)}</Typography.Text><div style={{ fontSize: 22 }}>{money(project.period_spent)}</div><Typography.Text type="secondary">{project.period_limit == null ? t('不限上限', 'No cap') : t(`上限 ${money(project.period_limit)}，${period.reset}`, `Cap ${money(project.period_limit)}, ${period.reset}`)}</Typography.Text></Card></Col>
       </Row>
       <Space wrap>
         <Segmented value={direction} onChange={(v) => setDirection(v as 'in' | 'out')} options={[{ value: 'in', label: t('从我的余额转入', 'Add from my balance') }, { value: 'out', label: t('取回到我的余额', 'Withdraw to my balance') }]} />
@@ -296,8 +306,15 @@ function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: P
       <Form.Item name="name" label={t('项目名称', 'Project name')} rules={[{ required: true, whitespace: true, max: 50 }]}>
         <Input />
       </Form.Item>
-      <Form.Item name="weekly_limit" label={t('每周最多花', 'Weekly cap')} extra={t('整个项目合计，北京时间每周一 0 点重置；留空不限', 'Whole project, resets Monday 00:00 (UTC+8); empty means no cap')}>
-        <InputNumber prefix="$" min={0.01} precision={2} style={{ width: 180 }} />
+      <Form.Item label={t('额度上限', 'Spending cap')} extra={t(`整个项目合计，周期按${zone}重置（按天每天 0 点、按周每周一 0 点、按月每月 1 号 0 点）；金额留空不限`, `Whole project; periods reset in ${zone} (daily at 00:00, weekly on Monday, monthly on the 1st); leave the amount empty for no cap`)}>
+        <Space>
+          <Form.Item name="limit_period" noStyle>
+            <Segmented options={(['day', 'week', 'month'] as const).map((p) => ({ value: p, label: periodText(t, p, zone).pick }))} />
+          </Form.Item>
+          <Form.Item name="period_limit" noStyle>
+            <InputNumber prefix="$" min={0.01} precision={2} style={{ width: 160 }} placeholder={t('不限', 'No cap')} />
+          </Form.Item>
+        </Space>
       </Form.Item>
       <Form.Item name="group_ids" label={t('开放的服务分组', 'Open service groups')} extra={t('成员在项目下建 key 时能选这些分组；只能从你自己能用的分组里选', 'Members pick from these when creating project keys; limited to groups you can use')}>
         <Select mode="multiple" options={groups.map((g) => ({ value: g.id, label: g.is_collection ? g.name : `${g.name} · ×${Number(g.ratio)}` }))} />

@@ -92,10 +92,14 @@ func TestProjectKeyRejections(t *testing.T) {
 	}
 	expect("正常", 200, "")
 
-	// 每周上限：上一次已经花了一点，上限设得比它还小，本周剩余为负，直接拒
-	e.exec(`UPDATE projects SET weekly_limit = 0.000001 WHERE id = 1`)
+	// 周期上限（创建人选按天 / 周 / 月）：上一次已经花了一点，上限设得比它还小，本周期剩余为负，直接拒，提示写明周期
+	e.exec(`UPDATE projects SET period_limit = 0.000001 WHERE id = 1`)
 	expect("本周额度用完", 402, "本周")
-	e.exec(`UPDATE projects SET weekly_limit = NULL WHERE id = 1`)
+	e.exec(`UPDATE projects SET limit_period = 'month' WHERE id = 1`)
+	expect("本月额度用完", 402, "每月 1 号 0 点重置")
+	e.exec(`UPDATE projects SET limit_period = 'day' WHERE id = 1`)
+	expect("今天额度用完", 402, "今天")
+	e.exec(`UPDATE projects SET period_limit = NULL WHERE id = 1`)
 
 	e.exec(`UPDATE projects SET balance = 0 WHERE id = 1`)
 	expect("池子空了", 402, "项目负责人 alice")

@@ -11,18 +11,28 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
+
+	"github.com/aumi314/lingshu/internal/billing"
 )
 
 // 项目额度（docs/decisions.md「项目额度」）：创建人从自己余额转入项目池，成员用项目 Key 调用时从池里扣。
 // 池子和个人余额一样有 balance / reserved，预扣用一条带行锁的语句，结算和个人余额同一个事务。
 
-// weekStartSQL 是本周开始的时刻：北京时间周一 0 点（和分时段价格同一个时区）。
-const weekStartSQL = `(date_trunc('week', now() AT TIME ZONE 'Asia/Shanghai') AT TIME ZONE 'Asia/Shanghai')`
+// periodStartSQL 是当前周期开始的时刻：按业务时区（主设置里的时区，默认北京时间）的当天 0 点、本周一 0 点或本月 1 号 0 点，
+// periodExpr 是项目 limit_period 列的表达式（day / week / month，正好是 date_trunc 的单位）。
+// 时区名已由 billing.ParseZone 校验（只有字母、数字和 / _ + -），可以直接拼进语句。
+func periodStartSQL(periodExpr string) string {
+	z := billing.ZoneName()
+	return "(date_trunc(" + periodExpr + ", now() AT TIME ZONE '" + z + "') AT TIME ZONE '" + z + "')"
+}
 
-// weekSpentSQL 是项目本周已经花掉的钱（$1 换成项目 id 的表达式）。
-const weekSpentSQL = `COALESCE((SELECT sum(cost) FROM request_logs WHERE project_id = %s AND created_at >= ` + weekStartSQL + `), 0)`
+// periodSpent 是项目本周期已经花掉的钱。
+func periodSpent(projectExpr, periodExpr string) string {
+	return "COALESCE((SELECT sum(cost) FROM request_logs WHERE project_id = " + projectExpr + " AND created_at >= " + periodStartSQL(periodExpr) + "), 0)"
+}
 
-func weekSpent(projectExpr string) string { return strings.Replace(weekSpentSQL, "%s", projectExpr, 1) }
+// LimitPeriods 是创建人能选的额度周期。
+var LimitPeriods = map[string]bool{"day": true, "week": true, "month": true}
 
 type Project struct {
 	ID          int64            `json:"id"`
@@ -32,8 +42,9 @@ type Project struct {
 	OwnerName   string           `json:"owner_name"`
 	Balance     decimal.Decimal  `json:"balance"`
 	Reserved    decimal.Decimal  `json:"reserved"`
-	WeeklyLimit *decimal.Decimal `json:"weekly_limit"`
-	WeekSpent   decimal.Decimal  `json:"week_spent"`
+	PeriodLimit *decimal.Decimal `json:"period_limit"` // 一个周期内整个项目最多花多少，nil 不限
+	LimitPeriod string           `json:"limit_period"` // day / week / month，按业务时区重置
+	PeriodSpent decimal.Decimal  `json:"period_spent"` // 本周期已花
 	Frozen      bool             `json:"frozen"`
 	Closed      bool             `json:"closed"`
 	GroupIDs    []int64          `json:"group_ids"`
@@ -43,31 +54,33 @@ type Project struct {
 	CreatedAt   time.Time        `json:"created_at"`
 }
 
-const projectColumns = `p.id, p.name, p.invite_code, p.owner_id, o.username, p.balance::text, p.reserved::text, p.weekly_limit::text,
+const projectColumns = `p.id, p.name, p.invite_code, p.owner_id, o.username, p.balance::text, p.reserved::text, p.period_limit::text, p.limit_period,
 	` + `%WEEK%` + `::text, p.frozen, p.closed_at IS NOT NULL,
 	COALESCE((SELECT array_agg(pg.group_id ORDER BY pg.group_id) FROM project_groups pg WHERE pg.project_id = p.id), '{}'),
 	COALESCE((SELECT jsonb_agg(jsonb_build_object('id', g.id, 'name', g.name, 'ratio', g.ratio::text, 'is_collection', g.is_collection) ORDER BY g.sort_order, g.id)
 	          FROM project_groups pg JOIN groups g ON g.id = pg.group_id WHERE pg.project_id = p.id), '[]'),
 	(SELECT count(*) FROM project_members m WHERE m.project_id = p.id AND m.status = 'active'), p.created_at`
 
-func projectSelect() string { return strings.Replace(projectColumns, "%WEEK%", weekSpent("p.id"), 1) }
+func projectSelect() string {
+	return strings.Replace(projectColumns, "%WEEK%", periodSpent("p.id", "p.limit_period"), 1)
+}
 
 func scanProject(row pgx.Row, extra ...any) (*Project, error) {
 	var p Project
 	var balance, reserved, spent string
 	var limit *string
-	dest := append([]any{&p.ID, &p.Name, &p.InviteCode, &p.OwnerID, &p.OwnerName, &balance, &reserved, &limit, &spent,
+	dest := append([]any{&p.ID, &p.Name, &p.InviteCode, &p.OwnerID, &p.OwnerName, &balance, &reserved, &limit, &p.LimitPeriod, &spent,
 		&p.Frozen, &p.Closed, &p.GroupIDs, &p.Groups, &p.Members, &p.CreatedAt}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return nil, translate(err)
 	}
-	p.Balance, p.Reserved, p.WeekSpent, p.WeeklyLimit = mustDecimal(balance), mustDecimal(reserved), mustDecimal(spent), optDecimal(limit)
+	p.Balance, p.Reserved, p.PeriodSpent, p.PeriodLimit = mustDecimal(balance), mustDecimal(reserved), mustDecimal(spent), optDecimal(limit)
 	return &p, nil
 }
 
 // projectEntity 是操作日志里项目的快照：规则、开放分组、成员变化都看得到；邀请码只记“改过了”，不记明文。
 var projectEntity = entity{"project", "name", `
-	SELECT jsonb_build_object('name', p.name, 'weekly_limit', p.weekly_limit::text, 'frozen', p.frozen, 'closed', p.closed_at IS NOT NULL,
+	SELECT jsonb_build_object('name', p.name, 'period_limit', p.period_limit::text, 'limit_period', p.limit_period, 'frozen', p.frozen, 'closed', p.closed_at IS NOT NULL,
 	       'invite_code', md5(p.invite_code),
 	       'groups', COALESCE((SELECT jsonb_agg(g.name ORDER BY g.name) FROM project_groups pg JOIN groups g ON g.id = pg.group_id WHERE pg.project_id = p.id), '[]'),
 	       'members', COALESCE((SELECT jsonb_agg(u.username ORDER BY u.username) FROM project_members m JOIN users u ON u.id = m.user_id WHERE m.project_id = p.id AND m.status = 'active'), '[]'),
@@ -162,8 +175,9 @@ func (s *Store) ProjectMemberStatus(ctx context.Context, projectID, userID int64
 // ProjectPatch 是创建人改的规则；nil 表示不改。
 type ProjectPatch struct {
 	Name           *string
-	SetWeeklyLimit bool
-	WeeklyLimit    *decimal.Decimal // nil 表示不限
+	SetPeriodLimit bool
+	PeriodLimit    *decimal.Decimal // nil 表示不限
+	LimitPeriod    *string          // day / week / month
 	GroupIDs       *[]int64
 }
 
@@ -191,8 +205,9 @@ func (s *Store) UpdateProject(ctx context.Context, actorID, id int64, p ProjectP
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		return track(ctx, tx, projectEntity, &id, actorID, func() error {
 			if err := execOne(ctx, tx, `UPDATE projects SET name = COALESCE($2, name),
-				weekly_limit = CASE WHEN $3 THEN $4::numeric ELSE weekly_limit END WHERE id = $1 AND closed_at IS NULL`,
-				id, p.Name, p.SetWeeklyLimit, decimalArg(p.WeeklyLimit)); err != nil {
+				period_limit = CASE WHEN $3 THEN $4::numeric ELSE period_limit END, limit_period = COALESCE($5, limit_period)
+				WHERE id = $1 AND closed_at IS NULL`,
+				id, p.Name, p.SetPeriodLimit, decimalArg(p.PeriodLimit), p.LimitPeriod); err != nil {
 				return err
 			}
 			if p.GroupIDs == nil {
@@ -246,19 +261,19 @@ func (s *Store) JoinProject(ctx context.Context, userID int64, code string) (str
 }
 
 type ProjectMember struct {
-	UserID     int64           `json:"user_id"`
-	Username   string          `json:"username"`
-	Status     string          `json:"status"` // owner / active / pending
-	WeekSpent  decimal.Decimal `json:"week_spent"`
-	TotalSpent decimal.Decimal `json:"total_spent"`
-	CreatedAt  time.Time       `json:"created_at"`
+	UserID      int64           `json:"user_id"`
+	Username    string          `json:"username"`
+	Status      string          `json:"status"`       // owner / active / pending
+	PeriodSpent decimal.Decimal `json:"period_spent"` // 本周期在这个项目里花了多少
+	TotalSpent  decimal.Decimal `json:"total_spent"`
+	CreatedAt   time.Time       `json:"created_at"`
 }
 
 // ProjectMembers 列出成员、申请人和每个人本周、累计在这个项目里花了多少。
 func (s *Store) ProjectMembers(ctx context.Context, id int64) ([]ProjectMember, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT m.user_id, u.username, CASE WHEN p.owner_id = m.user_id THEN 'owner' ELSE m.status END,
-		       COALESCE((SELECT sum(cost) FROM request_logs l WHERE l.project_id = p.id AND l.user_id = m.user_id AND l.created_at >= `+weekStartSQL+`), 0)::text,
+		       COALESCE((SELECT sum(cost) FROM request_logs l WHERE l.project_id = p.id AND l.user_id = m.user_id AND l.created_at >= `+periodStartSQL("p.limit_period")+`), 0)::text,
 		       COALESCE((SELECT sum(cost) FROM request_logs l WHERE l.project_id = p.id AND l.user_id = m.user_id), 0)::text, m.created_at
 		FROM project_members m JOIN projects p ON p.id = m.project_id JOIN users u ON u.id = m.user_id
 		WHERE m.project_id = $1 ORDER BY (p.owner_id = m.user_id) DESC, m.status, m.created_at`, id)
@@ -269,7 +284,7 @@ func (s *Store) ProjectMembers(ctx context.Context, id int64) ([]ProjectMember, 
 		var m ProjectMember
 		var week, total string
 		err := r.Scan(&m.UserID, &m.Username, &m.Status, &week, &total, &m.CreatedAt)
-		m.WeekSpent, m.TotalSpent = mustDecimal(week), mustDecimal(total)
+		m.PeriodSpent, m.TotalSpent = mustDecimal(week), mustDecimal(total)
 		return m, err
 	})
 }
@@ -408,9 +423,9 @@ func (s *Store) SetProjectFrozen(ctx context.Context, actorID, projectID int64, 
 
 // ProjectHold 是项目池预扣的结果。
 type ProjectHold struct {
-	Held       decimal.Decimal  // 实际冻结的金额，0 表示拒绝
-	Available  decimal.Decimal  // 冻结前池子可用（余额 − 冻结）
-	WeekRemain *decimal.Decimal // 冻结前本周还能花多少（扣掉进行中的冻结），nil 表示不限
+	Held         decimal.Decimal  // 实际冻结的金额，0 表示拒绝
+	Available    decimal.Decimal  // 冻结前池子可用（余额 − 冻结）
+	PeriodRemain *decimal.Decimal // 冻结前本周期还能花多少（扣掉进行中的冻结），nil 表示不限
 }
 
 // ReserveProject 从项目池冻结额度，同时受池子可用余额和每周上限限制，规则和个人余额的 Reserve 一样：
@@ -422,21 +437,21 @@ func (s *Store) ReserveProject(ctx context.Context, projectID int64, amount deci
 	err := s.Pool.QueryRow(ctx, `
 		WITH p AS (
 			SELECT balance - reserved AS avail, reserved,
-			       weekly_limit - `+weekSpent("$1")+` - reserved AS remain
+			       period_limit - `+periodSpent("$1", "projects.limit_period")+` - reserved AS remain
 			FROM projects WHERE id = $1 FOR UPDATE),
 		cap AS (SELECT avail, reserved, remain, LEAST(avail, COALESCE(remain, avail)) AS room FROM p)
 		UPDATE projects SET reserved = projects.reserved + LEAST($2::numeric, cap.room)
 		FROM cap WHERE projects.id = $1 AND (cap.room >= $2::numeric OR (cap.reserved = 0 AND cap.room > 0))
 		RETURNING LEAST($2::numeric, cap.room)::text, cap.avail::text, cap.remain::text`, projectID, amount.String()).Scan(&held, &avail, &remain)
 	if errors.Is(err, pgx.ErrNoRows) {
-		err = s.Pool.QueryRow(ctx, `SELECT (balance - reserved)::text, (weekly_limit - `+weekSpent("$1")+` - reserved)::text FROM projects WHERE id = $1`,
+		err = s.Pool.QueryRow(ctx, `SELECT (balance - reserved)::text, (period_limit - `+periodSpent("$1", "projects.limit_period")+` - reserved)::text FROM projects WHERE id = $1`,
 			projectID).Scan(&avail, &remain)
-		h.Available, h.WeekRemain = mustDecimal(avail), optDecimal(remain)
+		h.Available, h.PeriodRemain = mustDecimal(avail), optDecimal(remain)
 		return h, err
 	}
 	if err != nil {
 		return h, err
 	}
-	h.Held, h.Available, h.WeekRemain = mustDecimal(held), mustDecimal(avail), optDecimal(remain)
+	h.Held, h.Available, h.PeriodRemain = mustDecimal(held), mustDecimal(avail), optDecimal(remain)
 	return h, nil
 }

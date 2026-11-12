@@ -108,6 +108,17 @@ func retryAfter(h http.Header) time.Duration {
 	return 0
 }
 
+// periodWords 把项目额度周期写成提示语：本日 / 本周 / 本月，以及何时重置。
+func periodWords(period string) (string, string) {
+	switch period {
+	case "day":
+		return "今天", "每天 0 点"
+	case "month":
+		return "本月", "每月 1 号 0 点"
+	}
+	return "本周", "每周一 0 点"
+}
+
 // projectBlocked 检查项目 key 现在能不能用（项目额度组件开着、项目没冻结没解散、key 的主人还是正式成员），不能用返回给用户的原因。
 func projectBlocked(o *store.KeyOwner, limits store.CallLimits) string {
 	switch {

@@ -32,14 +32,15 @@ type KeyOwner struct {
 	QuotaLimit   *decimal.Decimal // nil 表示不限额
 	QuotaUsed    decimal.Decimal
 	// 项目 Key（docs/decisions.md「项目额度」）：钱走项目池，分组权限看项目开放的分组。ProjectID 为 0 是个人 Key
-	ProjectID       int64
-	ProjectName     string
-	ProjectOwner    string
-	ProjectFrozen   bool
-	ProjectClosed   bool
-	ProjectMember   bool // Key 的主人现在还是项目正式成员
-	ProjectBalance  decimal.Decimal
-	ProjectReserved decimal.Decimal
+	ProjectID          int64
+	ProjectName        string
+	ProjectOwner       string
+	ProjectFrozen      bool
+	ProjectClosed      bool
+	ProjectMember      bool // Key 的主人现在还是项目正式成员
+	ProjectBalance     decimal.Decimal
+	ProjectReserved    decimal.Decimal
+	ProjectLimitPeriod string // day / week / month，提示语用
 }
 
 // LookupKey 按 key 哈希查找，找不到返回 nil。
@@ -58,7 +59,7 @@ func (s *Store) LookupKey(ctx context.Context, keyHash string) (*KeyOwner, error
 		       g.ratio::text, g.retry_count, u.balance::text, u.reserved::text, k.quota_limit::text, k.quota_used::text, k.expires_at,
 		       COALESCE(p.id, 0), COALESCE(p.name, ''), COALESCE(po.username, ''), COALESCE(p.frozen, false), p.closed_at IS NOT NULL,
 		       EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = p.id AND m.user_id = u.id AND m.status = 'active'),
-		       COALESCE(p.balance, 0)::text, COALESCE(p.reserved, 0)::text
+		       COALESCE(p.balance, 0)::text, COALESCE(p.reserved, 0)::text, COALESCE(p.limit_period, '')
 		FROM api_keys k
 		JOIN users u ON u.id = k.user_id
 		JOIN groups g ON g.id = k.group_id
@@ -67,7 +68,7 @@ func (s *Store) LookupKey(ctx context.Context, keyHash string) (*KeyOwner, error
 		WHERE k.key_hash = $1`, keyHash,
 	).Scan(&o.KeyID, &o.KeyName, &o.UserID, &o.GroupID, &o.GroupName, &o.KeyEnabled, &o.UserEnabled, &o.GroupAllowed,
 		&ratio, &o.GroupRetries, &balance, &reserved, &limit, &used, &o.ExpiresAt,
-		&o.ProjectID, &o.ProjectName, &o.ProjectOwner, &o.ProjectFrozen, &o.ProjectClosed, &o.ProjectMember, &pBalance, &pReserved)
+		&o.ProjectID, &o.ProjectName, &o.ProjectOwner, &o.ProjectFrozen, &o.ProjectClosed, &o.ProjectMember, &pBalance, &pReserved, &o.ProjectLimitPeriod)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

@@ -72,10 +72,10 @@ export type Group = { id: number; name: string; ratio: string; enabled: boolean;
 export type PriceRule = {
   name: string
   input_above?: number | null // 总输入（含缓存）超过这么多 token
-  time_start?: string // 北京时间 HH:MM，含开始不含结束，可跨零点
+  time_start?: string // 业务时区（主设置里的时区，默认北京时间）HH:MM，含开始不含结束，可跨零点
   time_end?: string
-  days?: '' | 'weekend' // 周末 = 北京时间周六、周日
-  date_from?: string // 生效日期（北京时间 YYYY-MM-DD，含当天）
+  days?: '' | 'weekend' // 周末 = 业务时区的周六、周日
+  date_from?: string // 生效日期（业务时区 YYYY-MM-DD，含当天）
   date_to?: string
   input_price: string
   output_price: string
@@ -136,8 +136,9 @@ export type Project = {
   owner_name: string
   balance: string
   reserved: string
-  weekly_limit: string | null // 整个项目每周最多花多少，null 不限
-  week_spent: string
+  period_limit: string | null // 一个周期内整个项目最多花多少，null 不限
+  limit_period: LimitPeriod // 周期由创建人选，按业务时区重置
+  period_spent: string // 本周期已花
   frozen: boolean
   closed: boolean
   group_ids: number[]
@@ -146,7 +147,8 @@ export type Project = {
   my_status: '' | 'owner' | 'active' | 'pending'
   created_at: string
 }
-export type ProjectMember = { user_id: number; username: string; status: 'owner' | 'active' | 'pending'; week_spent: string; total_spent: string; created_at: string }
+export type LimitPeriod = 'day' | 'week' | 'month'
+export type ProjectMember = { user_id: number; username: string; status: 'owner' | 'active' | 'pending'; period_spent: string; total_spent: string; created_at: string }
 export type MyProjects = { enabled: boolean; can_create: boolean; projects: Project[] }
 
 export type LogEntry = {

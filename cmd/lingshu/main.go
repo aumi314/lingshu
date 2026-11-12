@@ -28,6 +28,7 @@ import (
 
 	"github.com/aumi314/lingshu/internal/api"
 	"github.com/aumi314/lingshu/internal/auth"
+	"github.com/aumi314/lingshu/internal/billing"
 	"github.com/aumi314/lingshu/internal/config"
 	"github.com/aumi314/lingshu/internal/relay"
 	"github.com/aumi314/lingshu/internal/relay/usage"
@@ -102,6 +103,12 @@ func serve() error {
 	defer s.Close()
 	if err := s.Migrate(ctx); err != nil {
 		return err
+	}
+	// 业务时区（主设置里的时区）：价格规则和项目每周重置按它算
+	if tz, err := s.Setting(ctx, "timezone"); err == nil {
+		if err := billing.SetZone(tz); err != nil {
+			slog.Warn("时区设置无效，按北京时间", "timezone", tz, "err", err)
+		}
 	}
 	// 上次进程里进行中的请求都已结束，它们冻结的额度一并释放
 	if err := s.ResetReservations(ctx); err != nil {

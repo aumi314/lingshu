@@ -755,7 +755,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"call_limits": limits, "redeem_enabled": redeem,
-		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode, "registration_enabled": registration.Enabled, "registration_code_required": registration.CodeRequired, "registration_email_required": registration.EmailRequired, "api_base_url": apiBaseURL,
+		"cny_per_usd": s.cnyPerUSD(r), "payment_enabled": payment == "true", "registration_mode": registrationMode, "registration_enabled": registration.Enabled, "registration_code_required": registration.CodeRequired, "registration_email_required": registration.EmailRequired, "api_base_url": apiBaseURL, "timezone": billing.ZoneName(),
 		"fx_mode": s.fxMode(r.Context()), "fx_status": s.fxStatus(r.Context()), "announcement": s.announcement(r.Context()),
 		"user_agreement": legal.UserAgreement, "privacy_policy": legal.PrivacyPolicy, "legal_version": legal.Version,
 	})
@@ -829,6 +829,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		BridgeMessagesToResponses *bool            `json:"bridge_messages_to_responses"`
 		CaptureConversations      *bool            `json:"capture_conversations"`
 		ProjectsEnabled           *bool            `json:"projects_enabled"`
+		Timezone                  *string          `json:"timezone"`
 		Announcement              *string          `json:"announcement"`
 		UserAgreement             *string          `json:"user_agreement"`
 		PrivacyPolicy             *string          `json:"privacy_policy"`
@@ -950,7 +951,17 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if in.Timezone != nil {
+		*in.Timezone = strings.TrimSpace(*in.Timezone)
+		if _, err := billing.ParseZone(*in.Timezone); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	var kv [][2]string // 一次保存的多项设置在同一事务里写，操作日志记一条
+	if in.Timezone != nil {
+		kv = append(kv, [2]string{"timezone", *in.Timezone})
+	}
 	if in.FXMode != nil {
 		kv = append(kv, [2]string{"fx_mode", *in.FXMode})
 	}
@@ -989,6 +1000,9 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	if err := s.Store.SetSettings(r.Context(), kv); err != nil {
 		writeStoreError(w, err)
 		return
+	}
+	if in.Timezone != nil {
+		billing.SetZone(*in.Timezone) // 已校验，保存后立即生效
 	}
 	// 切到实时后马上拉一次，不用等一小时；失败原因写进状态，页面上能看到
 	if in.FXMode != nil && *in.FXMode == "live" {

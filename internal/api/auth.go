@@ -16,6 +16,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/aumi314/lingshu/internal/auth"
+	"github.com/aumi314/lingshu/internal/billing"
 	"github.com/aumi314/lingshu/internal/store"
 )
 
@@ -145,7 +146,8 @@ func (s *Server) cnyPerUSD(r *http.Request) decimal.Decimal {
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"user": currentUser(r), "cny_per_usd": s.cnyPerUSD(r)})
+	// timezone / timezone_label：价格规则时段和项目每周重置用的业务时区，页面上写“北京时间”的地方用它
+	writeJSON(w, http.StatusOK, map[string]any{"user": currentUser(r), "cny_per_usd": s.cnyPerUSD(r), "timezone": billing.ZoneName(), "timezone_label": billing.ZoneLabel()})
 }
 
 var allowedPrefs = map[string][]string{
