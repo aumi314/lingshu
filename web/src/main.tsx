@@ -19,6 +19,7 @@ import Models from './pages/Models'
 import Logs from './pages/Logs'
 import Wallet from './pages/Wallet'
 import Settings from './pages/Settings'
+import Projects from './pages/Projects'
 import Users from './pages/admin/Users'
 import Pricing from './pages/admin/Pricing'
 import Channels from './pages/admin/Channels'
@@ -82,6 +83,7 @@ function Root() {
                 <Route path="models" element={<Models />} />
                 <Route path="logs" element={<Logs />} />
                 <Route path="wallet" element={<Wallet />} />
+                <Route path="projects" element={<Projects />} />
                 <Route path="settings" element={<Settings />} />
                 {isAdmin(user?.role) && (
                   <Route path="admin">

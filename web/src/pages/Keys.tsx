@@ -136,7 +136,7 @@ export default function Keys() {
         pagination={false}
         locale={{ emptyText: t('还没有 key，点右上角创建一个', 'No keys yet. Create one from the top right.') }}
         columns={[
-          { title: t('名称', 'Name'), dataIndex: 'name' },
+          { title: t('名称', 'Name'), dataIndex: 'name', render: (v, k) => <span>{v}{k.project_name && <Tag color="gold" style={{ marginLeft: 6 }}>{t('项目', 'Project')} · {k.project_name}</Tag>}</span> },
           { title: 'Key', dataIndex: 'prefix', render: (v) => <span className="mono">{v}…</span> },
           { title: t('服务分组', 'Service group'), dataIndex: 'group_name', render: (v) => <Tag>{v}</Tag> },
           {

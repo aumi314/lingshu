@@ -57,6 +57,8 @@ export type User = {
   /** 管理员写的内部备注，只有管理端用户列表返回 */
   note?: string  /** 该用户所有 key 最近一次调用的时间，只有管理端用户列表返回 */
   last_used_at?: string
+  /** 管理员允许他创建项目（项目额度组件） */
+  can_create_projects?: boolean
 }
 
 // 超级管理员和管理员都能进后台，权限相同；超级管理员只多一项任免管理员
@@ -119,7 +121,33 @@ export type APIKey = {
   /** 过期时间（可空），空表示永不过期 */
   expires_at: string | null
   created_at: string
+  /** 项目 key 的项目，个人 key 为 0 */
+  project_id?: number
+  project_name?: string
 }
+
+// 项目额度（docs/decisions.md「项目额度」）：创建人从自己余额转入池子，成员用项目 key 调用时从池里扣
+export type ProjectGroup = { id: number; name: string; ratio: string; is_collection: boolean }
+export type Project = {
+  id: number
+  name: string
+  invite_code?: string // 只给创建人和管理员
+  owner_id: number
+  owner_name: string
+  balance: string
+  reserved: string
+  weekly_limit: string | null // 整个项目每周最多花多少，null 不限
+  week_spent: string
+  frozen: boolean
+  closed: boolean
+  group_ids: number[]
+  groups: ProjectGroup[]
+  members: number
+  my_status: '' | 'owner' | 'active' | 'pending'
+  created_at: string
+}
+export type ProjectMember = { user_id: number; username: string; status: 'owner' | 'active' | 'pending'; week_spent: string; total_spent: string; created_at: string }
+export type MyProjects = { enabled: boolean; can_create: boolean; projects: Project[] }
 
 export type LogEntry = {
   id: number

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base32"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -36,6 +37,7 @@ type Project struct {
 	Frozen      bool             `json:"frozen"`
 	Closed      bool             `json:"closed"`
 	GroupIDs    []int64          `json:"group_ids"`
+	Groups      json.RawMessage  `json:"groups"` // 开放分组的 id、名称、倍率，成员建 key 时选
 	Members     int              `json:"members"`   // 正式成员数（含创建人）
 	MyStatus    string           `json:"my_status"` // 当前用户的身份：owner / active / pending，管理员列表里为空
 	CreatedAt   time.Time        `json:"created_at"`
@@ -44,6 +46,8 @@ type Project struct {
 const projectColumns = `p.id, p.name, p.invite_code, p.owner_id, o.username, p.balance::text, p.reserved::text, p.weekly_limit::text,
 	` + `%WEEK%` + `::text, p.frozen, p.closed_at IS NOT NULL,
 	COALESCE((SELECT array_agg(pg.group_id ORDER BY pg.group_id) FROM project_groups pg WHERE pg.project_id = p.id), '{}'),
+	COALESCE((SELECT jsonb_agg(jsonb_build_object('id', g.id, 'name', g.name, 'ratio', g.ratio::text, 'is_collection', g.is_collection) ORDER BY g.sort_order, g.id)
+	          FROM project_groups pg JOIN groups g ON g.id = pg.group_id WHERE pg.project_id = p.id), '[]'),
 	(SELECT count(*) FROM project_members m WHERE m.project_id = p.id AND m.status = 'active'), p.created_at`
 
 func projectSelect() string { return strings.Replace(projectColumns, "%WEEK%", weekSpent("p.id"), 1) }
@@ -53,7 +57,7 @@ func scanProject(row pgx.Row, extra ...any) (*Project, error) {
 	var balance, reserved, spent string
 	var limit *string
 	dest := append([]any{&p.ID, &p.Name, &p.InviteCode, &p.OwnerID, &p.OwnerName, &balance, &reserved, &limit, &spent,
-		&p.Frozen, &p.Closed, &p.GroupIDs, &p.Members, &p.CreatedAt}, extra...)
+		&p.Frozen, &p.Closed, &p.GroupIDs, &p.Groups, &p.Members, &p.CreatedAt}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return nil, translate(err)
 	}
