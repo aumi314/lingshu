@@ -55,7 +55,7 @@ type entity struct {
 
 var (
 	userEntity = entity{"user", "username", `
-		SELECT jsonb_build_object('username', u.username, 'role', u.role, 'enabled', u.enabled, 'note', u.note,
+		SELECT jsonb_build_object('username', u.username, 'role', u.role, 'enabled', u.enabled, 'note', u.note, 'can_create_projects', u.can_create_projects,
 		       'password', md5(u.password_hash),
 		       'user_groups', COALESCE((SELECT jsonb_agg(g.name ORDER BY g.name) FROM user_group_members m
 		                                JOIN user_groups g ON g.id = m.user_group_id WHERE m.user_id = u.id), '[]'))

@@ -96,6 +96,7 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 		GroupID    int64           `json:"group_id"`
 		QuotaLimit json.RawMessage `json:"quota_limit"`
 		ExpiresAt  *time.Time      `json:"expires_at"`
+		ProjectID  int64           `json:"project_id"` // 项目 key：调用花项目池的钱；0 是个人 key
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -105,7 +106,12 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "给 key 起个名字，方便以后区分用途")
 		return
 	}
-	if allowed, err := s.canUseGroup(r, in.GroupID); err != nil {
+	if in.ProjectID != 0 {
+		if msg := s.projectKeyAllowed(r, in.ProjectID, in.GroupID); msg != "" {
+			writeError(w, http.StatusBadRequest, msg)
+			return
+		}
+	} else if allowed, err := s.canUseGroup(r, in.GroupID); err != nil {
 		writeStoreError(w, err)
 		return
 	} else if !allowed {
@@ -123,7 +129,7 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 	}
 	u := currentUser(r)
 	key, hash, prefix := auth.NewAPIKey()
-	id, err := s.Store.CreateAPIKey(r.Context(), u.ID, in.Name, hash, prefix, in.GroupID, quota, in.ExpiresAt)
+	id, err := s.Store.CreateAPIKey(r.Context(), u.ID, in.Name, hash, prefix, in.GroupID, quota, in.ExpiresAt, in.ProjectID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -160,7 +166,17 @@ func (s *Server) updateKey(w http.ResponseWriter, r *http.Request) {
 	if raw, has := in["group_id"]; has {
 		var gid int64
 		json.Unmarshal(raw, &gid)
-		if allowed, err := s.canUseGroup(r, gid); err != nil {
+		projectID, err := s.Store.KeyProjectID(r.Context(), u.ID, id)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		if projectID != 0 { // 项目 key 只能换成项目开放的分组
+			if msg := s.projectKeyAllowed(r, projectID, gid); msg != "" {
+				writeError(w, http.StatusBadRequest, msg)
+				return
+			}
+		} else if allowed, err := s.canUseGroup(r, gid); err != nil {
 			writeStoreError(w, err)
 			return
 		} else if !allowed {

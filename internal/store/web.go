@@ -92,9 +92,11 @@ type User struct {
 	Note string `json:"note,omitempty"`
 	// LastUsedAt 是该用户所有 key 最近一次调用的时间，只在管理端列表里带出来。
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	// CanCreateProjects：管理员允许他创建项目（项目额度组件）
+	CanCreateProjects bool `json:"can_create_projects"`
 }
 
-const userColumns = `u.id, u.username, u.role, u.balance::text, u.enabled, u.preferences, u.created_at,
+const userColumns = `u.id, u.username, u.role, u.balance::text, u.enabled, u.preferences, u.created_at, u.can_create_projects,
 	COALESCE((SELECT array_agg(ugm.user_group_id ORDER BY ugm.user_group_id) FROM user_group_members ugm WHERE ugm.user_id = u.id), '{}')`
 
 func scanUser(row pgx.Row) (*User, error) { return scanUserRow(row, false) }
@@ -103,7 +105,7 @@ func scanUser(row pgx.Row) (*User, error) { return scanUserRow(row, false) }
 func scanUserRow(row pgx.Row, withNote bool) (*User, error) {
 	var u User
 	var balance string
-	dest := []any{&u.ID, &u.Username, &u.Role, &balance, &u.Enabled, &u.Preferences, &u.CreatedAt, &u.UserGroupIDs}
+	dest := []any{&u.ID, &u.Username, &u.Role, &balance, &u.Enabled, &u.Preferences, &u.CreatedAt, &u.CanCreateProjects, &u.UserGroupIDs}
 	if withNote {
 		dest = append(dest, &u.Note, &u.LastUsedAt)
 	}
@@ -150,13 +152,14 @@ func (s *Store) PasswordHash(ctx context.Context, userID int64) (string, error) 
 }
 
 type UserPatch struct {
-	Username      *string
-	Note          *string
-	Role          *string
-	Enabled       *bool
-	PasswordHash  *string
-	UserGroupIDs  *[]int64
-	BalanceChange *UserBalanceChange
+	Username          *string
+	Note              *string
+	Role              *string
+	Enabled           *bool
+	PasswordHash      *string
+	UserGroupIDs      *[]int64
+	BalanceChange     *UserBalanceChange
+	CanCreateProjects *bool
 }
 
 type UserBalanceChange struct {
@@ -209,8 +212,8 @@ func updateUserProfile(ctx context.Context, tx pgx.Tx, id int64, p UserPatch) er
 	tag, err := tx.Exec(ctx, `
 		UPDATE users SET username = COALESCE($2, username), role = COALESCE($3, role),
 		       enabled = COALESCE($4, enabled), password_hash = COALESCE($5, password_hash),
-		       note = COALESCE($6, note)
-		WHERE id = $1`, id, p.Username, p.Role, p.Enabled, p.PasswordHash, p.Note)
+		       note = COALESCE($6, note), can_create_projects = COALESCE($7, can_create_projects)
+		WHERE id = $1`, id, p.Username, p.Role, p.Enabled, p.PasswordHash, p.Note, p.CanCreateProjects)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "users_username_key" {
@@ -682,6 +685,8 @@ type CallLimits struct {
 	BridgeMessagesToResponses bool `json:"bridge_messages_to_responses"`
 	// 对话留存（默认关）：存请求和回复原文，见 capture.go
 	CaptureConversations bool `json:"capture_conversations"`
+	// 项目额度组件（默认关）：见 projects.go
+	ProjectsEnabled bool `json:"projects_enabled"`
 }
 
 var DefaultCallLimits = CallLimits{Concurrency: 10, RPM: 120, ReserveOutput: 8192, BridgeResponsesToMessages: true, BridgeMessagesToResponses: true}
@@ -689,7 +694,7 @@ var DefaultCallLimits = CallLimits{Concurrency: 10, RPM: 120, ReserveOutput: 819
 func (s *Store) CallLimits(ctx context.Context) (CallLimits, error) {
 	l := DefaultCallLimits
 	rows, err := s.Pool.Query(ctx, `SELECT key, value FROM settings WHERE key IN ('user_concurrency', 'user_rpm', 'reserve_output_tokens',
-		'bridge_responses_to_messages', 'bridge_messages_to_responses', 'capture_conversations')`)
+		'bridge_responses_to_messages', 'bridge_messages_to_responses', 'capture_conversations', 'projects_enabled')`)
 	if err != nil {
 		return l, err
 	}
@@ -708,6 +713,9 @@ func (s *Store) CallLimits(ctx context.Context) (CallLimits, error) {
 			continue
 		case "capture_conversations":
 			l.CaptureConversations = v == "true"
+			continue
+		case "projects_enabled":
+			l.ProjectsEnabled = v == "true"
 			continue
 		}
 		n, err := strconv.ParseInt(v, 10, 64)

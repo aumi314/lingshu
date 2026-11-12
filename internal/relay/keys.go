@@ -107,3 +107,18 @@ func retryAfter(h http.Header) time.Duration {
 	}
 	return 0
 }
+
+// projectBlocked 检查项目 key 现在能不能用（项目额度组件开着、项目没冻结没解散、key 的主人还是正式成员），不能用返回给用户的原因。
+func projectBlocked(o *store.KeyOwner, limits store.CallLimits) string {
+	switch {
+	case !limits.ProjectsEnabled:
+		return "项目功能已关闭，项目 key 暂时不能用，请联系管理员或换一个个人 key"
+	case o.ProjectClosed:
+		return "项目「" + o.ProjectName + "」已解散，这个 key 不能再用了"
+	case o.ProjectFrozen:
+		return "项目「" + o.ProjectName + "」已被管理员冻结，请联系管理员"
+	case !o.ProjectMember:
+		return "你已经不是项目「" + o.ProjectName + "」的成员，这个 key 不能再用了"
+	}
+	return ""
+}
