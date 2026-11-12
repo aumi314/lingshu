@@ -333,7 +333,19 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 超超 gpt 连续 5 次 60 秒没回响应头，请求直接失败（attempts=1），Relay-gpt 后面三个渠道一个都没试：等响应头的时限和重试总时限都是 60 秒，第一次超时就耗光预算。#78 把重试总时限改为 2 分钟（`Handler.RetryBudget`），并新增 `request_logs.upstream_header_ms`（迁移 0037）；#79 应用户要求把流式等响应头的时限从 60 秒缩到 30 秒（发一句话也要干等 60 秒，体验太差）。近两周首字超过 30 秒的成功请求占 3.7%，是误判上限；上线后首半小时 47 条的响应头中位数 7.3 秒，说明多数中转要等首字才回响应头，30 秒的误判率接近这个上限，待复核。测试：`TestStreamHeaderTimeoutStillFailsOver`、`TestLogsUpstreamHeaderTime`。#79 合并时检测 67（超超 claude 完整档）还在跑，用户确认跑完（94 分）后才发布。
 
-### 项目额度（2026-11-11，PR #92 后端、本 PR 页面）
+### 去掉使用模式（2026-11-11，PR #85）
+
+用户决定不再区分自用 / 公司团队网关 / 商业中转，功能都是可开关的组件。删掉运营设置的“使用模式”卡片，`/api/admin/settings` 不再读写 `deployment_mode`（库里旧值保留，删数据的迁移会被发布流程当成破坏性迁移），删 `TestDeploymentModeIsCommercialRelay`；旧决策原文在本文件「被取代的决策」。
+
+### 对话留存第一版（2026-11-11，PR #86；#91 修正）
+
+迁移 0038：`conversation_blobs`（按 SHA-256 去重、gzip 的内容块）、`request_captures`（每次调用的骨架和回复）。入口套 `captureWriter` 记客户端收到的回复（8 MiB 截断，`Unwrap` 保留 Flush），结算后保存、失败不影响计费；`/api/admin/logs/{id}/conversation` 还原请求并抽出回复正文；全站日志请求详情分“详情 / 对话内容”。测试 `TestConversationCapture`（第二轮共享历史只新增 2 个块）、`TestReplyText`、`conversation.browser.cjs`。#91（Codex）改为按底层实际写出的字节记录，读取失败可重试，下载带 `response_truncated`。线上默认关闭。
+
+### 设置页“运营设置”改名“主设置”（2026-11-11，PR #88）
+
+重做 #84 里仍适用的部分（#84 的“商业中转运营”改名随 #85 作废，已关闭）。标签参数仍是 `operations`，旧链接可用。
+
+### 项目额度（2026-11-11，PR #92 后端、#93 页面）
 
 用户确认规则：创建人从自己余额转入、创建人审批、创建人管理、整个项目每周上限。迁移 0039（项目、成员、开放分组，`api_keys` / `request_logs` / `balance_adjustments` 加 `project_id`）。项目 key 从项目池预扣结算（池子可用和本周剩余取小，同样的行锁和单请求小额透支规则），开放分组在调用时再按创建人的权限校验。页面：「我的项目」（卡片、邀请码申请、项目弹窗：我的 key / 额度池 / 成员 / 规则）、用户编辑“允许创建项目”、主设置“项目”开关与全部项目列表（冻结）、API keys 页项目标签、操作日志项目标签。测试：`TestProjectFlow`、`TestProjectKeyChargesPool`、`TestProjectKeyRejections`、`TestProjectPoolHoldsUnderConcurrency`（5 个并发只放行 1 个）、操作日志覆盖登记、`projects.browser.cjs`、`users.browser.cjs` 补字段。
 
