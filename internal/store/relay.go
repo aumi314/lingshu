@@ -31,27 +31,43 @@ type KeyOwner struct {
 	Reserved     decimal.Decimal  // 进行中请求冻结的额度，可用余额 = Balance - Reserved
 	QuotaLimit   *decimal.Decimal // nil 表示不限额
 	QuotaUsed    decimal.Decimal
+	// 项目 Key（docs/decisions.md「项目额度」）：钱走项目池，分组权限看项目开放的分组。ProjectID 为 0 是个人 Key
+	ProjectID       int64
+	ProjectName     string
+	ProjectOwner    string
+	ProjectFrozen   bool
+	ProjectClosed   bool
+	ProjectMember   bool // Key 的主人现在还是项目正式成员
+	ProjectBalance  decimal.Decimal
+	ProjectReserved decimal.Decimal
 }
 
 // LookupKey 按 key 哈希查找，找不到返回 nil。
 func (s *Store) LookupKey(ctx context.Context, keyHash string) (*KeyOwner, error) {
 	var o KeyOwner
-	var ratio, balance, reserved, used string
+	var ratio, balance, reserved, used, pBalance, pReserved string
 	var limit *string
+	// 分组权限：个人 Key 看用户自己能不能用；项目 Key 看项目开放了这个分组、且创建人现在仍能用（管理员收回创建人的权限后项目也跟着失效）
 	err := s.Pool.QueryRow(ctx, `
 		SELECT k.id, k.name, k.user_id, k.group_id, g.name, k.enabled, u.enabled,
 		       g.enabled AND (g.is_public OR EXISTS (
 			       SELECT 1 FROM group_user_groups gug
 			       JOIN user_group_members ugm ON ugm.user_group_id = gug.user_group_id
-			       WHERE gug.group_id = g.id AND ugm.user_id = u.id
-		       )),
-		       g.ratio::text, g.retry_count, u.balance::text, u.reserved::text, k.quota_limit::text, k.quota_used::text, k.expires_at
+			       WHERE gug.group_id = g.id AND ugm.user_id = COALESCE(p.owner_id, u.id)
+		       )) AND (p.id IS NULL OR EXISTS (SELECT 1 FROM project_groups pg WHERE pg.project_id = p.id AND pg.group_id = g.id)),
+		       g.ratio::text, g.retry_count, u.balance::text, u.reserved::text, k.quota_limit::text, k.quota_used::text, k.expires_at,
+		       COALESCE(p.id, 0), COALESCE(p.name, ''), COALESCE(po.username, ''), COALESCE(p.frozen, false), p.closed_at IS NOT NULL,
+		       EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = p.id AND m.user_id = u.id AND m.status = 'active'),
+		       COALESCE(p.balance, 0)::text, COALESCE(p.reserved, 0)::text
 		FROM api_keys k
 		JOIN users u ON u.id = k.user_id
 		JOIN groups g ON g.id = k.group_id
+		LEFT JOIN projects p ON p.id = k.project_id
+		LEFT JOIN users po ON po.id = p.owner_id
 		WHERE k.key_hash = $1`, keyHash,
 	).Scan(&o.KeyID, &o.KeyName, &o.UserID, &o.GroupID, &o.GroupName, &o.KeyEnabled, &o.UserEnabled, &o.GroupAllowed,
-		&ratio, &o.GroupRetries, &balance, &reserved, &limit, &used, &o.ExpiresAt)
+		&ratio, &o.GroupRetries, &balance, &reserved, &limit, &used, &o.ExpiresAt,
+		&o.ProjectID, &o.ProjectName, &o.ProjectOwner, &o.ProjectFrozen, &o.ProjectClosed, &o.ProjectMember, &pBalance, &pReserved)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -59,6 +75,7 @@ func (s *Store) LookupKey(ctx context.Context, keyHash string) (*KeyOwner, error
 		return nil, err
 	}
 	o.GroupRatio, o.Balance, o.Reserved, o.QuotaUsed = mustDecimal(ratio), mustDecimal(balance), mustDecimal(reserved), mustDecimal(used)
+	o.ProjectBalance, o.ProjectReserved = mustDecimal(pBalance), mustDecimal(pReserved)
 	if limit != nil {
 		l := mustDecimal(*limit)
 		o.QuotaLimit = &l
@@ -287,6 +304,7 @@ type RequestLog struct {
 	Prices                billing.Prices  // 实际生效的单价快照（命中规则时是规则价）
 	PriceRule             string          // 命中的价格规则名，空表示基础价
 	GroupRatio            decimal.Decimal // 倍率快照
+	ProjectID             int64           // 项目 Key 的项目，0 是个人 Key：结算从项目池扣
 	Cost                  decimal.Decimal // 实际扣费，0 表示不扣
 	Attempts              int
 	FirstByteMS           int // 以下三个都从进入网关算起
@@ -316,6 +334,10 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 	if l.ChannelKeyID != 0 {
 		channelKeyID = &l.ChannelKeyID
 	}
+	var projectID *int64
+	if l.ProjectID != 0 {
+		projectID = &l.ProjectID
+	}
 	ratio := l.GroupRatio
 	if ratio.IsZero() && l.Cost.IsZero() {
 		ratio = decimal.NewFromInt(1) // 没走到计费的请求（如被拒绝），倍率记 1
@@ -341,9 +363,9 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 				input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, reasoning_tokens, usage_estimated,
 				input_price, output_price, cache_read_price, cache_write_price, group_ratio, cost,
 				attempts, first_byte_ms, total_ms, upstream_response_id, channel_name, key_name, price_rule, group_name, client_ip, reasoning_effort,
-				service_tier, read_ms, upstream_start_ms, failed_channel_ids, channel_key_id, failed_key_ids, upstream_header_ms
+				service_tier, read_ms, upstream_start_ms, failed_channel_ids, channel_key_id, failed_key_ids, upstream_header_ms, project_id
 			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
-			          $22::numeric,$23::numeric,$24::numeric,$25::numeric,$26::numeric,$27::numeric,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44)`,
+			          $22::numeric,$23::numeric,$24::numeric,$25::numeric,$26::numeric,$27::numeric,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45)`,
 			l.RequestID, l.UserID, l.APIKeyID, l.GroupID, l.Protocol, string(upstreamProtocol), operation, diagnostics,
 			l.Model, l.UpstreamModel, channelID,
 			l.Stream, l.Status, l.HTTPStatus, l.Error,
@@ -351,14 +373,18 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 			l.Prices.Input.String(), l.Prices.Output.String(), l.Prices.CacheRead.String(), l.Prices.CacheWrite.String(),
 			ratio.String(), l.Cost.String(),
 			l.Attempts, l.FirstByteMS, l.TotalMS, l.UpstreamResponseID, l.ChannelName, l.KeyName, l.PriceRule, l.GroupName, l.ClientIP, l.ReasoningEffort,
-			l.ServiceTier, l.ReadMS, l.UpstreamStartMS, failedIDs(l.FailedChannelIDs), channelKeyID, failedIDs(l.FailedKeyIDs), l.UpstreamHeaderMS,
+			l.ServiceTier, l.ReadMS, l.UpstreamStartMS, failedIDs(l.FailedChannelIDs), channelKeyID, failedIDs(l.FailedKeyIDs), l.UpstreamHeaderMS, projectID,
 		); err != nil {
 			return fmt.Errorf("写请求日志: %w", err)
 		}
 		if l.Cost.IsPositive() || l.Reserved.IsPositive() {
-			// 解冻放行时预扣的额度，按实际费用扣余额，多退少补
-			if _, err := tx.Exec(ctx, `UPDATE users SET balance = balance - $1::numeric, reserved = GREATEST(reserved - $3::numeric, 0) WHERE id = $2`,
-				l.Cost.String(), l.UserID, l.Reserved.String()); err != nil {
+			// 解冻放行时预扣的额度，按实际费用扣余额（项目 Key 扣项目池），多退少补
+			table, owner := "users", l.UserID
+			if l.ProjectID != 0 {
+				table, owner = "projects", l.ProjectID
+			}
+			if _, err := tx.Exec(ctx, `UPDATE `+table+` SET balance = balance - $1::numeric, reserved = GREATEST(reserved - $3::numeric, 0) WHERE id = $2`,
+				l.Cost.String(), owner, l.Reserved.String()); err != nil {
 				return fmt.Errorf("扣余额: %w", err)
 			}
 		}
@@ -407,14 +433,15 @@ func (s *Store) ResetReservations(ctx context.Context) error {
 }
 
 // CreateAPIKey 保存新 key 的哈希；quota 为 nil 表示不限额，expiresAt 为 nil 表示永不过期。
-func (s *Store) CreateAPIKey(ctx context.Context, userID int64, name, keyHash, keyPrefix string, groupID int64, quota *decimal.Decimal, expiresAt *time.Time) (int64, error) {
+// CreateAPIKey 建 key；projectID 为 0 是个人 key，否则是项目 key（权限由接口层检查）。
+func (s *Store) CreateAPIKey(ctx context.Context, userID int64, name, keyHash, keyPrefix string, groupID int64, quota *decimal.Decimal, expiresAt *time.Time, projectID int64) (int64, error) {
 	var id int64
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		return track(ctx, tx, keyEntity, &id, userID, func() error {
 			return tx.QueryRow(ctx, `
-				INSERT INTO api_keys (user_id, name, key_hash, key_prefix, group_id, quota_limit, expires_at)
-				VALUES ($1, $2, $3, $4, $5, $6::numeric, $7) RETURNING id`,
-				userID, name, keyHash, keyPrefix, groupID, decimalArg(quota), expiresAt,
+				INSERT INTO api_keys (user_id, name, key_hash, key_prefix, group_id, quota_limit, expires_at, project_id)
+				VALUES ($1, $2, $3, $4, $5, $6::numeric, $7, NULLIF($8, 0)) RETURNING id`,
+				userID, name, keyHash, keyPrefix, groupID, decimalArg(quota), expiresAt, projectID,
 			).Scan(&id)
 		})
 	})

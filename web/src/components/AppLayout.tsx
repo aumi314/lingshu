@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Avatar, Button, Drawer, Grid, Layout, Menu, Typography, theme } from 'antd'
 import {
   ApiOutlined,
+  ApartmentOutlined,
   AppstoreOutlined,
   BarChartOutlined,
   DashboardOutlined,
@@ -17,7 +18,7 @@ import {
 } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../app'
-import { isAdmin } from '../api'
+import { get, isAdmin, type MyProjects } from '../api'
 import Logo from './Logo'
 
 export default function AppLayout() {
@@ -27,6 +28,11 @@ export default function AppLayout() {
   const { token } = theme.useToken()
   const mobile = !Grid.useBreakpoint().md // 窄屏（手机）把侧边菜单收进抽屉
   const [menuOpen, setMenuOpen] = useState(false)
+  // 项目额度组件开着才显示「我的项目」
+  const [projectsOn, setProjectsOn] = useState(false)
+  useEffect(() => {
+    get<MyProjects>('/api/me/projects').then((r) => setProjectsOn(r.enabled)).catch(() => {})
+  }, [])
   const go = (path: string) => {
     setMenuOpen(false)
     nav(path)
@@ -38,6 +44,7 @@ export default function AppLayout() {
     { key: '/console/models', icon: <TagsOutlined />, label: t('模型与价格', 'Models & pricing') },
     { key: '/console/logs', icon: <BarChartOutlined />, label: t('账户日志', 'Account logs') },
     { key: '/console/wallet', icon: <WalletOutlined />, label: t('钱包充值', 'Wallet & top-up') },
+    ...(projectsOn ? [{ key: '/console/projects', icon: <ApartmentOutlined />, label: t('我的项目', 'My projects') }] : []),
     ...(isAdmin(user?.role)
       ? [
           {

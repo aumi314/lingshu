@@ -60,6 +60,19 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/me/keys/{id}", s.user(s.updateKey))
 	mux.HandleFunc("DELETE /api/me/keys/{id}", s.user(s.deleteKey))
 	mux.HandleFunc("GET /api/me/logs", s.user(s.myLogs))
+	// 项目额度（docs/decisions.md「项目额度」）
+	mux.HandleFunc("GET /api/me/projects", s.user(s.myProjects))
+	mux.HandleFunc("POST /api/me/projects", s.user(s.createProject))
+	mux.HandleFunc("POST /api/me/projects/join", s.user(s.joinProject))
+	mux.HandleFunc("GET /api/me/projects/{id}", s.user(s.getProject))
+	mux.HandleFunc("PATCH /api/me/projects/{id}", s.user(s.updateProject))
+	mux.HandleFunc("POST /api/me/projects/{id}/invite-code", s.user(s.resetProjectCode))
+	mux.HandleFunc("POST /api/me/projects/{id}/transfer", s.user(s.transferProject))
+	mux.HandleFunc("DELETE /api/me/projects/{id}", s.user(s.closeProject))
+	mux.HandleFunc("POST /api/me/projects/{id}/members/{uid}/approve", s.user(s.approveProjectMember))
+	mux.HandleFunc("DELETE /api/me/projects/{id}/members/{uid}", s.user(s.removeProjectMember))
+	mux.HandleFunc("GET /api/admin/projects", s.admin(s.adminProjects))
+	mux.HandleFunc("PUT /api/admin/projects/{id}/frozen", s.admin(s.adminFreezeProject))
 
 	// 管理端
 	mux.HandleFunc("GET /api/admin/users", s.admin(s.listUsers))

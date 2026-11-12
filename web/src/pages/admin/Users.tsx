@@ -23,7 +23,7 @@ export default function Users() {
   const [toggling, setToggling] = useState<number[]>([])
   const editSession = useRef(0)
   const [createForm] = Form.useForm()
-  const [editForm] = Form.useForm<{ username: string; password?: string; note?: string; role: User['role']; user_group_ids: number[]; enabled: boolean }>()
+  const [editForm] = Form.useForm<{ username: string; password?: string; note?: string; role: User['role']; user_group_ids: number[]; enabled: boolean; can_create_projects: boolean }>()
   const [balanceForm] = Form.useForm<{ mode: 'add' | 'set'; amount?: string; note: string }>()
   const editingGroupIDs = Form.useWatch('user_group_ids', editForm)
 
@@ -90,7 +90,7 @@ export default function Users() {
     if (u.role === 'super_admin' && !isSuper) return
     ++editSession.current
     setSubmitting(false)
-    editForm.setFieldsValue({ username: u.username, password: '', note: u.note ?? '', role: u.role, user_group_ids: u.user_group_ids ?? [], enabled: u.enabled })
+    editForm.setFieldsValue({ username: u.username, password: '', note: u.note ?? '', role: u.role, user_group_ids: u.user_group_ids ?? [], enabled: u.enabled, can_create_projects: !!u.can_create_projects })
     balanceForm.setFieldsValue({ mode: 'add', amount: undefined, note: '' })
     setEditingUser(u)
   }
@@ -124,6 +124,7 @@ export default function Users() {
         role: v.role,
         user_group_ids: v.user_group_ids ?? [],
         enabled: v.enabled,
+        can_create_projects: !!v.can_create_projects,
         ...(balance.amount != null && balance.amount !== '' ? {
           balance_adjustment: { mode: balance.mode, amount: balance.amount, currency, note: balance.note ?? '' },
         } : {}),
@@ -269,6 +270,9 @@ export default function Users() {
           </Form.Item>
           <Form.Item name="enabled" label={t('账号状态', 'Account status')} valuePropName="checked" extra={editingUser?.id === me?.id ? t('不能停用当前登录账号', 'You cannot disable your own account') : undefined}>
             <Switch checkedChildren={t('启用', 'Enabled')} unCheckedChildren={t('停用', 'Disabled')} disabled={submitting || editingUser?.id === me?.id} />
+          </Form.Item>
+          <Form.Item name="can_create_projects" label={t('允许创建项目', 'Can create projects')} valuePropName="checked" extra={t('打开后，他能在「我的项目」创建项目，从自己的余额转入共享额度池给成员用（需要先在系统设置里开启项目功能）', 'Lets them create projects under My projects and fund a shared pool from their own balance (Projects must be on in System settings)')}>
+            <Switch disabled={submitting} />
           </Form.Item>
         </Form>
 

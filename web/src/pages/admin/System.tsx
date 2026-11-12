@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Alert, App, Button, Card, Checkbox, Form, Input, InputNumber, Modal, Radio, Space, Switch, Table, Tabs, Tag, Typography } from 'antd'
 import { useSearchParams } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { del, get, post, put } from '../../api'
+import { del, get, post, put, type Project } from '../../api'
 import { useApp } from '../../app'
 import PaymentSettings from '../../components/PaymentSettings'
 import RedeemCodes from '../../components/RedeemCodes'
@@ -13,14 +13,14 @@ type RegistrationCode = { id: number; prefix: string; created_at: string; used_b
 type GeneratedCode = { id: number; prefix: string; code: string }
 
 type FXStatus = { source: string; date?: string; rate?: string; checked_at?: string; error?: string }
-type CallLimits = { user_concurrency: number; user_rpm: number; reserve_output_tokens: number; bridge_responses_to_messages?: boolean; bridge_messages_to_responses?: boolean; capture_conversations?: boolean }
+type CallLimits = { user_concurrency: number; user_rpm: number; reserve_output_tokens: number; bridge_responses_to_messages?: boolean; bridge_messages_to_responses?: boolean; capture_conversations?: boolean; projects_enabled?: boolean }
 type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; redeem_enabled: boolean; registration_enabled?: boolean; registration_code_required?: boolean; registration_email_required?: boolean; registration_mode?: string; api_base_url: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string; user_agreement?: string; privacy_policy?: string }
 
 // 协议正文最长 10 万字，和后端一致
 const maxLegalLength = 100000
 
 export default function System() {
-  const { t, reload, user } = useApp()
+  const { t, reload, user, money } = useApp()
   const { message } = App.useApp()
   const [params, setParams] = useSearchParams()
   const [fxMode, setFXMode] = useState<'manual' | 'live'>('manual')
@@ -56,6 +56,14 @@ export default function System() {
   const [savingBridge, setSavingBridge] = useState('')
   // 对话留存（调用设置），默认关
   const [capture, setCapture] = useState(false)
+  // 项目额度组件（主设置），默认关；下面列出所有项目，管理员可冻结
+  const [projectsOn, setProjectsOn] = useState(false)
+  const [savingProjects, setSavingProjects] = useState(false)
+  const [projects, setProjects] = useState<Project[]>([])
+  const loadProjects = () => get<Project[]>('/api/admin/projects').then(setProjects).catch(() => {})
+  useEffect(() => {
+    loadProjects()
+  }, [])
   const [savingCapture, setSavingCapture] = useState(false)
   const [regFlags, setRegFlags] = useState({ enabled: false, code_required: false, email_required: false })
   const [savingRegistration, setSavingRegistration] = useState(false)
@@ -71,10 +79,11 @@ export default function System() {
   const fill = (s: Settings) => {
     form.setFieldsValue({ cny_per_usd: Number(s.cny_per_usd) })
     if (s.call_limits) {
-      const { bridge_responses_to_messages = true, bridge_messages_to_responses = true, capture_conversations = false, ...limits } = s.call_limits
+      const { bridge_responses_to_messages = true, bridge_messages_to_responses = true, capture_conversations = false, projects_enabled = false, ...limits } = s.call_limits
       limitsForm.setFieldsValue(limits)
       setBridge({ bridge_responses_to_messages, bridge_messages_to_responses })
       setCapture(capture_conversations)
+      setProjectsOn(projects_enabled)
     }
     setFXMode(s.fx_mode === 'live' ? 'live' : 'manual')
     setFXStatus(s.fx_status ?? { source: 'Frankfurter' })
@@ -232,6 +241,28 @@ export default function System() {
     }
   }
 
+  const saveProjects = async (enabled: boolean) => {
+    setSavingProjects(true)
+    try {
+      await put('/api/admin/settings', { projects_enabled: enabled })
+      setProjectsOn(enabled)
+      message.success(enabled ? t('已开启：在「用户」里给需要的人打开“允许创建项目”', 'On: allow project creation per user under Users') : t('已关闭：项目和数据保留，项目 key 暂停使用', 'Off: projects and data are kept; project keys are paused'))
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSavingProjects(false)
+    }
+  }
+
+  const freezeProject = async (p: Project, frozen: boolean) => {
+    try {
+      await put(`/api/admin/projects/${p.id}/frozen`, { frozen })
+      loadProjects()
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
+
   const saveCapture = async (enabled: boolean) => {
     setSavingCapture(true)
     try {
@@ -315,6 +346,34 @@ export default function System() {
         items={[
           { key: 'operations', label: t('主设置', 'Main settings'), forceRender: true, children: (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Card title={t('项目', 'Projects')}>
+              <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Typography.Text>{t('开启项目功能', 'Enable projects')}</Typography.Text>
+                <Switch aria-label={t('开启项目功能', 'Enable projects')} checked={projectsOn} loading={savingProjects} disabled={loading} onChange={saveProjects} />
+              </Space>
+              <Typography.Paragraph type="secondary">
+                {t(
+                  '项目有一个共享额度池，由创建人从自己的余额转入，成员用邀请码申请、创建人审批，在项目下建的 key 花项目池的钱，可以设每周上限和开放的分组。谁能创建项目在「用户」里逐个打开。关闭后项目和数据保留，项目 key 暂停使用。',
+                  'A project has a shared pool funded by its creator from their own balance. Members join with an invite code and owner approval; keys created in a project spend the pool, with an optional weekly cap and chosen groups. Allow creators one by one under Users. Turning this off keeps projects and data but pauses project keys.',
+                )}
+              </Typography.Paragraph>
+              {projects.length > 0 && (
+                <Table
+                  rowKey="id"
+                  size="small"
+                  pagination={false}
+                  dataSource={projects}
+                  columns={[
+                    { title: t('项目', 'Project'), dataIndex: 'name', render: (v, p) => <span>{v}{p.closed && <Tag style={{ marginLeft: 6 }}>{t('已解散', 'Closed')}</Tag>}</span> },
+                    { title: t('创建人', 'Owner'), dataIndex: 'owner_name' },
+                    { title: t('成员', 'Members'), dataIndex: 'members' },
+                    { title: t('池子余额', 'Pool'), dataIndex: 'balance', render: (v) => money(v) },
+                    { title: t('本周已花 / 上限', 'This week / cap'), render: (_, p) => `${money(p.week_spent)} / ${p.weekly_limit == null ? t('不限', 'none') : money(p.weekly_limit)}` },
+                    { title: t('冻结', 'Frozen'), dataIndex: 'frozen', render: (v, p) => <Switch size="small" aria-label={`${t('冻结', 'Freeze')} · ${p.name}`} checked={v} disabled={p.closed} onChange={(c) => freezeProject(p, c)} /> },
+                  ]}
+                />
+              )}
+            </Card>
             <Card title={t('汇率', 'Exchange rate')}>
               <Typography.Paragraph type="secondary">
                 {t(
