@@ -143,3 +143,14 @@ tr.row-settling {
 .conv-reply {
   border-left-color: #52c41a;
 }
+
+/* 我的项目：项目卡片横向一排，放不下时左右滑；选中的项目在下面展开 */
+.project-strip {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 2px 2px 6px;
+}
+.project-strip .project-card {
+  flex: 0 0 260px;
+}
