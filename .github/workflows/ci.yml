@@ -84,6 +84,7 @@ jobs:
           node tests/keys.browser.cjs
           node tests/calls.browser.cjs
           node tests/conversation.browser.cjs
+          node tests/projects.browser.cjs
           node tests/registration.browser.cjs
           node tests/auth-security.browser.cjs
           node tests/legal.browser.cjs

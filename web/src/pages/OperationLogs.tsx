@@ -14,11 +14,11 @@ export function targetLabel(t: T, type: string): string {
     user: t('用户', 'User'), api_key: 'Key', balance: t('余额', 'Balance'), group: t('服务分组', 'Service group'),
     user_group: t('用户分组', 'User group'), model: t('模型', 'Model'), channel: t('渠道', 'Channel'),
     settings: t('系统设置', 'Settings'), payment: t('支付配置', 'Payment'), registration_code: t('注册码', 'Registration code'), redeem_code: t('兑换码', 'Redeem code'),
-    topup: t('充值订单', 'Top-up order'),
+    topup: t('充值订单', 'Top-up order'), project: t('项目', 'Project'),
   } as Record<string, string>)[type] ?? type
 }
 
-export const targetTypes = ['user', 'api_key', 'balance', 'topup', 'group', 'user_group', 'model', 'channel', 'settings', 'payment', 'registration_code', 'redeem_code']
+export const targetTypes = ['user', 'api_key', 'balance', 'topup', 'group', 'user_group', 'model', 'channel', 'settings', 'payment', 'registration_code', 'redeem_code', 'project']
 
 // 充值订单的当前状态（发起充值那条记录上实时显示）
 function orderStatus(t: T, status: string): [string, string] {
@@ -40,6 +40,7 @@ function actionLabel(t: T, o: OperationEntry): string {
     'redeem.credit': t('兑换码充值', 'Code redeemed'),
     'redeem_code.create': t('生成兑换码', 'Generate redeem codes'),
     'redeem_code.update': t('撤销兑换码', 'Revoke redeem code'),
+    'project.transfer': t('项目额度转账', 'Project transfer'),
   }
   if (special[o.action]) return special[o.action]
   if (o.action === 'user.create' && o.actor_id !== null && o.actor_id === o.user_id) return t('注册', 'Sign up')
@@ -64,6 +65,9 @@ function fieldLabel(t: T, field: string): string {
     registration_mode: t('注册方式', 'Registration'), fx_mode: t('汇率模式', 'Rate mode'), user_concurrency: t('每用户并发上限', 'Per-user concurrency'), user_rpm: t('每用户每分钟请求数', 'Per-user RPM'), reserve_output_tokens: t('默认预扣输出', 'Default held output'), api_base_url: t('接入地址', 'API base URL'), announcement: t('公告', 'Announcement'), deployment_mode: t('使用模式', 'Usage mode'),
     environment: t('环境', 'Environment'), currency: t('币种', 'Currency'), unit_price: t('单价', 'Unit price'),
     min_usd: t('最低额度', 'Min'), max_usd: t('最高额度', 'Max'), methods: t('支付方式', 'Methods'),
+    weekly_limit: t('每周上限', 'Weekly cap'), frozen: t('冻结', 'Frozen'), closed: t('已解散', 'Closed'), invite_code: t('邀请码', 'Invite code'),
+    members: t('成员', 'Members'), pending: t('待审批', 'Pending'), can_create_projects: t('允许创建项目', 'Can create projects'), projects_enabled: t('项目功能', 'Projects'),
+    capture_conversations: t('对话留存', 'Conversation saving'),
     credit_usd: t('到账额度', 'Credit'), pay_amount: t('应付', 'To pay'), provider: t('支付服务', 'Provider'), method: t('支付方式', 'Method'),
   } as Record<string, string>)[field] ?? field
 }

@@ -333,6 +333,10 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 超超 gpt 连续 5 次 60 秒没回响应头，请求直接失败（attempts=1），Relay-gpt 后面三个渠道一个都没试：等响应头的时限和重试总时限都是 60 秒，第一次超时就耗光预算。#78 把重试总时限改为 2 分钟（`Handler.RetryBudget`），并新增 `request_logs.upstream_header_ms`（迁移 0037）；#79 应用户要求把流式等响应头的时限从 60 秒缩到 30 秒（发一句话也要干等 60 秒，体验太差）。近两周首字超过 30 秒的成功请求占 3.7%，是误判上限；上线后首半小时 47 条的响应头中位数 7.3 秒，说明多数中转要等首字才回响应头，30 秒的误判率接近这个上限，待复核。测试：`TestStreamHeaderTimeoutStillFailsOver`、`TestLogsUpstreamHeaderTime`。#79 合并时检测 67（超超 claude 完整档）还在跑，用户确认跑完（94 分）后才发布。
 
+### 项目额度（2026-11-11，PR #92 后端、本 PR 页面）
+
+用户确认规则：创建人从自己余额转入、创建人审批、创建人管理、整个项目每周上限。迁移 0039（项目、成员、开放分组，`api_keys` / `request_logs` / `balance_adjustments` 加 `project_id`）。项目 key 从项目池预扣结算（池子可用和本周剩余取小，同样的行锁和单请求小额透支规则），开放分组在调用时再按创建人的权限校验。页面：「我的项目」（卡片、邀请码申请、项目弹窗：我的 key / 额度池 / 成员 / 规则）、用户编辑“允许创建项目”、主设置“项目”开关与全部项目列表（冻结）、API keys 页项目标签、操作日志项目标签。测试：`TestProjectFlow`、`TestProjectKeyChargesPool`、`TestProjectKeyRejections`、`TestProjectPoolHoldsUnderConcurrency`（5 个并发只放行 1 个）、操作日志覆盖登记、`projects.browser.cjs`、`users.browser.cjs` 补字段。
+
 ### 改为自动发布前的手动发布记录
 
 2026-11-05 发布并复核（概览页改版）：DMIT 已发布提交 `b5090dcb1881e60bdaa1f28b8e368ea7192a0505`，运行中程序 SHA-256 为 `995c0f0635ac55fb8830db57aa06dd3b8cf036f2e012109afc7da837200e8f29`，属主 `lingshu:lingshu` 0755。发布前备份 `/var/backups/lingshu/lingshu-20261105T160124Z.dump`，SHA-256 为 `ab5105544efe475be997872e7e65a9e12e143fc319029ba90cb2e23b62080194`，`pg_restore --list` 可读（20 张表数据）。旧程序、配置与发布标记保留为 `prev-b5090dc`。只改前端，无迁移，schema 仍为 `0020_commercial_relay_mode`；回滚换回 `prev-b5090dc` 程序即可。内网与公网健康检查通过，公网入口资源 `index-DRFHDpk-.js` 与干净构建产物 SHA-256 `54ea3d0fd1851a35d5c296af7f8fc9f935b3e7b5abbec83227362855b7c184c0` 一致，服务日志无 ERROR。压缩成品上传约 9 分钟；部署方式拟改为 GitHub Actions 构建、DMIT 下载成品（仓库为公开仓库，下载无需 token），待确认。
