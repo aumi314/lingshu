@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
+	_ "time/tzdata" // 时区数据内置，不依赖服务器装没装 zoneinfo
 
 	"github.com/shopspring/decimal"
 
@@ -18,12 +20,12 @@ type PriceRule struct {
 	Name string `json:"name"`
 	// InputAbove：总输入（输入 + 缓存命中 + 缓存写入）超过这么多 token 时生效，nil 表示不限。
 	InputAbove *int64 `json:"input_above,omitempty"`
-	// TimeStart / TimeEnd：北京时间每天的时间段 "HH:MM"，含开始不含结束，可以跨零点；都空表示不限。
+	// TimeStart / TimeEnd：业务时区（默认北京时间）每天的时间段 "HH:MM"，含开始不含结束，可以跨零点；都空表示不限。
 	TimeStart string `json:"time_start,omitempty"`
 	TimeEnd   string `json:"time_end,omitempty"`
-	// Days：日期条件。"" 不限；"weekend" 仅周末（北京时间周六、周日）。
+	// Days：日期条件。"" 不限；"weekend" 仅周末（业务时区的周六、周日）。
 	Days string `json:"days,omitempty"`
-	// DateFrom / DateTo：生效日期范围（北京时间 "YYYY-MM-DD"，两头都含），空表示不限。
+	// DateFrom / DateTo：生效日期范围（业务时区 "YYYY-MM-DD"，两头都含），空表示不限。
 	// 用来提前配好厂商公布的涨价、降价或限时价，到日子自动切换。
 	DateFrom string `json:"date_from,omitempty"`
 	DateTo   string `json:"date_to,omitempty"`
@@ -38,8 +40,57 @@ func (r PriceRule) Prices() Prices {
 	return Prices{Input: r.Input, Output: r.Output, CacheRead: r.CacheRead, CacheWrite: r.CacheWrite}
 }
 
-// Beijing 是分时段规则用的时区。中国没有夏令时，用固定偏移，不依赖系统时区数据。
+// Beijing 是默认时区（北京时间，固定 +8）。
 var Beijing = time.FixedZone("Asia/Shanghai", 8*3600)
+
+// DefaultZone 是没设置时区时用的 IANA 名称。
+const DefaultZone = "Asia/Shanghai"
+
+// zone 是业务规则用的时区：价格规则的时段、周末、日期，以及项目每周额度从哪天几点重置。
+// 由「系统设置 → 主设置 → 时区」决定（设置项 timezone），启动时和保存后调 SetZone。时区数据内置在程序里（time/tzdata）。
+var zone atomic.Pointer[time.Location]
+
+func init() { zone.Store(Beijing) }
+
+// Zone 返回当前业务时区。
+func Zone() *time.Location { return zone.Load() }
+
+// ParseZone 校验 IANA 时区名（如 Asia/Shanghai、America/Los_Angeles）。不接受空和 Local：结果不能跟着服务器走。
+func ParseZone(name string) (*time.Location, error) {
+	if name == "" || name == "Local" || strings.ContainsAny(name, "'\\ ") {
+		return nil, fmt.Errorf("时区 %q 不对，请填 IANA 时区名，例如 Asia/Shanghai", name)
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return nil, fmt.Errorf("时区 %q 不对，请填 IANA 时区名，例如 Asia/Shanghai", name)
+	}
+	return loc, nil
+}
+
+// SetZone 切换业务时区；名字不合法时保持原来的。
+func SetZone(name string) error {
+	if name == DefaultZone {
+		zone.Store(Beijing)
+		return nil
+	}
+	loc, err := ParseZone(name)
+	if err != nil {
+		return err
+	}
+	zone.Store(loc)
+	return nil
+}
+
+// ZoneName 是当前业务时区的 IANA 名称（给数据库按时区算日期用）。
+func ZoneName() string { return Zone().String() }
+
+// ZoneLabel 是给人看的时区名：北京时间显示“北京时间”，其他显示 IANA 名称。
+func ZoneLabel() string {
+	if n := ZoneName(); n != DefaultZone {
+		return n
+	}
+	return "北京时间"
+}
 
 // TotalInput 是阶梯计价用的输入长度：输入 + 缓存命中 + 缓存写入（和 OpenAI、Anthropic 的算法一致）。
 func TotalInput(u usage.Usage) int64 { return u.Input + u.CacheRead + u.CacheWrite }
@@ -54,9 +105,9 @@ func parseClock(s string) (int, error) {
 	return hh*60 + mm, nil
 }
 
-// IsWeekend 判断请求开始时间是否落在北京时间周六或周日。
+// IsWeekend 判断请求开始时间是否落在业务时区的周六或周日。
 func IsWeekend(at time.Time) bool {
-	t := at.In(Beijing)
+	t := at.In(Zone())
 	wd := t.Weekday()
 	return wd == time.Saturday || wd == time.Sunday
 }
@@ -67,7 +118,7 @@ func (r PriceRule) matches(totalInput int64, at time.Time) bool {
 		return false
 	}
 	if r.DateFrom != "" || r.DateTo != "" {
-		day := at.In(Beijing).Format("2006-01-02")
+		day := at.In(Zone()).Format("2006-01-02")
 		if (r.DateFrom != "" && day < r.DateFrom) || (r.DateTo != "" && day > r.DateTo) {
 			return false
 		}
@@ -84,7 +135,7 @@ func (r PriceRule) matches(totalInput int64, at time.Time) bool {
 		if err1 != nil || err2 != nil {
 			return false
 		}
-		t := at.In(Beijing)
+		t := at.In(Zone())
 		now := t.Hour()*60 + t.Minute()
 		if start < end {
 			return now >= start && now < end
@@ -183,7 +234,7 @@ func DescribeCondition(r PriceRule) string {
 		parts = append(parts, "周末")
 	}
 	if r.TimeStart != "" {
-		parts = append(parts, "北京时间 "+r.TimeStart+"–"+r.TimeEnd)
+		parts = append(parts, ZoneLabel()+" "+r.TimeStart+"–"+r.TimeEnd)
 	}
 	return strings.Join(parts, " · ")
 }

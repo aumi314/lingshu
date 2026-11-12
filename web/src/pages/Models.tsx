@@ -9,7 +9,7 @@ import ModelIcon, { byVendor } from '../components/ModelIcon'
 const entry: Record<string, string> = { chat: '/v1/chat/completions', messages: '/v1/messages', responses: '/v1/responses', systemone: '/v1/systemone' }
 
 export default function Models() {
-  const { money, t, currency } = useApp()
+  const { money, t, currency, zone } = useApp()
   const [groups, setGroups] = useState<Group[]>([])
   const [models, setModels] = useState<PricedModel[]>([])
   const [params, setParams] = useSearchParams()
@@ -88,7 +88,7 @@ export default function Models() {
                   </Typography.Text>
                   {m.price_rules.map((r, i) => (
                     <div key={i} style={{ marginTop: 6 }}>
-                      <Tag>{ruleCondition(r, t)}</Tag>
+                      <Tag>{ruleCondition(r, t, zone)}</Tag>
                       {prices(r)}
                     </div>
                   ))}
@@ -100,7 +100,7 @@ export default function Models() {
                   <div style={{ marginTop: 6 }}><Tag color="orange">Fast</Tag>{prices(m, fast)}</div>
                   {m.price_rules.map((r, i) => (
                     <div key={i} style={{ marginTop: 6 }}>
-                      <Tag color="orange">Fast · {ruleCondition(r, t)}</Tag>
+                      <Tag color="orange">Fast · {ruleCondition(r, t, zone)}</Tag>
                       {prices(r, fast)}
                     </div>
                   ))}

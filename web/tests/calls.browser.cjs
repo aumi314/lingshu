@@ -24,7 +24,7 @@ const path = require('node:path')
       const json = (b, status = 200) => route.fulfill({ json: b, status })
       if (p === '/api/me') return json({ user: { id: 1, username: 'admin', role: 'admin', balance: '1', enabled: true, user_group_ids: [1], preferences: { theme: 'dark', language: 'zh' }, created_at: '2026-10-25' }, cny_per_usd: '6.7' })
       if (p === '/api/admin/settings' && req.method() === 'PUT') { writes.push(req.postDataJSON()); return json({ ok: true }) }
-      if (p === '/api/admin/settings') return json({ redeem_enabled: true, cny_per_usd: '6.7', payment_enabled: false, registration_mode: 'manual', api_base_url: '', fx_mode: 'manual', fx_status: { source: 'Frankfurter' }, call_limits: limits })
+      if (p === '/api/admin/settings') return json({ redeem_enabled: true, cny_per_usd: '6.7', payment_enabled: false, registration_mode: 'manual', api_base_url: '', fx_mode: 'manual', fx_status: { source: 'Frankfurter' }, call_limits: limits, timezone: 'Asia/Shanghai' })
       return json([])
     })
 
@@ -32,6 +32,16 @@ const path = require('node:path')
     await page.goto('http://127.0.0.1:25196/console/admin/system')
     await page.getByRole('tab', { name: '主设置' }).waitFor()
     assert.equal(await page.getByRole('tabpanel').getByText('调用限制', { exact: true }).count(), 0)
+
+    // 主设置的时区：默认北京时间，搜索换成洛杉矶后保存，只提交 timezone
+    const tz = page.getByRole('combobox', { name: '时区' })
+    await page.getByRole('tabpanel').getByText(/北京时间 · Asia\/Shanghai/).waitFor()
+    await tz.click()
+    await tz.fill('Los_Angeles')
+    await page.locator('.ant-select-item-option').filter({ hasText: 'America/Los_Angeles' }).first().click()
+    await page.getByRole('tabpanel').locator('.ant-card').filter({ hasText: '时区' }).getByRole('button', { name: /保\s*存/ }).click()
+    for (let i = 0; i < 100 && !writes.some((w) => w.timezone); i++) await page.waitForTimeout(30)
+    assert.deepEqual(writes.shift(), { timezone: 'America/Los_Angeles' })
 
     // 调用设置：四张卡片；调用限制读回原值并能保存
     await page.getByRole('tab', { name: '调用设置' }).click()
@@ -68,7 +78,7 @@ const path = require('node:path')
     await page.reload()
     await page.getByRole('tabpanel').getByText('协议转接', { exact: true }).waitFor()
     assert.deepEqual(errors, [])
-    console.log('PASS: call limits moved to the Calls tab and saved, bridge switches read back and save individually, conversation saving switch, affinity and planned blocking cards, tab kept in URL')
+    console.log('PASS: time zone picker saves an IANA name, call limits moved to the Calls tab and saved, bridge switches read back and save individually, conversation saving switch, affinity and planned blocking cards, tab kept in URL')
   } finally {
     await browser.close()
     server.kill()

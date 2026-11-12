@@ -10,6 +10,8 @@ export type AppState = {
   user: User | null
   loading: boolean
   rate: number // 1 USD = rate CNY
+  /** 业务时区（价格规则时段、项目每周重置）给人看的名字：北京时间时中文“北京时间”、英文“Beijing time”，其他是 IANA 名 */
+  zone: string
   lang: Lang
   currency: Currency
   theme: ThemeMode
@@ -56,14 +58,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [rate, setRate] = useState(6.7)
+  const [zoneName, setZoneName] = useState('Asia/Shanghai')
   const [prefs, setPrefs] = useState<Preferences>(localPrefs)
   const systemDark = useSystemDark()
 
   const reload = useCallback(async () => {
     try {
-      const me = await get<{ user: User; cny_per_usd: string }>('/api/me')
+      const me = await get<{ user: User; cny_per_usd: string; timezone?: string }>('/api/me')
       setUser(me.user)
       setRate(Number(me.cny_per_usd))
+      if (me.timezone) setZoneName(me.timezone)
       const p = { ...localPrefs(), ...me.user.preferences }
       setPrefs(p)
       localStorage.setItem(LOCAL_KEY, JSON.stringify(p))
@@ -107,8 +111,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const sign = n < 0 ? '-' : ''
       return `${sign}${currency === 'CNY' ? '¥' : '$'}${Math.abs(n).toFixed(digits)}`
     }
-    return { user, loading, rate, lang, currency, theme, dark, reload, setPref, t, money }
-  }, [user, loading, rate, lang, currency, theme, dark, reload, setPref])
+    const zone = zoneName === 'Asia/Shanghai' ? t('北京时间', 'Beijing time') : zoneName
+    return { user, loading, rate, zone, lang, currency, theme, dark, reload, setPref, t, money }
+  }, [user, loading, rate, zoneName, lang, currency, theme, dark, reload, setPref])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

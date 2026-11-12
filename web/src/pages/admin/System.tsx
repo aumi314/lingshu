@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, App, Button, Card, Checkbox, Form, Input, InputNumber, Modal, Radio, Space, Switch, Table, Tabs, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, Checkbox, Form, Input, InputNumber, Modal, Radio, Select, Space, Switch, Table, Tabs, Tag, Typography } from 'antd'
 import { useSearchParams } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { del, get, post, put, type Project } from '../../api'
@@ -14,7 +14,7 @@ type GeneratedCode = { id: number; prefix: string; code: string }
 
 type FXStatus = { source: string; date?: string; rate?: string; checked_at?: string; error?: string }
 type CallLimits = { user_concurrency: number; user_rpm: number; reserve_output_tokens: number; bridge_responses_to_messages?: boolean; bridge_messages_to_responses?: boolean; capture_conversations?: boolean; projects_enabled?: boolean }
-type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; redeem_enabled: boolean; registration_enabled?: boolean; registration_code_required?: boolean; registration_email_required?: boolean; registration_mode?: string; api_base_url: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string; user_agreement?: string; privacy_policy?: string }
+type Settings = { call_limits?: CallLimits; cny_per_usd: string; payment_enabled: boolean; redeem_enabled: boolean; registration_enabled?: boolean; registration_code_required?: boolean; registration_email_required?: boolean; registration_mode?: string; api_base_url: string; timezone?: string; fx_mode?: string; fx_status?: FXStatus; announcement?: string; user_agreement?: string; privacy_policy?: string }
 
 // 协议正文最长 10 万字，和后端一致
 const maxLegalLength = 100000
@@ -58,6 +58,23 @@ export default function System() {
   const [capture, setCapture] = useState(false)
   // 项目额度组件（主设置），默认关；下面列出所有项目，管理员可冻结
   const [projectsOn, setProjectsOn] = useState(false)
+  // 业务时区：价格规则的时段 / 周末 / 日期、项目每周重置按它算；页面上的时间仍按各人浏览器显示
+  const [timezone, setTimezone] = useState('Asia/Shanghai')
+  const [savingTZ, setSavingTZ] = useState(false)
+  const zones = (() => {
+    try {
+      return Intl.supportedValuesOf('timeZone')
+    } catch {
+      return ['Asia/Shanghai', 'Asia/Hong_Kong', 'Asia/Tokyo', 'Asia/Singapore', 'Europe/London', 'Europe/Berlin', 'America/New_York', 'America/Los_Angeles', 'UTC']
+    }
+  })()
+  const zoneOffset = (z: string) => {
+    try {
+      return new Intl.DateTimeFormat('en', { timeZone: z, timeZoneName: 'shortOffset' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value ?? ''
+    } catch {
+      return ''
+    }
+  }
   const [savingProjects, setSavingProjects] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
   const loadProjects = () => get<Project[]>('/api/admin/projects').then(setProjects).catch(() => {})
@@ -86,6 +103,7 @@ export default function System() {
       setProjectsOn(projects_enabled)
     }
     setFXMode(s.fx_mode === 'live' ? 'live' : 'manual')
+    if (s.timezone) setTimezone(s.timezone)
     setFXStatus(s.fx_status ?? { source: 'Frankfurter' })
     apiURLForm.setFieldsValue({ api_base_url: s.api_base_url })
     noticeForm.setFieldsValue({ announcement: s.announcement ?? '' })
@@ -254,6 +272,19 @@ export default function System() {
     }
   }
 
+  const saveTimezone = async () => {
+    setSavingTZ(true)
+    try {
+      await put('/api/admin/settings', { timezone })
+      message.success(t('时区已保存，立即生效', 'Time zone saved; takes effect now'))
+      void reload()
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSavingTZ(false)
+    }
+  }
+
   const freezeProject = async (p: Project, frozen: boolean) => {
     try {
       await put(`/api/admin/projects/${p.id}/frozen`, { frozen })
@@ -373,6 +404,26 @@ export default function System() {
                   ]}
                 />
               )}
+            </Card>
+            <Card title={t('时区', 'Time zone')}>
+              <Typography.Paragraph type="secondary">
+                {t(
+                  '价格规则里的时段、周末和生效日期，以及项目每周额度从周一 0 点重置，都按这个时区算。改了之后已有的规则会按新时区解读。页面上显示的时间仍按每个人自己浏览器的时区。',
+                  'Price rule hours, weekends and dates, and the Monday 00:00 reset of project weekly caps, follow this zone. Existing rules are read in the new zone after a change. Times on pages still show in each person\'s own browser time zone.',
+                )}
+              </Typography.Paragraph>
+              <Space wrap>
+                <Select
+                  showSearch
+                  aria-label={t('时区', 'Time zone')}
+                  value={timezone}
+                  onChange={setTimezone}
+                  disabled={loading}
+                  style={{ width: 320 }}
+                  options={zones.map((z) => ({ value: z, label: `${z === 'Asia/Shanghai' ? t('北京时间 · ', 'Beijing · ') : ''}${z}  ${zoneOffset(z)}` }))}
+                />
+                <Button type="primary" loading={savingTZ} disabled={loading} onClick={saveTimezone}>{t('保存', 'Save')}</Button>
+              </Space>
             </Card>
             <Card title={t('汇率', 'Exchange rate')}>
               <Typography.Paragraph type="secondary">

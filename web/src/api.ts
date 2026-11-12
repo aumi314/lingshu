@@ -72,10 +72,10 @@ export type Group = { id: number; name: string; ratio: string; enabled: boolean;
 export type PriceRule = {
   name: string
   input_above?: number | null // 总输入（含缓存）超过这么多 token
-  time_start?: string // 北京时间 HH:MM，含开始不含结束，可跨零点
+  time_start?: string // 业务时区（主设置里的时区，默认北京时间）HH:MM，含开始不含结束，可跨零点
   time_end?: string
-  days?: '' | 'weekend' // 周末 = 北京时间周六、周日
-  date_from?: string // 生效日期（北京时间 YYYY-MM-DD，含当天）
+  days?: '' | 'weekend' // 周末 = 业务时区的周六、周日
+  date_from?: string // 生效日期（业务时区 YYYY-MM-DD，含当天）
   date_to?: string
   input_price: string
   output_price: string

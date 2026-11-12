@@ -149,7 +149,7 @@ export default function Projects() {
 }
 
 function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: Project; meID: number; onGone: () => void; onChanged: () => void; money: (v: string | number, d?: number) => string }) {
-  const { t } = useApp()
+  const { t, zone } = useApp()
   const { message, modal } = App.useApp()
   const owner = project.my_status === 'owner'
   const [members, setMembers] = useState<ProjectMember[]>([])
@@ -278,7 +278,7 @@ function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: P
     <Space direction="vertical" style={{ width: '100%' }} size={16}>
       <Row gutter={16}>
         <Col span={12}><Card size="small"><Typography.Text type="secondary">{t('池子可用', 'Available')}</Typography.Text><div style={{ fontSize: 22 }}>{money(avail)}</div>{Number(project.reserved) > 0 && <Typography.Text type="secondary">{t(`进行中冻结 ${money(project.reserved)}`, `${money(project.reserved)} held by calls in progress`)}</Typography.Text>}</Card></Col>
-        <Col span={12}><Card size="small"><Typography.Text type="secondary">{t('本周已花', 'Spent this week')}</Typography.Text><div style={{ fontSize: 22 }}>{money(project.week_spent)}</div><Typography.Text type="secondary">{project.weekly_limit == null ? t('不限上限', 'No cap') : t(`上限 ${money(project.weekly_limit)}，每周一 0 点重置`, `Cap ${money(project.weekly_limit)}, resets Monday 00:00 (UTC+8)`)}</Typography.Text></Card></Col>
+        <Col span={12}><Card size="small"><Typography.Text type="secondary">{t('本周已花', 'Spent this week')}</Typography.Text><div style={{ fontSize: 22 }}>{money(project.week_spent)}</div><Typography.Text type="secondary">{project.weekly_limit == null ? t('不限上限', 'No cap') : t(`上限 ${money(project.weekly_limit)}，${zone}每周一 0 点重置`, `Cap ${money(project.weekly_limit)}, resets Monday 00:00 ${zone}`)}</Typography.Text></Card></Col>
       </Row>
       <Space wrap>
         <Segmented value={direction} onChange={(v) => setDirection(v as 'in' | 'out')} options={[{ value: 'in', label: t('从我的余额转入', 'Add from my balance') }, { value: 'out', label: t('取回到我的余额', 'Withdraw to my balance') }]} />
@@ -296,7 +296,7 @@ function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: P
       <Form.Item name="name" label={t('项目名称', 'Project name')} rules={[{ required: true, whitespace: true, max: 50 }]}>
         <Input />
       </Form.Item>
-      <Form.Item name="weekly_limit" label={t('每周最多花', 'Weekly cap')} extra={t('整个项目合计，北京时间每周一 0 点重置；留空不限', 'Whole project, resets Monday 00:00 (UTC+8); empty means no cap')}>
+      <Form.Item name="weekly_limit" label={t('每周最多花', 'Weekly cap')} extra={t(`整个项目合计，${zone}每周一 0 点重置；留空不限`, `Whole project, resets Monday 00:00 ${zone}; empty means no cap`)}>
         <InputNumber prefix="$" min={0.01} precision={2} style={{ width: 180 }} />
       </Form.Item>
       <Form.Item name="group_ids" label={t('开放的服务分组', 'Open service groups')} extra={t('成员在项目下建 key 时能选这些分组；只能从你自己能用的分组里选', 'Members pick from these when creating project keys; limited to groups you can use')}>

@@ -11,18 +11,24 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
+
+	"github.com/aumi314/lingshu/internal/billing"
 )
 
 // 项目额度（docs/decisions.md「项目额度」）：创建人从自己余额转入项目池，成员用项目 Key 调用时从池里扣。
 // 池子和个人余额一样有 balance / reserved，预扣用一条带行锁的语句，结算和个人余额同一个事务。
 
-// weekStartSQL 是本周开始的时刻：北京时间周一 0 点（和分时段价格同一个时区）。
-const weekStartSQL = `(date_trunc('week', now() AT TIME ZONE 'Asia/Shanghai') AT TIME ZONE 'Asia/Shanghai')`
+// weekStartSQL 是本周开始的时刻：业务时区（主设置里的时区，默认北京时间）周一 0 点，和价格规则同一个时区。
+// 时区名已由 billing.ParseZone 校验（只有字母、数字和 / _ + -），可以直接拼进语句。
+func weekStartSQL() string {
+	z := billing.ZoneName()
+	return `(date_trunc('week', now() AT TIME ZONE '` + z + `') AT TIME ZONE '` + z + `')`
+}
 
-// weekSpentSQL 是项目本周已经花掉的钱（$1 换成项目 id 的表达式）。
-const weekSpentSQL = `COALESCE((SELECT sum(cost) FROM request_logs WHERE project_id = %s AND created_at >= ` + weekStartSQL + `), 0)`
-
-func weekSpent(projectExpr string) string { return strings.Replace(weekSpentSQL, "%s", projectExpr, 1) }
+// weekSpent 是项目本周已经花掉的钱，projectExpr 是项目 id 的表达式。
+func weekSpent(projectExpr string) string {
+	return `COALESCE((SELECT sum(cost) FROM request_logs WHERE project_id = ` + projectExpr + ` AND created_at >= ` + weekStartSQL() + `), 0)`
+}
 
 type Project struct {
 	ID          int64            `json:"id"`
@@ -258,7 +264,7 @@ type ProjectMember struct {
 func (s *Store) ProjectMembers(ctx context.Context, id int64) ([]ProjectMember, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT m.user_id, u.username, CASE WHEN p.owner_id = m.user_id THEN 'owner' ELSE m.status END,
-		       COALESCE((SELECT sum(cost) FROM request_logs l WHERE l.project_id = p.id AND l.user_id = m.user_id AND l.created_at >= `+weekStartSQL+`), 0)::text,
+		       COALESCE((SELECT sum(cost) FROM request_logs l WHERE l.project_id = p.id AND l.user_id = m.user_id AND l.created_at >= `+weekStartSQL()+`), 0)::text,
 		       COALESCE((SELECT sum(cost) FROM request_logs l WHERE l.project_id = p.id AND l.user_id = m.user_id), 0)::text, m.created_at
 		FROM project_members m JOIN projects p ON p.id = m.project_id JOIN users u ON u.id = m.user_id
 		WHERE m.project_id = $1 ORDER BY (p.owner_id = m.user_id) DESC, m.status, m.created_at`, id)
