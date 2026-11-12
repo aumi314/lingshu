@@ -172,8 +172,9 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Name        *string          `json:"name"`
-		WeeklyLimit *decimal.Decimal `json:"weekly_limit"`
-		NoLimit     bool             `json:"no_weekly_limit"` // true 表示去掉每周上限
+		PeriodLimit *decimal.Decimal `json:"period_limit"`
+		NoLimit     bool             `json:"no_period_limit"` // true 表示去掉额度上限
+		LimitPeriod *string          `json:"limit_period"`    // day / week / month
 		GroupIDs    *[]int64         `json:"group_ids"`
 	}
 	if !readJSON(w, r, &in) {
@@ -190,14 +191,21 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case in.NoLimit:
-		patch.SetWeeklyLimit = true
-	case in.WeeklyLimit != nil:
-		if !in.WeeklyLimit.IsPositive() {
-			writeError(w, http.StatusBadRequest, "每周上限要大于 0；不想限制就去掉上限")
+		patch.SetPeriodLimit = true
+	case in.PeriodLimit != nil:
+		if !in.PeriodLimit.IsPositive() {
+			writeError(w, http.StatusBadRequest, "额度上限要大于 0；不想限制就去掉上限")
 			return
 		}
-		limit := in.WeeklyLimit.Round(10)
-		patch.SetWeeklyLimit, patch.WeeklyLimit = true, &limit
+		limit := in.PeriodLimit.Round(10)
+		patch.SetPeriodLimit, patch.PeriodLimit = true, &limit
+	}
+	if in.LimitPeriod != nil {
+		if !store.LimitPeriods[*in.LimitPeriod] {
+			writeError(w, http.StatusBadRequest, "额度周期只能是按天、按周或按月")
+			return
+		}
+		patch.LimitPeriod = in.LimitPeriod
 	}
 	patch.GroupIDs = in.GroupIDs
 	if err := s.Store.UpdateProject(r.Context(), currentUser(r).ID, p.ID, patch); err != nil {
