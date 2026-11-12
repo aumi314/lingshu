@@ -1,10 +1,13 @@
 package relay
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 )
@@ -80,5 +83,46 @@ func TestConversationCapture(t *testing.T) {
 	sameJSON(t, v.Request, []byte(second))
 	if string(v.Response) != string(reply) {
 		t.Errorf("流式回复应原样记下客户端收到的内容:\n%q\n%q", v.Response, reply)
+	}
+}
+
+// 底层短写或断开时，只留存成功写入的前缀，并原样返回写入结果。
+type partialCaptureWriter struct {
+	http.ResponseWriter
+	n   int
+	err error
+}
+
+func (w *partialCaptureWriter) Write([]byte) (int, error) { return w.n, w.err }
+
+func TestCaptureWriterWriteResult(t *testing.T) {
+	failure := errors.New("connection closed")
+	for _, tc := range []struct {
+		name string
+		n    int
+		err  error
+	}{
+		{"full", 6, nil}, {"partial", 2, failure}, {"failed", 0, failure},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := &captureWriter{ResponseWriter: &partialCaptureWriter{n: tc.n, err: tc.err}}
+			n, err := w.Write([]byte("abcdef"))
+			if n != tc.n || err != tc.err || string(w.buf) != "abcdef"[:tc.n] || w.truncated {
+				t.Fatalf("n=%d err=%v captured=%q truncated=%v", n, err, w.buf, w.truncated)
+			}
+		})
+	}
+}
+
+func TestCaptureWriterLimitAndFlush(t *testing.T) {
+	target := httptest.NewRecorder()
+	w := &captureWriter{ResponseWriter: target}
+	p := bytes.Repeat([]byte("x"), maxCapturedResponse+1)
+	n, err := w.Write(p)
+	if err != nil || n != len(p) || target.Body.Len() != len(p) || len(w.buf) != maxCapturedResponse || !w.truncated {
+		t.Fatalf("n=%d err=%v sent=%d captured=%d truncated=%v", n, err, target.Body.Len(), len(w.buf), w.truncated)
+	}
+	if err := http.NewResponseController(w).Flush(); err != nil || !target.Flushed {
+		t.Fatalf("flush: %v", err)
 	}
 }

@@ -93,7 +93,7 @@ export default function Conversation({ protocol, requestID, data }: { protocol: 
   }
   const turns = turnsOf(protocol, data.request)
   const download = () => {
-    const blob = new Blob([JSON.stringify({ request_id: requestID, session: data.session, protocol, request: data.request, response: data.response }, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify({ request_id: requestID, session: data.session, protocol, request: data.request, response: data.response, response_truncated: data.response_truncated ?? false }, null, 2)], { type: 'application/json' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
     a.download = `${requestID}.json`
