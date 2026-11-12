@@ -136,8 +136,9 @@ export type Project = {
   owner_name: string
   balance: string
   reserved: string
-  weekly_limit: string | null // 整个项目每周最多花多少，null 不限
-  week_spent: string
+  period_limit: string | null // 一个周期内整个项目最多花多少，null 不限
+  limit_period: LimitPeriod // 周期由创建人选，按业务时区重置
+  period_spent: string // 本周期已花
   frozen: boolean
   closed: boolean
   group_ids: number[]
@@ -146,7 +147,8 @@ export type Project = {
   my_status: '' | 'owner' | 'active' | 'pending'
   created_at: string
 }
-export type ProjectMember = { user_id: number; username: string; status: 'owner' | 'active' | 'pending'; week_spent: string; total_spent: string; created_at: string }
+export type LimitPeriod = 'day' | 'week' | 'month'
+export type ProjectMember = { user_id: number; username: string; status: 'owner' | 'active' | 'pending'; period_spent: string; total_spent: string; created_at: string }
 export type MyProjects = { enabled: boolean; can_create: boolean; projects: Project[] }
 
 export type LogEntry = {
