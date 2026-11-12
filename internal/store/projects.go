@@ -37,7 +37,7 @@ type Project struct {
 	Frozen      bool             `json:"frozen"`
 	Closed      bool             `json:"closed"`
 	GroupIDs    []int64          `json:"group_ids"`
-	Groups      json.RawMessage  `json:"groups"` // 开放分组的 id、名称、倍率，成员建 key 时选
+	Groups      json.RawMessage  `json:"groups"`    // 开放分组的 id、名称、倍率，成员建 key 时选
 	Members     int              `json:"members"`   // 正式成员数（含创建人）
 	MyStatus    string           `json:"my_status"` // 当前用户的身份：owner / active / pending，管理员列表里为空
 	CreatedAt   time.Time        `json:"created_at"`
