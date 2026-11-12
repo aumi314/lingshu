@@ -102,13 +102,14 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Username      *string  `json:"username"`
-		Note          *string  `json:"note"`
-		Role          *string  `json:"role"`
-		Enabled       *bool    `json:"enabled"`
-		Password      *string  `json:"password"`
-		UserGroupIDs  *[]int64 `json:"user_group_ids"`
-		BalanceChange *struct {
+		Username          *string  `json:"username"`
+		Note              *string  `json:"note"`
+		Role              *string  `json:"role"`
+		Enabled           *bool    `json:"enabled"`
+		Password          *string  `json:"password"`
+		UserGroupIDs      *[]int64 `json:"user_group_ids"`
+		CanCreateProjects *bool    `json:"can_create_projects"`
+		BalanceChange     *struct {
 			Mode     string           `json:"mode"`
 			Amount   *decimal.Decimal `json:"amount"`
 			Currency string           `json:"currency"`
@@ -178,6 +179,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		p.PasswordHash = &hash
 	}
 	p.UserGroupIDs = in.UserGroupIDs
+	p.CanCreateProjects = in.CanCreateProjects
 	if in.BalanceChange != nil {
 		if in.BalanceChange.Amount == nil {
 			writeError(w, http.StatusBadRequest, "额度调整金额不能为空")
@@ -826,6 +828,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		BridgeResponsesToMessages *bool            `json:"bridge_responses_to_messages"`
 		BridgeMessagesToResponses *bool            `json:"bridge_messages_to_responses"`
 		CaptureConversations      *bool            `json:"capture_conversations"`
+		ProjectsEnabled           *bool            `json:"projects_enabled"`
 		Announcement              *string          `json:"announcement"`
 		UserAgreement             *string          `json:"user_agreement"`
 		PrivacyPolicy             *string          `json:"privacy_policy"`
@@ -965,7 +968,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	if in.RedeemEnabled != nil {
 		kv = append(kv, [2]string{"redeem_enabled", strconv.FormatBool(*in.RedeemEnabled)})
 	}
-	for k, v := range map[string]*bool{"bridge_responses_to_messages": in.BridgeResponsesToMessages, "bridge_messages_to_responses": in.BridgeMessagesToResponses, "capture_conversations": in.CaptureConversations} {
+	for k, v := range map[string]*bool{"bridge_responses_to_messages": in.BridgeResponsesToMessages, "bridge_messages_to_responses": in.BridgeMessagesToResponses, "capture_conversations": in.CaptureConversations, "projects_enabled": in.ProjectsEnabled} {
 		if v != nil {
 			kv = append(kv, [2]string{k, strconv.FormatBool(*v)})
 		}

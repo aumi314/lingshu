@@ -41,6 +41,11 @@ func Admit(balance decimal.Decimal, quotaLimit *decimal.Decimal, quotaUsed decim
 	if !balance.IsPositive() {
 		return &Rejection{Status: 402, Message: "账户余额不足（当前 $" + balance.StringFixed(4) + "），请联系管理员充值"}
 	}
+	return AdmitQuota(quotaLimit, quotaUsed)
+}
+
+// AdmitQuota 只检查 key 自己的限额（项目 key 的钱走项目池，余额另查）。
+func AdmitQuota(quotaLimit *decimal.Decimal, quotaUsed decimal.Decimal) *Rejection {
 	if quotaLimit != nil && quotaUsed.GreaterThanOrEqual(*quotaLimit) {
 		return &Rejection{Status: 402, Message: "这个 API key 的额度已用完（$" + quotaUsed.StringFixed(4) + " / $" + quotaLimit.StringFixed(4) + "），可以调高限额或换一个 key"}
 	}

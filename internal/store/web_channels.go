@@ -385,13 +385,16 @@ type APIKey struct {
 	ExpiresAt  *time.Time       `json:"expires_at"`
 	LastUsedAt *time.Time       `json:"last_used_at"`
 	CreatedAt  time.Time        `json:"created_at"`
+	// 项目 key 的项目，个人 key 为 0 / 空
+	ProjectID   int64  `json:"project_id"`
+	ProjectName string `json:"project_name"`
 }
 
 func (s *Store) ListAPIKeys(ctx context.Context, userID int64) ([]APIKey, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT k.id, k.name, k.key_prefix, k.group_id, g.name, k.quota_limit::text, k.quota_used::text,
-		       k.enabled, k.last_used_at, k.created_at, k.expires_at
-		FROM api_keys k JOIN groups g ON g.id = k.group_id
+		       k.enabled, k.last_used_at, k.created_at, k.expires_at, COALESCE(p.id, 0), COALESCE(p.name, '')
+		FROM api_keys k JOIN groups g ON g.id = k.group_id LEFT JOIN projects p ON p.id = k.project_id
 		WHERE k.user_id = $1 ORDER BY k.id DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -400,7 +403,7 @@ func (s *Store) ListAPIKeys(ctx context.Context, userID int64) ([]APIKey, error)
 		var k APIKey
 		var limit *string
 		var used string
-		err := r.Scan(&k.ID, &k.Name, &k.Prefix, &k.GroupID, &k.GroupName, &limit, &used, &k.Enabled, &k.LastUsedAt, &k.CreatedAt, &k.ExpiresAt)
+		err := r.Scan(&k.ID, &k.Name, &k.Prefix, &k.GroupID, &k.GroupName, &limit, &used, &k.Enabled, &k.LastUsedAt, &k.CreatedAt, &k.ExpiresAt, &k.ProjectID, &k.ProjectName)
 		k.QuotaLimit, k.QuotaUsed = optDecimal(limit), mustDecimal(used)
 		return k, err
 	})

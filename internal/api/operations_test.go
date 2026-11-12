@@ -204,6 +204,41 @@ func TestOperationLogCoverage(t *testing.T) {
 	}
 	step("DELETE /api/me/keys/{id}", bob, "/api/me/keys/"+itoa(key.ID), nil, nil, "api_key.delete")
 	step("PUT /api/me/password", bob, "/api/me/password", map[string]string{"old_password": "password-1", "new_password": "new-password-123"}, nil, "user.update")
+	loginAs := func(name, password string) *client {
+		c := e.client()
+		if code, body := c.do("POST", "/api/auth/login", map[string]string{"username": name, "password": password}, nil); code != 200 {
+			t.Fatalf("%s 登录失败: %d %s", name, code, body)
+		}
+		return c
+	}
+	bob = loginAs("bob", "new-password-123")
+	carol := loginAs("carol", "carol-password-1")
+
+	// 项目额度：每个改数据的接口各记一条
+	a.do("PUT", "/api/admin/settings", map[string]any{"projects_enabled": true}, nil)
+	a.do("PATCH", "/api/admin/users/2", map[string]any{"can_create_projects": true}, nil)
+	var proj struct {
+		ID         int64  `json:"id"`
+		InviteCode string `json:"invite_code"`
+	}
+	step("POST /api/me/projects", bob, "/api/me/projects", map[string]string{"name": "研发组"}, &proj, "project.create")
+	pp := "/api/me/projects/" + itoa(proj.ID)
+	step("PATCH /api/me/projects/{id}", bob, pp, map[string]any{"group_ids": []int64{1}, "weekly_limit": "2"}, nil, "project.update")
+	o = step("POST /api/me/projects/{id}/invite-code", bob, pp+"/invite-code", nil, &proj, "project.update")
+	if c := o.change("invite_code"); c == nil || !c.Secret || c.To != nil {
+		t.Fatalf("邀请码重置只记改过了，不记明文: %+v", o)
+	}
+	o = step("POST /api/me/projects/{id}/transfer", bob, pp+"/transfer", map[string]any{"direction": "in", "amount": "1"}, nil, "project.transfer")
+	if *o.UserID != 2 || o.change("balance") == nil {
+		t.Fatalf("转入记在创建人的余额上: %+v", o)
+	}
+	step("POST /api/me/projects/join", carol, "/api/me/projects/join", map[string]string{"code": proj.InviteCode}, nil, "project.update")
+	step("POST /api/me/projects/{id}/members/{uid}/approve", bob, pp+"/members/3/approve", nil, nil, "project.update")
+	step("DELETE /api/me/projects/{id}/members/{uid}", bob, pp+"/members/3", nil, nil, "project.update")
+	step("PUT /api/admin/projects/{id}/frozen", a, "/api/admin/projects/"+itoa(proj.ID)+"/frozen", map[string]bool{"frozen": true}, nil, "project.update")
+	a.do("PUT", "/api/admin/projects/"+itoa(proj.ID)+"/frozen", map[string]bool{"frozen": false}, nil)
+	bob.do("POST", pp+"/transfer", map[string]any{"direction": "out", "amount": "1"}, nil)
+	step("DELETE /api/me/projects/{id}", bob, pp, nil, nil, "project.update")
 
 	e.store.Pool.Exec(context.Background(), `UPDATE users SET role='super_admin' WHERE id=1`)
 	super := e.login("admin")

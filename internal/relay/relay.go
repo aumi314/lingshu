@@ -167,11 +167,32 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		return
 	}
 
+	// 项目 Key（docs/decisions.md「项目额度」）：钱走项目池，先看项目还能不能用
+	if owner.ProjectID != 0 {
+		c.log.ProjectID = owner.ProjectID
+		if msg := projectBlocked(owner, h.limits.limits(r.Context(), h.Store)); msg != "" {
+			c.reject(w, http.StatusForbidden, msg)
+			return
+		}
+	}
 	if !owner.GroupAllowed {
-		c.reject(w, http.StatusForbidden, "你已经没有这个 key 所在分组的使用权限，请换一个 key 或联系管理员")
+		msg := "你已经没有这个 key 所在分组的使用权限，请换一个 key 或联系管理员"
+		if owner.ProjectID != 0 {
+			msg = "项目「" + owner.ProjectName + "」没有开放这个 key 所在的分组，请联系项目负责人 " + owner.ProjectOwner
+		}
+		c.reject(w, http.StatusForbidden, msg)
 		return
 	}
-	if rej := billing.Admit(owner.Balance, owner.QuotaLimit, owner.QuotaUsed); rej != nil {
+	if owner.ProjectID != 0 {
+		if avail := owner.ProjectBalance.Sub(owner.ProjectReserved); !avail.IsPositive() {
+			c.reject(w, http.StatusPaymentRequired, fmt.Sprintf("项目「%s」的额度用完了（可用 $%s），请联系项目负责人 %s 转入额度", owner.ProjectName, avail.StringFixed(4), owner.ProjectOwner))
+			return
+		}
+		if rej := billing.AdmitQuota(owner.QuotaLimit, owner.QuotaUsed); rej != nil {
+			c.reject(w, rej.Status, rej.Message)
+			return
+		}
+	} else if rej := billing.Admit(owner.Balance, owner.QuotaLimit, owner.QuotaUsed); rej != nil {
 		c.reject(w, rej.Status, rej.Message)
 		return
 	}
@@ -280,7 +301,25 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 	if c.fastMultiplier.IsPositive() {
 		reserve = reserve.Mul(c.fastMultiplier) // 历史多是标准请求，封顶后再乘，Fast 请求的冻结额同样够
 	}
-	if reserve.IsPositive() {
+	if reserve.IsPositive() && owner.ProjectID != 0 {
+		hold, err := h.Store.ReserveProject(r.Context(), owner.ProjectID, reserve)
+		if err != nil {
+			c.reject(w, http.StatusInternalServerError, "冻结额度失败，请稍后重试")
+			slog.Error("项目预扣失败", "err", err)
+			return
+		}
+		if !hold.Held.IsPositive() {
+			msg := fmt.Sprintf("项目「%s」的可用额度不够这次请求的最大可能费用：预估最多 $%s，项目池可用 $%s（已扣除进行中请求冻结的额度）。请联系项目负责人 %s 转入额度，或调低 max_tokens",
+				owner.ProjectName, reserve.StringFixed(4), hold.Available.StringFixed(4), owner.ProjectOwner)
+			if hold.WeekRemain != nil && hold.WeekRemain.LessThan(hold.Available) {
+				msg = fmt.Sprintf("项目「%s」本周的额度不够这次请求的最大可能费用：预估最多 $%s，本周还剩 $%s（北京时间每周一 0 点重置）。可以联系项目负责人 %s 调高每周上限",
+					owner.ProjectName, reserve.StringFixed(4), decimal.Max(*hold.WeekRemain, decimal.Zero).StringFixed(4), owner.ProjectOwner)
+			}
+			c.reject(w, http.StatusPaymentRequired, msg)
+			return
+		}
+		c.log.Reserved = hold.Held
+	} else if reserve.IsPositive() {
 		held, available, err := h.Store.Reserve(r.Context(), owner.UserID, reserve)
 		if err != nil {
 			c.reject(w, http.StatusInternalServerError, "冻结额度失败，请稍后重试")
@@ -929,6 +968,9 @@ func (h *Handler) ServeUsage(w http.ResponseWriter, r *http.Request) {
 	}
 	num := func(d decimal.Decimal) json.RawMessage { return json.RawMessage(d.String()) }
 	available := owner.Balance.Sub(owner.Reserved) // 扣掉进行中请求冻结的额度
+	if owner.ProjectID != 0 {                      // 项目 key 花的是项目池，报项目池的余额
+		owner.Balance, available = owner.ProjectBalance, owner.ProjectBalance.Sub(owner.ProjectReserved)
+	}
 	key := map[string]any{"name": owner.KeyName, "group": owner.GroupName, "quota_used": num(owner.QuotaUsed), "quota_limit": nil, "quota_remaining": nil}
 	if owner.QuotaLimit != nil {
 		remaining := owner.QuotaLimit.Sub(owner.QuotaUsed)
