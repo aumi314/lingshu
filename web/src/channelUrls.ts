@@ -39,3 +39,6 @@ export function recoverStandardRoot(bases: StandardBases): string | undefined {
   const responses = bases.base_url_responses.trim().replace(/\/+$/, '')
   return chat === `${parsed.root}/v1` && responses === `${parsed.root}/v1` ? parsed.root : undefined
 }
+
+// 只填域名根地址、自动生成三种协议地址的模板：标准模板和中转面板（sub2api、new-api，另外能查余额）
+export const usesRootURL = (template?: string) => ['standard', 'sub2api', 'new-api'].includes(template ?? '')

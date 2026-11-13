@@ -26,7 +26,7 @@ func (s *Server) queryChannelBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !relay.CanQueryBalance(t.Template) {
-		writeError(w, http.StatusBadRequest, "这个渠道没有余额接口，目前只有 DeepSeek、Kimi、OpenRouter 支持")
+		writeError(w, http.StatusBadRequest, "这个渠道没有余额接口，目前支持 DeepSeek、Kimi、OpenRouter，以及 sub2api、new-api 中转模板")
 		return
 	}
 

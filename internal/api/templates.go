@@ -18,6 +18,8 @@ type ChannelTemplate struct {
 // 聊天协议地址见 docs/research/upstream-protocols.md；System One 地址于 2026-10-22 实测，见 docs/research/systemone.md。
 var channelTemplates = []ChannelTemplate{
 	{ID: "standard", Name: "标准模板", HasModelList: true, Note: "填写根地址，自动生成 Chat、Messages 和 Responses 三种协议地址"},
+	{ID: "sub2api", Name: "sub2api 中转", HasModelList: true, Note: "用 sub2api 搭的中转站（首页标题常是 Sub2API）。和标准模板一样填根地址，另外能用渠道的 key 查在这个站上的余额"},
+	{ID: "new-api", Name: "new-api 中转", HasModelList: true, Note: "用 new-api / one-api 搭的中转站（首页标题常是 New API）。和标准模板一样填根地址，另外能用渠道的 key 查余额（key 不限额时查账户余额）"},
 	{ID: "deepseek", Name: "DeepSeek", BaseURLChat: "https://api.deepseek.com", BaseURLMessages: "https://api.deepseek.com/anthropic",
 		BaseURLResponses: "https://api.deepseek.com", HasModelList: true, Note: "按量计费，三种协议都支持"},
 	{ID: "moonshot", Name: "Kimi（Moonshot 中国站）", BaseURLChat: "https://api.moonshot.cn/v1", BaseURLMessages: "https://api.moonshot.cn/anthropic",

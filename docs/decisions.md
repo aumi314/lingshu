@@ -371,6 +371,7 @@
 - 不再按请求扣减"估算余额"，取消成本系数、充值 / 校准流水、提醒线和每小时自动校准。
 - 渠道列表「额度」列显示上次查询结果和查询时间；点开弹窗时查一次，可手动重查。查询结果按厂商返回的原始币种和金额保存，不做汇率换算；失败时保存错误信息，下次打开可见。
 - 只有 DeepSeek（`{域名}/user/balance`）、Moonshot（`{域名}/v1/users/me/balance`）、OpenRouter（`/api/v1/credits`，取 `total_credits - total_usage`）有余额接口。其余渠道显示「—」，不提供手动填写，避免维护一个没人校准的数字。
+- 中转面板（2026-11-12 加）：新增渠道模板 `sub2api`、`new-api`，和标准模板一样只填根地址，另外能用渠道自己的 key 查在这个站上的余额。sub2api 读 `/v1/usage` 的 `remaining`（美元）；new-api 读 `/api/usage/token/`：令牌有上限取令牌剩余，不限额取账户剩余（`user_quota`，新版本才有），内部单位按 `/v1/dashboard/billing/usage` 的已用（美分）反推，拿不到默认 50 万 = 1 美元；老版本不返回账户额度时用 OpenAI 旧账单接口的“上限 − 已用”，上限 1 亿表示不限额、查不到。2026-11-12 实测：超超、阿瑞斯、pikaqiu 是 sub2api，code gpt、dongtoken 是 new-api，超算互联网要网页登录、查不了。
 - 查询只读：只更新该渠道的余额快照，不参与扣费、选路、限额和日志，不产生流水。
 - 上游成本不再逐请求记录，`request_logs.upstream_cost` 删除；需要时按「站内基础价 × 用量」或「日志扣费 ÷ 分组倍率」推导。
 - 迁移 0015 删除 `upstream_accounts`、`upstream_account_entries`、`channels.upstream_account_id` 和 `request_logs` 的两个上游字段，新增渠道余额快照字段。发布前备份；回滚需要数据库恢复，不能只换回旧程序。

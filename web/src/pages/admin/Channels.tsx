@@ -29,7 +29,7 @@ import ChannelStatus from '../../components/ChannelStatus'
 import { BalanceCell, BalanceModal } from '../../components/ChannelBalance'
 import { DragHandle, SortableBody, SortableRow } from '../../components/SortableRows'
 import { arrayMove } from '@dnd-kit/sortable'
-import { parseStandardRoot, recoverStandardRoot, standardBases } from '../../channelUrls'
+import { parseStandardRoot, recoverStandardRoot, standardBases, usesRootURL } from '../../channelUrls'
 import ChannelKeys, { toPayload, toRows, type KeyRow } from '../../components/ChannelKeys'
 
 
@@ -146,7 +146,7 @@ export default function Channels() {
 
   const openEdit = (c: Channel) => {
     form.resetFields()
-    form.setFieldsValue({ ...c, root_url: c.template === 'standard' ? c.base_url_messages : '' })
+    form.setFieldsValue({ ...c, root_url: usesRootURL(c.template) ? c.base_url_messages : '' })
     setKeyRows(toRows(c.keys))
     setRows(c.models.map((m) => ({ key: rowSeq++, upstream: m.upstream_name || m.model_name, model_id: m.model_id })))
     setEditing(c)
@@ -156,7 +156,7 @@ export default function Channels() {
     const tpl = templates.find((x) => x.id === id)
     if (!tpl) return
     const current = form.getFieldsValue(true)
-    if (id === 'standard') {
+    if (usesRootURL(id)) {
       const root = recoverStandardRoot(current)
       form.setFieldsValue({
         template: id,
@@ -187,7 +187,7 @@ export default function Channels() {
   // 拉取模型和冒烟测试用当前表单内容（可以是还没保存的渠道）
   const draft = () => {
     const v = form.getFieldsValue(true)
-    const bases = v.template === 'standard'
+    const bases = usesRootURL(v.template)
       ? (() => {
           const parsed = parseStandardRoot(v.root_url ?? '')
           return parsed.root ? standardBases(parsed.root) : null
@@ -555,11 +555,11 @@ export default function Channels() {
             <ChannelKeys value={keyRows} onChange={setKeyRows} />
           </Form.Item>
           <Typography.Text type="secondary">
-            {templateID === 'standard'
+            {usesRootURL(templateID)
               ? t('标准模板默认生成三种协议地址', 'The standard template generates URLs for all three protocols')
               : t('各协议的地址（上游不支持的协议留空）', 'Base URL per protocol (leave unsupported ones empty)')}
           </Typography.Text>
-          {templateID === 'standard' ? (
+          {usesRootURL(templateID) ? (
             <>
               <Form.Item
                 name="root_url"

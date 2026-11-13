@@ -355,6 +355,10 @@ Third-party Relay 分组原来 kinght gpt-0.16、咔咔-gpt0.18、ai8-gpt-0.15 �
 
 同一 PR：项目额度周期由创建人选（按天 / 周 / 月）。迁移 0040 加 `period_limit`、`limit_period`（默认 week，旧 `weekly_limit` 值复制过去、旧列留着不用，方便发布失败时换回旧版本），接口字段 `period_limit` / `limit_period` / `period_spent`，网关提示写明“今天 / 本周 / 本月”和重置时间；规则页用分段选周期加金额。测试：`TestProjectKeyRejections` 补按月、按天的提示，`TestProjectFlow` 补周期读回和非法周期，`projects.browser.cjs` 补选按月保存。
 
+### 中转面板模板与余额查询（2026-11-12）
+
+用户问中转站能否查额度。用各渠道自己的 key 实测：sub2api 站 `/v1/usage` 直接给美元余额（超超 $9.07、阿瑞斯 $21.51、pikaqiu $0.08），new-api 站 `/api/usage/token/` 和 OpenAI 旧账单接口能算出余额（code gpt 约 $51.08、dongtoken 约 $1.21），超算互联网要网页登录，kirisame 当时返回“服务器更新中”。按用户建议新增渠道模板 `sub2api`、`new-api`（按根地址生成协议地址，同标准模板），余额查询接入两种面板；`relay.IsRootTemplate` 统一“根地址模板”判断，前端 `usesRootURL`。测试：`TestChannelBalanceQuery` 加 sub2api、新版 new-api（账户余额、单位反推）、老版 new-api（上限 − 已用）三例。
+
 ### 改为自动发布前的手动发布记录
 
 2026-11-05 发布并复核（概览页改版）：DMIT 已发布提交 `b5090dcb1881e60bdaa1f28b8e368ea7192a0505`，运行中程序 SHA-256 为 `995c0f0635ac55fb8830db57aa06dd3b8cf036f2e012109afc7da837200e8f29`，属主 `lingshu:lingshu` 0755。发布前备份 `/var/backups/lingshu/lingshu-20261105T160124Z.dump`，SHA-256 为 `ab5105544efe475be997872e7e65a9e12e143fc319029ba90cb2e23b62080194`，`pg_restore --list` 可读（20 张表数据）。旧程序、配置与发布标记保留为 `prev-b5090dc`。只改前端，无迁移，schema 仍为 `0020_commercial_relay_mode`；回滚换回 `prev-b5090dc` 程序即可。内网与公网健康检查通过，公网入口资源 `index-DRFHDpk-.js` 与干净构建产物 SHA-256 `54ea3d0fd1851a35d5c296af7f8fc9f935b3e7b5abbec83227362855b7c184c0` 一致，服务日志无 ERROR。压缩成品上传约 9 分钟；部署方式拟改为 GitHub Actions 构建、DMIT 下载成品（仓库为公开仓库，下载无需 token），待确认。

@@ -168,7 +168,7 @@ func (h *Handler) FetchModels(ctx context.Context, ch *store.Channel) ([]string,
 	if ch.BaseURLSystemOne != "" {
 		tries = append(tries, attempt{strings.TrimRight(ch.BaseURLSystemOne, "/") + "/models", "systemone"})
 	}
-	if ch.Template == "standard" {
+	if IsRootTemplate(ch.Template) {
 		if ch.BaseURLChat != "" {
 			tries = append(tries, attempt{strings.TrimRight(ch.BaseURLChat, "/") + "/models", "openai"})
 		}
