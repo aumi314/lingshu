@@ -1,5 +1,5 @@
 // 渠道的上游余额：列表里的"额度"列 + 点开的查询弹窗。
-// 只有 DeepSeek、Kimi、OpenRouter 有余额接口；查到的数字按厂商原始币种显示，不做汇率换算。
+// DeepSeek、Kimi、OpenRouter 和 sub2api、new-api 中转模板有余额接口；查到的数字按原始币种显示，不做汇率换算。
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, App, Button, Modal, Space, Typography } from 'antd'
 import { SyncOutlined } from '@ant-design/icons'
@@ -11,7 +11,7 @@ import { useApp } from '../app'
 
 dayjs.extend(relativeTime)
 
-const QUERYABLE = ['deepseek', 'moonshot', 'openrouter']
+const QUERYABLE = ['deepseek', 'moonshot', 'openrouter', 'sub2api', 'new-api']
 
 export const canQueryBalance = (template: string) => QUERYABLE.includes(template)
 
@@ -112,8 +112,8 @@ export function BalanceModal({
       {channel && !canQueryBalance(channel.template) ? (
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
           {t(
-            '这个渠道没有余额接口。目前只有 DeepSeek、Kimi、OpenRouter 支持查询。',
-            'This channel has no balance API. Only DeepSeek, Kimi and OpenRouter support it.',
+            '这个渠道没有余额接口。支持查询的有 DeepSeek、Kimi、OpenRouter，以及 sub2api、new-api 中转模板（中转站用这两种面板搭的，把渠道模板换过去就能查）。',
+            'This channel has no balance API. DeepSeek, Kimi, OpenRouter and the sub2api / new-api relay templates support it (switch a relay built on those panels to its template).',
           )}
         </Typography.Paragraph>
       ) : (

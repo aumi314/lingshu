@@ -41,13 +41,39 @@ func TestChannelBalanceQuery(t *testing.T) {
 			io.WriteString(w, `{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"33.5"}]}`)
 		case "/api/v1/credits":
 			io.WriteString(w, `{"data":{"total_credits":10,"total_usage":0.022}}`)
+		// sub2api：/v1/usage 直接给美元余额
+		case "/sub2/v1/usage", "/v1/usage":
+			io.WriteString(w, `{"balance":21.5,"remaining":21.5,"unit":"USD","isValid":true,"planName":"钱包余额"}`)
+		// new-api：令牌不限额，返回账户剩余（内部单位），用账单接口的已用反推换算比例
+		case "/api/usage/token/":
+			io.WriteString(w, `{"code":true,"data":{"total_available":-21399,"total_used":21399,"unlimited_quota":true,"user_quota":{"total_available":603869,"total_used":2099896131}}}`)
+		case "/v1/dashboard/billing/subscription":
+			io.WriteString(w, `{"object":"billing_subscription","hard_limit_usd":100000000}`)
+		case "/v1/dashboard/billing/usage":
+			io.WriteString(w, `{"object":"list","total_usage":4.2798}`)
 		default:
 			w.WriteHeader(404)
 		}
 	}))
 	defer up.Close()
 	e.store.Pool.Exec(ctx, `INSERT INTO channels (id, name, template, api_key, base_url_chat) VALUES
-		(1, 'ds', 'deepseek', 'k1', $1), (2, 'glm', 'zhipu', 'k2', $1), (3, 'or', 'openrouter', 'k3', $1)`, up.URL)
+		(1, 'ds', 'deepseek', 'k1', $1), (2, 'glm', 'zhipu', 'k2', $1), (3, 'or', 'openrouter', 'k3', $1),
+		(4, 'sub2', 'sub2api', 'k4', $1 || '/v1'), (5, 'na', 'new-api', 'k5', $1 || '/v1')`, up.URL)
+	// 老版本 new-api：令牌不限额、不返回账户额度，只能用 OpenAI 旧账单接口算“上限 − 已用”（code gpt 2026-11-12 实测）
+	old := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/usage/token/":
+			io.WriteString(w, `{"code":true,"data":{"total_available":-16782767,"total_granted":395288,"total_used":17178055,"unlimited_quota":true}}`)
+		case "/v1/dashboard/billing/subscription":
+			io.WriteString(w, `{"object":"billing_subscription","hard_limit_usd":100}`)
+		case "/v1/dashboard/billing/usage":
+			io.WriteString(w, `{"object":"list","total_usage":4892.3662}`)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer old.Close()
+	e.store.Pool.Exec(ctx, `INSERT INTO channels (id, name, template, api_key, base_url_chat) VALUES (6, 'na-old', 'new-api', 'k6', $1)`, old.URL+"/v1")
 
 	// 只有管理员能查
 	if code, _ := e.login("bob").do("POST", "/api/admin/channels/1/balance", nil, nil); code != 403 {
@@ -82,6 +108,20 @@ func TestChannelBalanceQuery(t *testing.T) {
 	if len(got.Balance) != 1 || got.Balance[0].Currency != "USD" ||
 		!decimal.RequireFromString(got.Balance[0].Amount).Equal(decimal.RequireFromString("9.978")) {
 		t.Fatalf("openrouter 结果 = %+v", got)
+	}
+
+	// 中转模板：sub2api 读 /v1/usage；new-api 优先账户余额（单位按账单接口反推，50 万 = 1 美元），老版本用“上限 − 已用”
+	for _, c := range []struct {
+		id   int64
+		want string
+	}{{4, "21.5"}, {5, "1.2077"}, {6, "51.0763"}} {
+		got.Balance = nil
+		if code, body := a.do("POST", "/api/admin/channels/"+itoa(c.id)+"/balance", nil, &got); code != 200 {
+			t.Fatalf("查询渠道 %d: %d %s", c.id, code, body)
+		}
+		if len(got.Balance) != 1 || got.Balance[0].Currency != "USD" || !decimal.RequireFromString(got.Balance[0].Amount).Equal(decimal.RequireFromString(c.want)) {
+			t.Errorf("渠道 %d 余额 = %+v，期望 $%s", c.id, got.Balance, c.want)
+		}
 	}
 
 	// 渠道列表带上快照
