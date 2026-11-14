@@ -171,11 +171,8 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Name        *string          `json:"name"`
-		PeriodLimit *decimal.Decimal `json:"period_limit"`
-		NoLimit     bool             `json:"no_period_limit"` // true 表示去掉额度上限
-		LimitPeriod *string          `json:"limit_period"`    // day / week / month
-		GroupIDs    *[]int64         `json:"group_ids"`
+		Name     *string  `json:"name"`
+		GroupIDs *[]int64 `json:"group_ids"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -188,24 +185,6 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		patch.Name = &name
-	}
-	switch {
-	case in.NoLimit:
-		patch.SetPeriodLimit = true
-	case in.PeriodLimit != nil:
-		if !in.PeriodLimit.IsPositive() {
-			writeError(w, http.StatusBadRequest, "额度上限要大于 0；不想限制就去掉上限")
-			return
-		}
-		limit := in.PeriodLimit.Round(10)
-		patch.SetPeriodLimit, patch.PeriodLimit = true, &limit
-	}
-	if in.LimitPeriod != nil {
-		if !store.LimitPeriods[*in.LimitPeriod] {
-			writeError(w, http.StatusBadRequest, "额度周期只能是按天、按周或按月")
-			return
-		}
-		patch.LimitPeriod = in.LimitPeriod
 	}
 	patch.GroupIDs = in.GroupIDs
 	if err := s.Store.UpdateProject(r.Context(), currentUser(r).ID, p.ID, patch); err != nil {
@@ -235,6 +214,43 @@ func memberID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 		return 0, false
 	}
 	return id, true
+}
+
+// setProjectMemberLimit 创建人给成员（含自己）设额度上限：period_limit 为 null 表示不限，limit_period 是 day / week / month。
+func (s *Server) setProjectMemberLimit(w http.ResponseWriter, r *http.Request) {
+	p, found := s.projectAs(w, r, "owner")
+	if !found {
+		return
+	}
+	uid, okID := memberID(w, r)
+	if !okID {
+		return
+	}
+	var in struct {
+		PeriodLimit *decimal.Decimal `json:"period_limit"`
+		LimitPeriod string           `json:"limit_period"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if !store.LimitPeriods[in.LimitPeriod] {
+		writeError(w, http.StatusBadRequest, "额度周期只能是按天、按周或按月")
+		return
+	}
+	var limit *decimal.Decimal
+	if in.PeriodLimit != nil {
+		if !in.PeriodLimit.IsPositive() {
+			writeError(w, http.StatusBadRequest, "额度上限要大于 0；不想限制就留空")
+			return
+		}
+		v := in.PeriodLimit.Round(10)
+		limit = &v
+	}
+	if err := s.Store.SetMemberLimit(r.Context(), currentUser(r).ID, p.ID, uid, limit, in.LimitPeriod); err != nil {
+		writeProjectError(w, err)
+		return
+	}
+	ok(w)
 }
 
 func (s *Server) approveProjectMember(w http.ResponseWriter, r *http.Request) {

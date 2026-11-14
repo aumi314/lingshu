@@ -223,7 +223,8 @@ func TestOperationLogCoverage(t *testing.T) {
 	}
 	step("POST /api/me/projects", bob, "/api/me/projects", map[string]string{"name": "研发组"}, &proj, "project.create")
 	pp := "/api/me/projects/" + itoa(proj.ID)
-	step("PATCH /api/me/projects/{id}", bob, pp, map[string]any{"group_ids": []int64{1}, "period_limit": "2"}, nil, "project.update")
+	step("PATCH /api/me/projects/{id}", bob, pp, map[string]any{"group_ids": []int64{1}}, nil, "project.update")
+	step("PUT /api/me/projects/{id}/members/{uid}/limit", bob, pp+"/members/2/limit", map[string]any{"period_limit": "2", "limit_period": "week"}, nil, "project.update")
 	o = step("POST /api/me/projects/{id}/invite-code", bob, pp+"/invite-code", nil, &proj, "project.update")
 	if c := o.change("invite_code"); c == nil || !c.Secret || c.To != nil {
 		t.Fatalf("邀请码重置只记改过了，不记明文: %+v", o)

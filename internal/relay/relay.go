@@ -302,7 +302,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 		reserve = reserve.Mul(c.fastMultiplier) // 历史多是标准请求，封顶后再乘，Fast 请求的冻结额同样够
 	}
 	if reserve.IsPositive() && owner.ProjectID != 0 {
-		hold, err := h.Store.ReserveProject(r.Context(), owner.ProjectID, reserve)
+		hold, err := h.Store.ReserveProject(r.Context(), owner.ProjectID, owner.UserID, reserve)
 		if err != nil {
 			c.reject(w, http.StatusInternalServerError, "冻结额度失败，请稍后重试")
 			slog.Error("项目预扣失败", "err", err)
@@ -312,8 +312,8 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, c *call) {
 			msg := fmt.Sprintf("项目「%s」的可用额度不够这次请求的最大可能费用：预估最多 $%s，项目池可用 $%s（已扣除进行中请求冻结的额度）。请联系项目负责人 %s 转入额度，或调低 max_tokens",
 				owner.ProjectName, reserve.StringFixed(4), hold.Available.StringFixed(4), owner.ProjectOwner)
 			if hold.PeriodRemain != nil && hold.PeriodRemain.LessThan(hold.Available) {
-				word, reset := periodWords(owner.ProjectLimitPeriod)
-				msg = fmt.Sprintf("项目「%s」%s的额度不够这次请求的最大可能费用：预估最多 $%s，%s还剩 $%s（%s%s重置）。可以联系项目负责人 %s 调高额度上限",
+				word, reset := periodWords(hold.Period)
+				msg = fmt.Sprintf("你在项目「%s」%s的额度不够这次请求的最大可能费用：预估最多 $%s，%s还剩 $%s（%s%s重置）。可以联系项目负责人 %s 调高你的额度",
 					owner.ProjectName, word, reserve.StringFixed(4), word, decimal.Max(*hold.PeriodRemain, decimal.Zero).StringFixed(4), billing.ZoneLabel(), reset, owner.ProjectOwner)
 			}
 			c.reject(w, http.StatusPaymentRequired, msg)

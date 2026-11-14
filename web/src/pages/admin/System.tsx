@@ -399,7 +399,7 @@ export default function System() {
                     { title: t('创建人', 'Owner'), dataIndex: 'owner_name' },
                     { title: t('成员', 'Members'), dataIndex: 'members' },
                     { title: t('池子余额', 'Pool'), dataIndex: 'balance', render: (v) => money(v) },
-                    { title: t('本周期已花 / 上限', 'Spent / cap'), render: (_, p) => `${money(p.period_spent)} / ${p.period_limit == null ? t('不限', 'none') : `${money(p.period_limit)}${({ day: t('/天', '/day'), week: t('/周', '/week'), month: t('/月', '/month') } as Record<string, string>)[p.limit_period] ?? ''}`}` },
+                    { title: t('累计花费', 'Total spent'), render: (_, p) => money(p.total_spent) },
                     { title: t('冻结', 'Frozen'), dataIndex: 'frozen', render: (v, p) => <Switch size="small" aria-label={`${t('冻结', 'Freeze')} · ${p.name}`} checked={v} disabled={p.closed} onChange={(c) => freezeProject(p, c)} /> },
                   ]}
                 />

@@ -32,15 +32,14 @@ type KeyOwner struct {
 	QuotaLimit   *decimal.Decimal // nil 表示不限额
 	QuotaUsed    decimal.Decimal
 	// 项目 Key（docs/decisions.md「项目额度」）：钱走项目池，分组权限看项目开放的分组。ProjectID 为 0 是个人 Key
-	ProjectID          int64
-	ProjectName        string
-	ProjectOwner       string
-	ProjectFrozen      bool
-	ProjectClosed      bool
-	ProjectMember      bool // Key 的主人现在还是项目正式成员
-	ProjectBalance     decimal.Decimal
-	ProjectReserved    decimal.Decimal
-	ProjectLimitPeriod string // day / week / month，提示语用
+	ProjectID       int64
+	ProjectName     string
+	ProjectOwner    string
+	ProjectFrozen   bool
+	ProjectClosed   bool
+	ProjectMember   bool // Key 的主人现在还是项目正式成员
+	ProjectBalance  decimal.Decimal
+	ProjectReserved decimal.Decimal
 }
 
 // LookupKey 按 key 哈希查找，找不到返回 nil。
@@ -59,7 +58,7 @@ func (s *Store) LookupKey(ctx context.Context, keyHash string) (*KeyOwner, error
 		       g.ratio::text, g.retry_count, u.balance::text, u.reserved::text, k.quota_limit::text, k.quota_used::text, k.expires_at,
 		       COALESCE(p.id, 0), COALESCE(p.name, ''), COALESCE(po.username, ''), COALESCE(p.frozen, false), p.closed_at IS NOT NULL,
 		       EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = p.id AND m.user_id = u.id AND m.status = 'active'),
-		       COALESCE(p.balance, 0)::text, COALESCE(p.reserved, 0)::text, COALESCE(p.limit_period, '')
+		       COALESCE(p.balance, 0)::text, COALESCE(p.reserved, 0)::text
 		FROM api_keys k
 		JOIN users u ON u.id = k.user_id
 		JOIN groups g ON g.id = k.group_id
@@ -68,7 +67,7 @@ func (s *Store) LookupKey(ctx context.Context, keyHash string) (*KeyOwner, error
 		WHERE k.key_hash = $1`, keyHash,
 	).Scan(&o.KeyID, &o.KeyName, &o.UserID, &o.GroupID, &o.GroupName, &o.KeyEnabled, &o.UserEnabled, &o.GroupAllowed,
 		&ratio, &o.GroupRetries, &balance, &reserved, &limit, &used, &o.ExpiresAt,
-		&o.ProjectID, &o.ProjectName, &o.ProjectOwner, &o.ProjectFrozen, &o.ProjectClosed, &o.ProjectMember, &pBalance, &pReserved, &o.ProjectLimitPeriod)
+		&o.ProjectID, &o.ProjectName, &o.ProjectOwner, &o.ProjectFrozen, &o.ProjectClosed, &o.ProjectMember, &pBalance, &pReserved)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -388,6 +387,12 @@ func (s *Store) SettleRequest(ctx context.Context, l *RequestLog) error {
 				l.Cost.String(), owner, l.Reserved.String()); err != nil {
 				return fmt.Errorf("扣余额: %w", err)
 			}
+			if l.ProjectID != 0 { // 成员行的冻结一起解开；人已被移出时没有这一行，不影响
+				if _, err := tx.Exec(ctx, `UPDATE project_members SET reserved = GREATEST(reserved - $3::numeric, 0) WHERE project_id = $1 AND user_id = $2`,
+					l.ProjectID, l.UserID, l.Reserved.String()); err != nil {
+					return fmt.Errorf("解冻成员额度: %w", err)
+				}
+			}
 		}
 		_, err := tx.Exec(ctx, `UPDATE api_keys SET quota_used = quota_used + $1::numeric, last_used_at = now() WHERE id = $2`,
 			l.Cost.String(), l.APIKeyID)
@@ -429,7 +434,9 @@ func (s *Store) RecentMaxCost(ctx context.Context, userID int64, model string) (
 
 // ResetReservations 启动时清零所有冻结：单进程部署，上次进程里进行中的请求都已结束。
 func (s *Store) ResetReservations(ctx context.Context) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE users SET reserved = 0 WHERE reserved <> 0`)
+	_, err := s.Pool.Exec(ctx, `UPDATE users SET reserved = 0 WHERE reserved <> 0;
+		UPDATE projects SET reserved = 0 WHERE reserved <> 0;
+		UPDATE project_members SET reserved = 0 WHERE reserved <> 0`)
 	return err
 }
 

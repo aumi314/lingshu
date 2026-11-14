@@ -92,14 +92,20 @@ func TestProjectKeyRejections(t *testing.T) {
 	}
 	expect("正常", 200, "")
 
-	// 周期上限（创建人选按天 / 周 / 月）：上一次已经花了一点，上限设得比它还小，本周期剩余为负，直接拒，提示写明周期
-	e.exec(`UPDATE projects SET period_limit = 0.000001 WHERE id = 1`)
-	expect("本周额度用完", 402, "本周")
-	e.exec(`UPDATE projects SET limit_period = 'month' WHERE id = 1`)
+	// 成员额度上限（创建人给每人单独设，按天 / 周 / 月）：上一次已经花了一点，上限设得比它还小，本周期剩余为负，直接拒，提示写明周期
+	e.exec(`UPDATE project_members SET period_limit = 0.000001 WHERE project_id = 1 AND user_id = 2`)
+	expect("本周额度用完", 402, "你在项目「研发组」本周")
+	e.exec(`UPDATE project_members SET limit_period = 'month' WHERE project_id = 1 AND user_id = 2`)
 	expect("本月额度用完", 402, "每月 1 号 0 点重置")
-	e.exec(`UPDATE projects SET limit_period = 'day' WHERE id = 1`)
+	e.exec(`UPDATE project_members SET limit_period = 'day' WHERE project_id = 1 AND user_id = 2`)
 	expect("今天额度用完", 402, "今天")
-	e.exec(`UPDATE projects SET period_limit = NULL WHERE id = 1`)
+	// 别人的上限不影响他：只给创建人设上限，bob 照常能用
+	e.exec(`UPDATE project_members SET period_limit = NULL WHERE project_id = 1 AND user_id = 2`)
+	e.exec(`UPDATE project_members SET period_limit = 0.000001 WHERE project_id = 1 AND user_id = 1`)
+	expect("别人的上限不影响", 200, "")
+	if r := e.decimal(`SELECT COALESCE(sum(reserved), 0)::text FROM project_members`); !r.IsZero() {
+		t.Errorf("结算后成员冻结应清零，实际 %s", r)
+	}
 
 	e.exec(`UPDATE projects SET balance = 0 WHERE id = 1`)
 	expect("池子空了", 402, "项目负责人 alice")

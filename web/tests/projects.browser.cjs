@@ -16,8 +16,8 @@ const path = require('node:path')
     }
     const user = { id: 2, username: 'bob', role: 'user', balance: '5', preferences: { language: 'zh', theme: 'dark' }, enabled: true, user_group_ids: [], created_at: new Date().toISOString(), can_create_projects: true }
     const group = { id: 1, name: 'default', ratio: '1', is_collection: false }
-    const owned = { id: 1, name: '研发组', invite_code: 'ABCD2345', owner_id: 2, owner_name: 'bob', balance: '3', reserved: '0.5', period_limit: '10', limit_period: 'week', period_spent: '2.5', frozen: false, closed: false, group_ids: [1], groups: [group], members: 2, my_status: 'owner', created_at: new Date().toISOString() }
-    const pending = { ...owned, id: 2, name: '产品组', invite_code: undefined, owner_id: 9, owner_name: 'carol', my_status: 'pending', period_limit: null }
+    const owned = { id: 1, name: '研发组', invite_code: 'ABCD2345', owner_id: 2, owner_name: 'bob', balance: '3', reserved: '0.5', total_spent: '9', my_limit: '10', my_period: 'week', my_spent: '2.5', frozen: false, closed: false, group_ids: [1], groups: [group], members: 2, my_status: 'owner', created_at: new Date().toISOString() }
+    const pending = { ...owned, id: 2, name: '产品组', invite_code: undefined, owner_id: 9, owner_name: 'carol', my_status: 'pending', my_limit: null }
     const state = { enabled: true, writes: [] }
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
     const errors = []
@@ -31,8 +31,8 @@ const path = require('node:path')
       if (p === '/api/me/projects' && req.method() === 'GET') return json({ enabled: state.enabled, can_create: true, projects: state.enabled ? [owned, pending] : [] })
       if (p === '/api/me/projects/join') return json({ name: '产品组' })
       if (p === '/api/me/projects/1' && req.method() === 'GET') return json({ project: owned, members: [
-        { user_id: 2, username: 'bob', status: 'owner', period_spent: '2', total_spent: '9', created_at: '' },
-        { user_id: 3, username: 'carol', status: 'pending', period_spent: '0', total_spent: '0', created_at: '' },
+        { user_id: 2, username: 'bob', status: 'owner', period_limit: null, limit_period: 'week', period_spent: '2', total_spent: '9', created_at: '' },
+        { user_id: 3, username: 'carol', status: 'pending', period_limit: null, limit_period: 'week', period_spent: '0', total_spent: '0', created_at: '' },
       ] })
       if (p === '/api/me/keys' && req.method() === 'GET') return json([{ id: 7, name: 'laptop', prefix: 'sk-ls-abc', group_id: 1, group_name: 'default', quota_limit: null, quota_used: '1.2', enabled: true, last_used_at: null, expires_at: null, created_at: '', project_id: 1, project_name: '研发组' }])
       if (p === '/api/me/keys') return json({ id: 8, key: 'sk-ls-newprojectkey' }, 201)
@@ -40,12 +40,12 @@ const path = require('node:path')
       return json({})
     })
 
-    // 侧边栏入口和卡片：池子可用 = 余额 − 冻结，本周已花 / 上限
+    // 侧边栏入口和卡片：池子可用 = 余额 − 冻结，我本周已花 / 我的上限
     await page.goto('http://127.0.0.1:25199/console/projects')
     await page.getByRole('menuitem', { name: '我的项目' }).waitFor()
     await page.getByText('研发组', { exact: true }).first().waitFor()
     await page.getByText('$2.5000', { exact: true }).first().waitFor()
-    await page.getByText('本周已花 $2.5000 / $10.0000', { exact: true }).waitFor()
+    await page.getByText('我本周已花 $2.5000 / $10.0000', { exact: true }).waitFor()
     await page.getByText('已申请，等待 carol 审批', { exact: true }).waitFor()
 
     // 邀请码申请
@@ -87,20 +87,25 @@ const path = require('node:path')
     for (let i = 0; i < 50 && !state.writes.at(-1)[1].endsWith('/approve'); i++) await page.waitForTimeout(30)
     assert.deepEqual(state.writes.at(-1), ['POST', '/api/me/projects/1/members/3/approve', {}])
 
-    // 规则：清空每周上限后保存，提交不限
+    // 成员额度：创建人给每个人单独设，按月 50
+    state.writes.length = 0
+    await dialog.getByText('本周 $2.0000 · 不限', { exact: true }).waitFor()
+    await dialog.getByRole('button', { name: /设\s*置/ }).first().click()
+    const limitDialog = page.getByRole('dialog').filter({ hasText: 'bob 的额度上限' })
+    await limitDialog.locator('.ant-segmented-item').filter({ hasText: '按月' }).click()
+    await limitDialog.locator('#period_limit').fill('50')
+    await limitDialog.getByRole('button', { name: /保\s*存/ }).click()
+    for (let i = 0; i < 50 && !state.writes.some((w) => w[0] === 'PUT'); i++) await page.waitForTimeout(30)
+    assert.deepEqual(state.writes.find((w) => w[0] === 'PUT'), ['PUT', '/api/me/projects/1/members/2/limit', { limit_period: 'month', period_limit: '50' }])
+
+    // 规则：只剩名称和开放分组，没有项目级额度上限
+    state.writes.length = 0
     await dialog.getByRole('tab', { name: '规则' }).click()
     await dialog.getByText('ABCD2345', { exact: true }).waitFor()
-    await page.locator('#period_limit').fill('')
-    await dialog.getByRole('button', { name: /保\s*存/ }).click()
-    for (let i = 0; i < 50 && state.writes.at(-1)[0] !== 'PATCH'; i++) await page.waitForTimeout(30)
-    assert.deepEqual(state.writes.at(-1), ['PATCH', '/api/me/projects/1', { name: '研发组', group_ids: [1], limit_period: 'week', no_period_limit: true }])
-    // 周期由创建人选：换成按月、填上限
-    state.writes.length = 0
-    await dialog.locator('.ant-segmented-item').filter({ hasText: '按月' }).click()
-    await page.locator('#period_limit').fill('50')
+    assert.equal(await page.locator('#period_limit').count(), 0)
     await dialog.getByRole('button', { name: /保\s*存/ }).click()
     for (let i = 0; i < 50 && !state.writes.some((w) => w[0] === 'PATCH'); i++) await page.waitForTimeout(30)
-    assert.deepEqual(state.writes.find((w) => w[0] === 'PATCH'), ['PATCH', '/api/me/projects/1', { name: '研发组', group_ids: [1], limit_period: 'month', period_limit: '50' }])
+    assert.deepEqual(state.writes.find((w) => w[0] === 'PATCH'), ['PATCH', '/api/me/projects/1', { name: '研发组', group_ids: [1] }])
 
     // 组件关闭：没有入口，页面提示
     state.enabled = false
@@ -108,7 +113,7 @@ const path = require('node:path')
     await page.getByText('项目功能没有开启，请联系管理员', { exact: true }).waitFor()
     assert.equal(await page.getByRole('menuitem', { name: '我的项目' }).count(), 0)
     assert.deepEqual(errors, [])
-    console.log('PASS: projects menu only when enabled, selected project expands below the card strip (no dialog, kept in URL), pool and weekly cards, join by code, pending not openable, project key with project_id shown once, transfer, approve with pending count, rules save with no cap, owner picks a monthly cap, disabled notice')
+    console.log('PASS: projects menu only when enabled, selected project expands below the card strip (no dialog, kept in URL), pool and weekly cards, join by code, pending not openable, project key with project_id shown once, transfer, approve with pending count, owner sets a monthly cap per member, rules without project cap, disabled notice')
   } finally {
     await browser.close()
     server.kill()
