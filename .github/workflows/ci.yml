@@ -17,7 +17,7 @@ concurrency:
 jobs:
   go:
     name: Go 测试
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -49,7 +49,7 @@ jobs:
 
   web:
     name: 前端检查与浏览器回归
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
@@ -94,7 +94,7 @@ jobs:
 
   edge:
     name: Caddy 隔离防护回归
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
