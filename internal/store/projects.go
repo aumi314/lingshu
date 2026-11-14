@@ -19,71 +19,68 @@ import (
 // 池子和个人余额一样有 balance / reserved，预扣用一条带行锁的语句，结算和个人余额同一个事务。
 
 // periodStartSQL 是当前周期开始的时刻：按业务时区（主设置里的时区，默认北京时间）的当天 0 点、本周一 0 点或本月 1 号 0 点，
-// periodExpr 是项目 limit_period 列的表达式（day / week / month，正好是 date_trunc 的单位）。
+// periodExpr 是成员 limit_period 列的表达式（day / week / month，正好是 date_trunc 的单位）。
 // 时区名已由 billing.ParseZone 校验（只有字母、数字和 / _ + -），可以直接拼进语句。
 func periodStartSQL(periodExpr string) string {
 	z := billing.ZoneName()
 	return "(date_trunc(" + periodExpr + ", now() AT TIME ZONE '" + z + "') AT TIME ZONE '" + z + "')"
 }
 
-// periodSpent 是项目本周期已经花掉的钱。
-func periodSpent(projectExpr, periodExpr string) string {
-	return "COALESCE((SELECT sum(cost) FROM request_logs WHERE project_id = " + projectExpr + " AND created_at >= " + periodStartSQL(periodExpr) + "), 0)"
+// memberSpent 是成员本周期在项目里已经花掉的钱（周期按他自己的 limit_period）。
+func memberSpent(projectExpr, userExpr, periodExpr string) string {
+	return "COALESCE((SELECT sum(cost) FROM request_logs WHERE project_id = " + projectExpr + " AND user_id = " + userExpr + " AND created_at >= " + periodStartSQL(periodExpr) + "), 0)"
 }
 
-// LimitPeriods 是创建人能选的额度周期。
+// LimitPeriods 是创建人给成员设额度时能选的周期。
 var LimitPeriods = map[string]bool{"day": true, "week": true, "month": true}
 
 type Project struct {
-	ID          int64            `json:"id"`
-	Name        string           `json:"name"`
-	InviteCode  string           `json:"invite_code,omitempty"` // 只给创建人和管理员
-	OwnerID     int64            `json:"owner_id"`
-	OwnerName   string           `json:"owner_name"`
-	Balance     decimal.Decimal  `json:"balance"`
-	Reserved    decimal.Decimal  `json:"reserved"`
-	PeriodLimit *decimal.Decimal `json:"period_limit"` // 一个周期内整个项目最多花多少，nil 不限
-	LimitPeriod string           `json:"limit_period"` // day / week / month，按业务时区重置
-	PeriodSpent decimal.Decimal  `json:"period_spent"` // 本周期已花
-	Frozen      bool             `json:"frozen"`
-	Closed      bool             `json:"closed"`
-	GroupIDs    []int64          `json:"group_ids"`
-	Groups      json.RawMessage  `json:"groups"`    // 开放分组的 id、名称、倍率，成员建 key 时选
-	Members     int              `json:"members"`   // 正式成员数（含创建人）
-	MyStatus    string           `json:"my_status"` // 当前用户的身份：owner / active / pending，管理员列表里为空
-	CreatedAt   time.Time        `json:"created_at"`
+	ID         int64            `json:"id"`
+	Name       string           `json:"name"`
+	InviteCode string           `json:"invite_code,omitempty"` // 只给创建人和管理员
+	OwnerID    int64            `json:"owner_id"`
+	OwnerName  string           `json:"owner_name"`
+	Balance    decimal.Decimal  `json:"balance"`
+	Reserved   decimal.Decimal  `json:"reserved"`
+	TotalSpent decimal.Decimal  `json:"total_spent"` // 整个项目累计花了多少
+	MyLimit    *decimal.Decimal `json:"my_limit"`    // 当前用户的额度上限（创建人给每个成员单独设），nil 不限；管理员列表里为空
+	MyPeriod   string           `json:"my_period"`   // day / week / month，按业务时区重置
+	MySpent    decimal.Decimal  `json:"my_spent"`    // 当前用户本周期已花
+	Frozen     bool             `json:"frozen"`
+	Closed     bool             `json:"closed"`
+	GroupIDs   []int64          `json:"group_ids"`
+	Groups     json.RawMessage  `json:"groups"`    // 开放分组的 id、名称、倍率，成员建 key 时选
+	Members    int              `json:"members"`   // 正式成员数（含创建人）
+	MyStatus   string           `json:"my_status"` // 当前用户的身份：owner / active / pending，管理员列表里为空
+	CreatedAt  time.Time        `json:"created_at"`
 }
 
-const projectColumns = `p.id, p.name, p.invite_code, p.owner_id, o.username, p.balance::text, p.reserved::text, p.period_limit::text, p.limit_period,
-	` + `%WEEK%` + `::text, p.frozen, p.closed_at IS NOT NULL,
+const projectColumns = `p.id, p.name, p.invite_code, p.owner_id, o.username, p.balance::text, p.reserved::text,
+	COALESCE((SELECT sum(cost) FROM request_logs WHERE project_id = p.id), 0)::text, p.frozen, p.closed_at IS NOT NULL,
 	COALESCE((SELECT array_agg(pg.group_id ORDER BY pg.group_id) FROM project_groups pg WHERE pg.project_id = p.id), '{}'),
 	COALESCE((SELECT jsonb_agg(jsonb_build_object('id', g.id, 'name', g.name, 'ratio', g.ratio::text, 'is_collection', g.is_collection) ORDER BY g.sort_order, g.id)
 	          FROM project_groups pg JOIN groups g ON g.id = pg.group_id WHERE pg.project_id = p.id), '[]'),
 	(SELECT count(*) FROM project_members m WHERE m.project_id = p.id AND m.status = 'active'), p.created_at`
 
-func projectSelect() string {
-	return strings.Replace(projectColumns, "%WEEK%", periodSpent("p.id", "p.limit_period"), 1)
-}
-
 func scanProject(row pgx.Row, extra ...any) (*Project, error) {
 	var p Project
 	var balance, reserved, spent string
-	var limit *string
-	dest := append([]any{&p.ID, &p.Name, &p.InviteCode, &p.OwnerID, &p.OwnerName, &balance, &reserved, &limit, &p.LimitPeriod, &spent,
+	dest := append([]any{&p.ID, &p.Name, &p.InviteCode, &p.OwnerID, &p.OwnerName, &balance, &reserved, &spent,
 		&p.Frozen, &p.Closed, &p.GroupIDs, &p.Groups, &p.Members, &p.CreatedAt}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return nil, translate(err)
 	}
-	p.Balance, p.Reserved, p.PeriodSpent, p.PeriodLimit = mustDecimal(balance), mustDecimal(reserved), mustDecimal(spent), optDecimal(limit)
+	p.Balance, p.Reserved, p.TotalSpent = mustDecimal(balance), mustDecimal(reserved), mustDecimal(spent)
 	return &p, nil
 }
 
-// projectEntity 是操作日志里项目的快照：规则、开放分组、成员变化都看得到；邀请码只记“改过了”，不记明文。
+// projectEntity 是操作日志里项目的快照：规则、开放分组、成员和每人额度的变化都看得到；邀请码只记“改过了”，不记明文。
 var projectEntity = entity{"project", "name", `
-	SELECT jsonb_build_object('name', p.name, 'period_limit', p.period_limit::text, 'limit_period', p.limit_period, 'frozen', p.frozen, 'closed', p.closed_at IS NOT NULL,
+	SELECT jsonb_build_object('name', p.name, 'frozen', p.frozen, 'closed', p.closed_at IS NOT NULL,
 	       'invite_code', md5(p.invite_code),
 	       'groups', COALESCE((SELECT jsonb_agg(g.name ORDER BY g.name) FROM project_groups pg JOIN groups g ON g.id = pg.group_id WHERE pg.project_id = p.id), '[]'),
 	       'members', COALESCE((SELECT jsonb_agg(u.username ORDER BY u.username) FROM project_members m JOIN users u ON u.id = m.user_id WHERE m.project_id = p.id AND m.status = 'active'), '[]'),
+	       'member_limits', COALESCE((SELECT jsonb_object_agg(u.username, m.period_limit::text || '/' || m.limit_period) FROM project_members m JOIN users u ON u.id = m.user_id WHERE m.project_id = p.id AND m.period_limit IS NOT NULL), '{}'),
 	       'pending', COALESCE((SELECT jsonb_agg(u.username ORDER BY u.username) FROM project_members m JOIN users u ON u.id = m.user_id WHERE m.project_id = p.id AND m.status = 'pending'), '[]'))
 	FROM projects p WHERE p.id = $1`, []string{"invite_code"}}
 
@@ -116,7 +113,8 @@ func (s *Store) CreateProject(ctx context.Context, ownerID int64, name string) (
 
 // MyProjects 列出用户创建、加入或正在申请的项目（未解散的）。邀请码只给创建人。
 func (s *Store) MyProjects(ctx context.Context, userID int64) ([]*Project, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT `+projectSelect()+`, CASE WHEN p.owner_id = $1 THEN 'owner' ELSE m.status END
+	rows, err := s.Pool.Query(ctx, `SELECT `+projectColumns+`, CASE WHEN p.owner_id = $1 THEN 'owner' ELSE m.status END,
+		       m.period_limit::text, m.limit_period, `+memberSpent("p.id", "m.user_id", "m.limit_period")+`::text
 		FROM project_members m JOIN projects p ON p.id = m.project_id JOIN users o ON o.id = p.owner_id
 		WHERE m.user_id = $1 AND p.closed_at IS NULL ORDER BY p.id`, userID)
 	if err != nil {
@@ -125,12 +123,13 @@ func (s *Store) MyProjects(ctx context.Context, userID int64) ([]*Project, error
 	defer rows.Close()
 	var out []*Project
 	for rows.Next() {
-		var status string
-		p, err := scanProject(rows, &status)
+		var status, period, spent string
+		var limit *string
+		p, err := scanProject(rows, &status, &limit, &period, &spent)
 		if err != nil {
 			return nil, err
 		}
-		p.MyStatus = status
+		p.MyStatus, p.MyPeriod, p.MyLimit, p.MySpent = status, period, optDecimal(limit), mustDecimal(spent)
 		if status != "owner" {
 			p.InviteCode = ""
 		}
@@ -141,7 +140,7 @@ func (s *Store) MyProjects(ctx context.Context, userID int64) ([]*Project, error
 
 // AllProjects 给管理员：所有项目，含已解散的。
 func (s *Store) AllProjects(ctx context.Context) ([]*Project, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT `+projectSelect()+` FROM projects p JOIN users o ON o.id = p.owner_id ORDER BY p.id DESC`)
+	rows, err := s.Pool.Query(ctx, `SELECT `+projectColumns+` FROM projects p JOIN users o ON o.id = p.owner_id ORDER BY p.id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +157,7 @@ func (s *Store) AllProjects(ctx context.Context) ([]*Project, error) {
 }
 
 func (s *Store) ProjectByID(ctx context.Context, id int64) (*Project, error) {
-	return scanProject(s.Pool.QueryRow(ctx, `SELECT `+projectSelect()+` FROM projects p JOIN users o ON o.id = p.owner_id WHERE p.id = $1`, id))
+	return scanProject(s.Pool.QueryRow(ctx, `SELECT `+projectColumns+` FROM projects p JOIN users o ON o.id = p.owner_id WHERE p.id = $1`, id))
 }
 
 // ProjectMemberStatus 返回用户在项目里的状态：owner / active / pending，不是成员返回空。
@@ -174,14 +173,11 @@ func (s *Store) ProjectMemberStatus(ctx context.Context, projectID, userID int64
 
 // ProjectPatch 是创建人改的规则；nil 表示不改。
 type ProjectPatch struct {
-	Name           *string
-	SetPeriodLimit bool
-	PeriodLimit    *decimal.Decimal // nil 表示不限
-	LimitPeriod    *string          // day / week / month
-	GroupIDs       *[]int64
+	Name     *string
+	GroupIDs *[]int64
 }
 
-// UpdateProject 改名、每周上限、开放分组。开放的分组只能是创建人自己有权用的，防止借项目越权。
+// UpdateProject 改名、开放分组。开放的分组只能是创建人自己有权用的，防止借项目越权。
 func (s *Store) UpdateProject(ctx context.Context, actorID, id int64, p ProjectPatch) error {
 	if p.GroupIDs != nil && len(*p.GroupIDs) > 0 {
 		var ownerID int64
@@ -204,10 +200,7 @@ func (s *Store) UpdateProject(ctx context.Context, actorID, id int64, p ProjectP
 	}
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		return track(ctx, tx, projectEntity, &id, actorID, func() error {
-			if err := execOne(ctx, tx, `UPDATE projects SET name = COALESCE($2, name),
-				period_limit = CASE WHEN $3 THEN $4::numeric ELSE period_limit END, limit_period = COALESCE($5, limit_period)
-				WHERE id = $1 AND closed_at IS NULL`,
-				id, p.Name, p.SetPeriodLimit, decimalArg(p.PeriodLimit), p.LimitPeriod); err != nil {
+			if err := execOne(ctx, tx, `UPDATE projects SET name = COALESCE($2, name) WHERE id = $1 AND closed_at IS NULL`, id, p.Name); err != nil {
 				return err
 			}
 			if p.GroupIDs == nil {
@@ -261,19 +254,21 @@ func (s *Store) JoinProject(ctx context.Context, userID int64, code string) (str
 }
 
 type ProjectMember struct {
-	UserID      int64           `json:"user_id"`
-	Username    string          `json:"username"`
-	Status      string          `json:"status"`       // owner / active / pending
-	PeriodSpent decimal.Decimal `json:"period_spent"` // 本周期在这个项目里花了多少
-	TotalSpent  decimal.Decimal `json:"total_spent"`
-	CreatedAt   time.Time       `json:"created_at"`
+	UserID      int64            `json:"user_id"`
+	Username    string           `json:"username"`
+	Status      string           `json:"status"`       // owner / active / pending
+	PeriodLimit *decimal.Decimal `json:"period_limit"` // 创建人给他设的额度上限，nil 不限
+	LimitPeriod string           `json:"limit_period"` // day / week / month
+	PeriodSpent decimal.Decimal  `json:"period_spent"` // 本周期（按他自己的周期）在这个项目里花了多少
+	TotalSpent  decimal.Decimal  `json:"total_spent"`
+	CreatedAt   time.Time        `json:"created_at"`
 }
 
-// ProjectMembers 列出成员、申请人和每个人本周、累计在这个项目里花了多少。
+// ProjectMembers 列出成员、申请人，每个人的额度上限、本周期和累计在这个项目里花了多少。
 func (s *Store) ProjectMembers(ctx context.Context, id int64) ([]ProjectMember, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT m.user_id, u.username, CASE WHEN p.owner_id = m.user_id THEN 'owner' ELSE m.status END,
-		       COALESCE((SELECT sum(cost) FROM request_logs l WHERE l.project_id = p.id AND l.user_id = m.user_id AND l.created_at >= `+periodStartSQL("p.limit_period")+`), 0)::text,
+		       m.period_limit::text, m.limit_period, `+memberSpent("p.id", "m.user_id", "m.limit_period")+`::text,
 		       COALESCE((SELECT sum(cost) FROM request_logs l WHERE l.project_id = p.id AND l.user_id = m.user_id), 0)::text, m.created_at
 		FROM project_members m JOIN projects p ON p.id = m.project_id JOIN users u ON u.id = m.user_id
 		WHERE m.project_id = $1 ORDER BY (p.owner_id = m.user_id) DESC, m.status, m.created_at`, id)
@@ -283,9 +278,20 @@ func (s *Store) ProjectMembers(ctx context.Context, id int64) ([]ProjectMember, 
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (ProjectMember, error) {
 		var m ProjectMember
 		var week, total string
-		err := r.Scan(&m.UserID, &m.Username, &m.Status, &week, &total, &m.CreatedAt)
-		m.PeriodSpent, m.TotalSpent = mustDecimal(week), mustDecimal(total)
+		var limit *string
+		err := r.Scan(&m.UserID, &m.Username, &m.Status, &limit, &m.LimitPeriod, &week, &total, &m.CreatedAt)
+		m.PeriodLimit, m.PeriodSpent, m.TotalSpent = optDecimal(limit), mustDecimal(week), mustDecimal(total)
 		return m, err
+	})
+}
+
+// SetMemberLimit 创建人给正式成员（含自己）设额度上限和周期，limit 为 nil 表示不限。
+func (s *Store) SetMemberLimit(ctx context.Context, actorID, projectID, userID int64, limit *decimal.Decimal, period string) error {
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		return track(ctx, tx, projectEntity, &projectID, actorID, func() error {
+			return execOne(ctx, tx, `UPDATE project_members SET period_limit = $3::numeric, limit_period = $4
+				WHERE project_id = $1 AND user_id = $2 AND status = 'active'`, projectID, userID, decimalArg(limit), period)
+		})
 	})
 }
 
@@ -421,37 +427,43 @@ func (s *Store) SetProjectFrozen(ctx context.Context, actorID, projectID int64, 
 	})
 }
 
-// ProjectHold 是项目池预扣的结果。
+// ProjectHold 是项目预扣的结果。
 type ProjectHold struct {
 	Held         decimal.Decimal  // 实际冻结的金额，0 表示拒绝
 	Available    decimal.Decimal  // 冻结前池子可用（余额 − 冻结）
-	PeriodRemain *decimal.Decimal // 冻结前本周期还能花多少（扣掉进行中的冻结），nil 表示不限
+	PeriodRemain *decimal.Decimal // 冻结前这个成员本周期还能花多少（扣掉他进行中的冻结），nil 表示不限
+	Period       string           // 成员的额度周期，提示语用
 }
 
-// ReserveProject 从项目池冻结额度，同时受池子可用余额和每周上限限制，规则和个人余额的 Reserve 一样：
+// ReserveProject 给成员的这次请求冻结额度，同时受项目池可用余额和他自己的额度上限限制，规则和个人余额的 Reserve 一样：
 // 够就冻结 amount；不够但项目没有别的请求在进行、两边都还有余量时，放行这一个并冻结剩下的全部（单个请求小额透支）。
-func (s *Store) ReserveProject(ctx context.Context, projectID int64, amount decimal.Decimal) (ProjectHold, error) {
+// 池子和成员行在同一个事务里加锁（先项目后成员，和结算同一顺序），并发请求冲不破池子和个人上限。
+func (s *Store) ReserveProject(ctx context.Context, projectID, userID int64, amount decimal.Decimal) (ProjectHold, error) {
 	var h ProjectHold
-	var avail, held string
-	var remain *string
-	err := s.Pool.QueryRow(ctx, `
-		WITH p AS (
-			SELECT balance - reserved AS avail, reserved,
-			       period_limit - `+periodSpent("$1", "projects.limit_period")+` - reserved AS remain
-			FROM projects WHERE id = $1 FOR UPDATE),
-		cap AS (SELECT avail, reserved, remain, LEAST(avail, COALESCE(remain, avail)) AS room FROM p)
-		UPDATE projects SET reserved = projects.reserved + LEAST($2::numeric, cap.room)
-		FROM cap WHERE projects.id = $1 AND (cap.room >= $2::numeric OR (cap.reserved = 0 AND cap.room > 0))
-		RETURNING LEAST($2::numeric, cap.room)::text, cap.avail::text, cap.remain::text`, projectID, amount.String()).Scan(&held, &avail, &remain)
-	if errors.Is(err, pgx.ErrNoRows) {
-		err = s.Pool.QueryRow(ctx, `SELECT (balance - reserved)::text, (period_limit - `+periodSpent("$1", "projects.limit_period")+` - reserved)::text FROM projects WHERE id = $1`,
-			projectID).Scan(&avail, &remain)
+	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		var avail, poolReserved string
+		if err := tx.QueryRow(ctx, `SELECT (balance - reserved)::text, reserved::text FROM projects WHERE id = $1 FOR UPDATE`, projectID).Scan(&avail, &poolReserved); err != nil {
+			return translate(err)
+		}
+		var remain *string
+		if err := tx.QueryRow(ctx, `SELECT (period_limit - `+memberSpent("$1", "$2", "limit_period")+` - reserved)::text, limit_period
+			FROM project_members WHERE project_id = $1 AND user_id = $2 FOR UPDATE`, projectID, userID).Scan(&remain, &h.Period); err != nil {
+			return translate(err)
+		}
 		h.Available, h.PeriodRemain = mustDecimal(avail), optDecimal(remain)
-		return h, err
-	}
-	if err != nil {
-		return h, err
-	}
-	h.Held, h.Available, h.PeriodRemain = mustDecimal(held), mustDecimal(avail), optDecimal(remain)
-	return h, nil
+		room := h.Available
+		if h.PeriodRemain != nil {
+			room = decimal.Min(room, *h.PeriodRemain)
+		}
+		if room.LessThan(amount) && !(mustDecimal(poolReserved).IsZero() && room.IsPositive()) {
+			return nil
+		}
+		h.Held = decimal.Min(amount, room)
+		if _, err := tx.Exec(ctx, `UPDATE projects SET reserved = reserved + $2::numeric WHERE id = $1`, projectID, h.Held.String()); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `UPDATE project_members SET reserved = reserved + $3::numeric WHERE project_id = $1 AND user_id = $2`, projectID, userID, h.Held.String())
+		return err
+	})
+	return h, err
 }

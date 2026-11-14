@@ -55,21 +55,30 @@ func TestProjectFlow(t *testing.T) {
 	if code, _ := bob.do("PATCH", path, map[string]any{"group_ids": []int64{2}}, nil); code != 400 {
 		t.Errorf("开放自己没权用的分组应拒绝: %d", code)
 	}
-	if code, body := bob.do("PATCH", path, map[string]any{"group_ids": []int64{1}, "period_limit": "3", "limit_period": "month"}, nil); code != 200 {
+	if code, body := bob.do("PATCH", path, map[string]any{"group_ids": []int64{1}}, nil); code != 200 {
 		t.Fatalf("%d %s", code, body)
 	}
-	if code, _ := bob.do("PATCH", path, map[string]any{"limit_period": "year"}, nil); code != 400 {
+
+	// 额度上限按成员单独设（创建人自己也可以设）：周期只能是天、周、月，金额要大于 0，null 不限
+	limitPath := path + "/members/2/limit"
+	if code, _ := bob.do("PUT", limitPath, map[string]any{"period_limit": "3", "limit_period": "year"}, nil); code != 400 {
 		t.Errorf("周期只能是天、周、月: %d", code)
 	}
-	var got struct {
-		Project struct {
-			PeriodLimit string `json:"period_limit"`
-			LimitPeriod string `json:"limit_period"`
-		} `json:"project"`
+	if code, _ := bob.do("PUT", limitPath, map[string]any{"period_limit": "0", "limit_period": "week"}, nil); code != 400 {
+		t.Errorf("上限要大于 0: %d", code)
 	}
-	bob.do("GET", path, nil, &got)
-	if got.Project.LimitPeriod != "month" || got.Project.PeriodLimit != "3" {
-		t.Errorf("周期和上限应读回: %+v", got.Project)
+	if code, body := bob.do("PUT", limitPath, map[string]any{"period_limit": "3", "limit_period": "month"}, nil); code != 200 {
+		t.Fatalf("%d %s", code, body)
+	}
+	var limits struct {
+		Projects []struct {
+			MyLimit  string `json:"my_limit"`
+			MyPeriod string `json:"my_period"`
+		} `json:"projects"`
+	}
+	bob.do("GET", "/api/me/projects", nil, &limits)
+	if len(limits.Projects) != 1 || limits.Projects[0].MyPeriod != "month" || limits.Projects[0].MyLimit != "3" {
+		t.Errorf("自己的周期和上限应读回: %+v", limits)
 	}
 
 	// 转入：不能超过可用余额；转入后两边对账
@@ -109,6 +118,12 @@ func TestProjectFlow(t *testing.T) {
 	}
 	if code, body := bob.do("POST", path+"/members/3/approve", nil, nil); code != 200 {
 		t.Fatalf("%d %s", code, body)
+	}
+	if code, _ := carol.do("PUT", path+"/members/3/limit", map[string]any{"period_limit": nil, "limit_period": "week"}, nil); code != 404 {
+		t.Errorf("成员不能改自己的额度: %d", code)
+	}
+	if code, body := bob.do("PUT", path+"/members/3/limit", map[string]any{"period_limit": "1.5", "limit_period": "day"}, nil); code != 200 {
+		t.Fatalf("给成员设额度: %d %s", code, body)
 	}
 	if code, _ := carol.do("POST", "/api/me/keys", map[string]any{"name": "proj", "group_id": 2, "project_id": p.ID}, nil); code != 400 {
 		t.Errorf("项目没开放的分组不能建 key: %d", code)

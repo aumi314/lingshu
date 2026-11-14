@@ -70,6 +70,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/me/projects/{id}/transfer", s.user(s.transferProject))
 	mux.HandleFunc("DELETE /api/me/projects/{id}", s.user(s.closeProject))
 	mux.HandleFunc("POST /api/me/projects/{id}/members/{uid}/approve", s.user(s.approveProjectMember))
+	mux.HandleFunc("PUT /api/me/projects/{id}/members/{uid}/limit", s.user(s.setProjectMemberLimit))
 	mux.HandleFunc("DELETE /api/me/projects/{id}/members/{uid}", s.user(s.removeProjectMember))
 	mux.HandleFunc("GET /api/admin/projects", s.admin(s.adminProjects))
 	mux.HandleFunc("PUT /api/admin/projects/{id}/frozen", s.admin(s.adminFreezeProject))
