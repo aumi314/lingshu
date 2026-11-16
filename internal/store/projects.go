@@ -76,7 +76,7 @@ func scanProject(row pgx.Row, extra ...any) (*Project, error) {
 
 // projectEntity 是操作日志里项目的快照：规则、开放分组、成员和每人额度的变化都看得到；邀请码只记“改过了”，不记明文。
 var projectEntity = entity{"project", "name", `
-	SELECT jsonb_build_object('name', p.name, 'frozen', p.frozen, 'closed', p.closed_at IS NOT NULL,
+	SELECT jsonb_build_object('owner', (SELECT username FROM users WHERE id = p.owner_id), 'name', p.name, 'frozen', p.frozen, 'closed', p.closed_at IS NOT NULL,
 	       'invite_code', md5(p.invite_code),
 	       'groups', COALESCE((SELECT jsonb_agg(g.name ORDER BY g.name) FROM project_groups pg JOIN groups g ON g.id = pg.group_id WHERE pg.project_id = p.id), '[]'),
 	       'members', COALESCE((SELECT jsonb_agg(u.username ORDER BY u.username) FROM project_members m JOIN users u ON u.id = m.user_id WHERE m.project_id = p.id AND m.status = 'active'), '[]'),
@@ -177,6 +177,12 @@ type ProjectPatch struct {
 	GroupIDs *[]int64
 }
 
+// lockProjectOwner 在写入事务里复核负责人，和转让共用项目行锁。
+func lockProjectOwner(ctx context.Context, tx pgx.Tx, projectID, ownerID int64) error {
+	var id int64
+	return translate(tx.QueryRow(ctx, `SELECT id FROM projects WHERE id = $1 AND owner_id = $2 AND closed_at IS NULL FOR UPDATE`, projectID, ownerID).Scan(&id))
+}
+
 // UpdateProject 改名、开放分组。开放的分组只能是创建人自己有权用的，防止借项目越权。
 func (s *Store) UpdateProject(ctx context.Context, actorID, id int64, p ProjectPatch) error {
 	if p.GroupIDs != nil && len(*p.GroupIDs) > 0 {
@@ -199,6 +205,9 @@ func (s *Store) UpdateProject(ctx context.Context, actorID, id int64, p ProjectP
 		}
 	}
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		if err := lockProjectOwner(ctx, tx, id, actorID); err != nil {
+			return err
+		}
 		return track(ctx, tx, projectEntity, &id, actorID, func() error {
 			if err := execOne(ctx, tx, `UPDATE projects SET name = COALESCE($2, name) WHERE id = $1 AND closed_at IS NULL`, id, p.Name); err != nil {
 				return err
@@ -222,6 +231,9 @@ func (s *Store) ResetInviteCode(ctx context.Context, actorID, id int64) (string,
 		return "", err
 	}
 	return code, pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		if err := lockProjectOwner(ctx, tx, id, actorID); err != nil {
+			return err
+		}
 		return track(ctx, tx, projectEntity, &id, actorID, func() error {
 			return execOne(ctx, tx, `UPDATE projects SET invite_code = $2 WHERE id = $1 AND closed_at IS NULL`, id, code)
 		})
@@ -288,6 +300,9 @@ func (s *Store) ProjectMembers(ctx context.Context, id int64) ([]ProjectMember, 
 // SetMemberLimit 创建人给正式成员（含自己）设额度上限和周期，limit 为 nil 表示不限。
 func (s *Store) SetMemberLimit(ctx context.Context, actorID, projectID, userID int64, limit *decimal.Decimal, period string) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		if err := lockProjectOwner(ctx, tx, projectID, actorID); err != nil {
+			return err
+		}
 		return track(ctx, tx, projectEntity, &projectID, actorID, func() error {
 			return execOne(ctx, tx, `UPDATE project_members SET period_limit = $3::numeric, limit_period = $4
 				WHERE project_id = $1 AND user_id = $2 AND status = 'active'`, projectID, userID, decimalArg(limit), period)
@@ -298,6 +313,9 @@ func (s *Store) SetMemberLimit(ctx context.Context, actorID, projectID, userID i
 // ApproveMember 通过申请。
 func (s *Store) ApproveMember(ctx context.Context, actorID, projectID, userID int64) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		if err := lockProjectOwner(ctx, tx, projectID, actorID); err != nil {
+			return err
+		}
 		return track(ctx, tx, projectEntity, &projectID, actorID, func() error {
 			return execOne(ctx, tx, `UPDATE project_members SET status = 'active' WHERE project_id = $1 AND user_id = $2 AND status = 'pending'`, projectID, userID)
 		})
@@ -307,6 +325,12 @@ func (s *Store) ApproveMember(ctx context.Context, actorID, projectID, userID in
 // RemoveMember 拒绝申请、移出成员或自己退出；创建人不能被移出。移出后他的项目 Key 在调用时被拒（查不到正式成员）。
 func (s *Store) RemoveMember(ctx context.Context, actorID, projectID, userID int64) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		// 自己退出无需负责人权限；两条路径都与负责人交接串行。
+		var id int64
+		if err := tx.QueryRow(ctx, `SELECT id FROM projects WHERE id = $1 AND closed_at IS NULL
+			AND (owner_id = $2 OR $2 = $3) FOR UPDATE`, projectID, actorID, userID).Scan(&id); err != nil {
+			return translate(err)
+		}
 		return track(ctx, tx, projectEntity, &projectID, actorID, func() error {
 			return execOne(ctx, tx, `DELETE FROM project_members m USING projects p
 				WHERE m.project_id = p.id AND m.project_id = $1 AND m.user_id = $2 AND p.owner_id <> $2`, projectID, userID)
@@ -382,6 +406,49 @@ func moveProjectMoney(ctx context.Context, tx pgx.Tx, ownerID, projectID int64, 
 		return err
 	}
 	return recordBalance(ctx, tx, &ownerID, ownerID, delta, after, note, "", "project.transfer")
+}
+
+// TransferProjectOwner 转让项目，池子余额退回原创建人，原创建人保留普通成员身份。
+func (s *Store) TransferProjectOwner(ctx context.Context, ownerID, projectID, newOwnerID int64) error {
+	if newOwnerID <= 0 || newOwnerID == ownerID {
+		return &InputError{Msg: "请选择其他正式成员接收项目"}
+	}
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		// 和额度转入、取回及解散保持同一锁顺序：用户 → 项目 → 成员。
+		if _, err := tx.Exec(ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, ownerID); err != nil {
+			return err
+		}
+		var name, balance, reserved string
+		var closed bool
+		err := tx.QueryRow(ctx, `SELECT name, balance::text, reserved::text, closed_at IS NOT NULL
+			FROM projects WHERE id = $1 AND owner_id = $2 FOR UPDATE`, projectID, ownerID).Scan(&name, &balance, &reserved, &closed)
+		if err != nil {
+			return translate(err)
+		}
+		if closed {
+			return &InputError{Msg: "项目已解散"}
+		}
+		if mustDecimal(reserved).IsPositive() {
+			return ErrProjectBusy
+		}
+		var enabled bool
+		err = tx.QueryRow(ctx, `SELECT u.enabled FROM project_members m JOIN users u ON u.id = m.user_id
+			WHERE m.project_id = $1 AND m.user_id = $2 AND m.status = 'active' FOR UPDATE OF m`, projectID, newOwnerID).Scan(&enabled)
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && !enabled) {
+			return &InputError{Msg: "接收人须是已启用的正式成员"}
+		}
+		if err != nil {
+			return err
+		}
+		return track(ctx, tx, projectEntity, &projectID, ownerID, func() error {
+			if left := mustDecimal(balance); !left.IsZero() {
+				if err := moveProjectMoney(ctx, tx, ownerID, projectID, left.Neg(), "项目「"+name+"」转让，余额退回"); err != nil {
+					return err
+				}
+			}
+			return execOne(ctx, tx, `UPDATE projects SET owner_id = $2 WHERE id = $1`, projectID, newOwnerID)
+		})
+	})
 }
 
 // CloseProject 解散：池里剩下的钱全部退回创建人，之后项目 Key 不能再用。有请求在进行时不解散。

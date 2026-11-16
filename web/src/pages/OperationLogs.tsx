@@ -66,7 +66,7 @@ function fieldLabel(t: T, field: string): string {
     environment: t('环境', 'Environment'), currency: t('币种', 'Currency'), unit_price: t('单价', 'Unit price'),
     min_usd: t('最低额度', 'Min'), max_usd: t('最高额度', 'Max'), methods: t('支付方式', 'Methods'),
     weekly_limit: t('每周上限', 'Weekly cap'), period_limit: t('额度上限', 'Spending cap'), limit_period: t('额度周期', 'Cap period'), member_limits: t('成员额度', 'Member caps'), frozen: t('冻结', 'Frozen'), closed: t('已解散', 'Closed'), invite_code: t('邀请码', 'Invite code'),
-    members: t('成员', 'Members'), pending: t('待审批', 'Pending'), can_create_projects: t('允许创建项目', 'Can create projects'), projects_enabled: t('项目功能', 'Projects'),
+    members: t('成员', 'Members'), pending: t('待审批', 'Pending'), owner: t('创建人', 'Owner'), can_create_projects: t('允许创建项目', 'Can create projects'), projects_enabled: t('项目功能', 'Projects'),
     capture_conversations: t('对话留存', 'Conversation saving'),
     credit_usd: t('到账额度', 'Credit'), pay_amount: t('应付', 'To pay'), provider: t('支付服务', 'Provider'), method: t('支付方式', 'Method'),
   } as Record<string, string>)[field] ?? field

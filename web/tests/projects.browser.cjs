@@ -1,4 +1,5 @@
 // 项目额度页面回归：组件开着才出现「我的项目」；邀请码申请；创建人在项目里建 key（带 project_id）、转入额度、审批成员、保存规则；
+// 转让项目（没有其他正式成员不能转、审批后可选、409 时弹窗保持、成功后旧创建人不再是负责人）；
 // 待审批的项目只显示等待提示；组件关闭时给出提示。使用安装了 playwright 的 Node 环境运行。
 const { chromium } = require('playwright')
 const assert = require('node:assert/strict')
@@ -18,7 +19,23 @@ const path = require('node:path')
     const group = { id: 1, name: 'default', ratio: '1', is_collection: false }
     const owned = { id: 1, name: '研发组', invite_code: 'ABCD2345', owner_id: 2, owner_name: 'bob', balance: '3', reserved: '0.5', total_spent: '9', my_limit: '10', my_period: 'week', my_spent: '2.5', frozen: false, closed: false, group_ids: [1], groups: [group], members: 2, my_status: 'owner', created_at: new Date().toISOString() }
     const pending = { ...owned, id: 2, name: '产品组', invite_code: undefined, owner_id: 9, owner_name: 'carol', my_status: 'pending', my_limit: null }
-    const state = { enabled: true, writes: [] }
+    const transferable = { ...owned, id: 3, name: '运营组', invite_code: 'EFGH3456', owner_id: 2, owner_name: 'bob', balance: '2', reserved: '0', total_spent: '1', my_limit: null, my_spent: '0', members: 2 }
+    const state = {
+      enabled: true,
+      writes: [],
+      transferFails: true, // 第一次转让返回 409，第二次成功
+      projects: [owned, pending, transferable],
+      members: {
+        1: [
+          { user_id: 2, username: 'bob', status: 'owner', period_limit: null, limit_period: 'week', period_spent: '2', total_spent: '9', created_at: '' },
+          { user_id: 3, username: 'carol', status: 'pending', period_limit: null, limit_period: 'week', period_spent: '0', total_spent: '0', created_at: '' },
+        ],
+        3: [
+          { user_id: 2, username: 'bob', status: 'owner', period_limit: null, limit_period: 'week', period_spent: '0', total_spent: '1', created_at: '' },
+          { user_id: 3, username: 'carol', status: 'pending', period_limit: null, limit_period: 'week', period_spent: '0', total_spent: '0', created_at: '' },
+        ],
+      },
+    }
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
     const errors = []
     page.on('pageerror', (e) => errors.push(e.message))
@@ -28,12 +45,31 @@ const path = require('node:path')
       const json = (b, status = 200) => route.fulfill({ json: b, status })
       if (req.method() !== 'GET') state.writes.push([req.method(), p, req.postDataJSON?.() ?? null])
       if (p === '/api/me') return json({ user, cny_per_usd: '6.7' })
-      if (p === '/api/me/projects' && req.method() === 'GET') return json({ enabled: state.enabled, can_create: true, projects: state.enabled ? [owned, pending] : [] })
+      if (p === '/api/me/projects' && req.method() === 'GET') return json({ enabled: state.enabled, can_create: true, projects: state.enabled ? state.projects : [] })
       if (p === '/api/me/projects/join') return json({ name: '产品组' })
-      if (p === '/api/me/projects/1' && req.method() === 'GET') return json({ project: owned, members: [
-        { user_id: 2, username: 'bob', status: 'owner', period_limit: null, limit_period: 'week', period_spent: '2', total_spent: '9', created_at: '' },
-        { user_id: 3, username: 'carol', status: 'pending', period_limit: null, limit_period: 'week', period_spent: '0', total_spent: '0', created_at: '' },
-      ] })
+      if (p === '/api/me/projects/1' && req.method() === 'GET') return json({ project: owned, members: state.members[1] })
+      if (p === '/api/me/projects/3' && req.method() === 'GET') {
+        const project = state.projects.find((x) => x.id === 3)
+        return json(project.owner_id === 2 ? { project, members: state.members[3] } : { project }) // 转让后 bob 只是成员，看不到成员列表
+      }
+      if (p === '/api/me/projects/3/members/3/approve' && req.method() === 'POST') {
+        state.members[3] = state.members[3].map((m) => (m.user_id === 3 ? { ...m, status: 'active' } : m))
+        return json({})
+      }
+      if (p === '/api/me/projects/3/owner' && req.method() === 'POST') {
+        if (state.transferFails) {
+          state.transferFails = false
+          return json({ error: '项目还有请求在进行，稍后再试' }, 409)
+        }
+        const to = req.postDataJSON()?.user_id
+        const project = state.projects.find((x) => x.id === 3)
+        project.owner_id = to
+        project.owner_name = to === 3 ? 'carol' : 'bob'
+        project.my_status = 'active' // 旧创建人 bob 变成普通成员
+        project.balance = '0' // 池里的钱退回 bob
+        state.members[3] = state.members[3].map((m) => ({ ...m, status: m.user_id === to ? 'owner' : 'active' }))
+        return json({})
+      }
       if (p === '/api/me/keys' && req.method() === 'GET') return json([{ id: 7, name: 'laptop', prefix: 'sk-ls-abc', group_id: 1, group_name: 'default', quota_limit: null, quota_used: '1.2', enabled: true, last_used_at: null, expires_at: null, created_at: '', project_id: 1, project_name: '研发组' }])
       if (p === '/api/me/keys') return json({ id: 8, key: 'sk-ls-newprojectkey' }, 201)
       if (p === '/api/me/models') return json({ groups: [{ ...group, enabled: true, is_public: true, user_group_ids: [], description: '' }], models: [] })
@@ -107,13 +143,47 @@ const path = require('node:path')
     for (let i = 0; i < 50 && !state.writes.some((w) => w[0] === 'PATCH'); i++) await page.waitForTimeout(30)
     assert.deepEqual(state.writes.find((w) => w[0] === 'PATCH'), ['PATCH', '/api/me/projects/1', { name: '研发组', group_ids: [1] }])
 
+    // 转让项目：没有其他正式成员不能转；审批后能选；文案写明退款和新负责人；409 时弹窗保持、成功后旧创建人不再是负责人
+    state.writes.length = 0
+    await page.getByText('运营组', { exact: true }).first().click()
+    await page.waitForFunction(() => new URL(location.href).searchParams.get('project') === '3')
+    await dialog.getByRole('tab', { name: '规则' }).click()
+    const transferBtn = page.getByRole('button', { name: '转让给其他成员' })
+    assert.equal(await transferBtn.isDisabled(), true, '没有其他正式成员时不能转让')
+    await dialog.getByRole('tab', { name: '成员 · 1' }).click()
+    await dialog.getByRole('button', { name: /通\s*过/ }).click()
+    for (let i = 0; i < 50 && !state.writes.some((w) => w[1] === '/api/me/projects/3/members/3/approve'); i++) await page.waitForTimeout(30)
+    assert.deepEqual(state.writes.find((w) => w[1] === '/api/me/projects/3/members/3/approve'), ['POST', '/api/me/projects/3/members/3/approve', {}])
+    await dialog.getByRole('tab', { name: '规则' }).click()
+    await page.waitForFunction(() => {
+      const b = [...document.querySelectorAll('button')].find((x) => x.textContent?.includes('转让给其他成员'))
+      return !!b && !b.disabled
+    })
+    await transferBtn.click()
+    const transferDialog = page.getByRole('dialog').filter({ hasText: '转让项目' })
+    await transferDialog.waitFor()
+    await transferDialog.getByText(/退回你的余额/).waitFor()
+    await transferDialog.getByText(/选择接收项目的正式成员/).waitFor()
+    await transferDialog.locator('.ant-select').first().click()
+    await page.locator('.ant-select-item-option').filter({ hasText: 'carol' }).click()
+    await transferDialog.getByRole('button', { name: /确\s*认\s*转\s*让/ }).click()
+    // 第一次后端返回 409：弹窗保持打开，错误在弹窗里，可以再试
+    await transferDialog.getByText('项目还有请求在进行，稍后再试').waitFor()
+    assert.equal(await transferDialog.count(), 1, '409 时弹窗应保持打开')
+    await transferDialog.getByRole('button', { name: /确\s*认\s*转\s*让/ }).click()
+    await page.waitForFunction(() => !document.body.textContent?.includes('转让给其他成员'))
+    assert.deepEqual(state.writes.filter((w) => w[1] === '/api/me/projects/3/owner').at(-1), ['POST', '/api/me/projects/3/owner', { user_id: 3 }])
+    // 转让后旧创建人只是成员：规则 / 额度池页签和转让入口都没了
+    assert.equal(await page.getByRole('tab', { name: '规则' }).count(), 0)
+    assert.equal(await page.getByRole('tab', { name: '额度池' }).count(), 0)
+
     // 组件关闭：没有入口，页面提示
     state.enabled = false
     await page.goto('http://127.0.0.1:25199/console/projects')
     await page.getByText('项目功能没有开启，请联系管理员', { exact: true }).waitFor()
     assert.equal(await page.getByRole('menuitem', { name: '我的项目' }).count(), 0)
     assert.deepEqual(errors, [])
-    console.log('PASS: projects menu only when enabled, selected project expands below the card strip (no dialog, kept in URL), pool and weekly cards, join by code, pending not openable, project key with project_id shown once, transfer, approve with pending count, owner sets a monthly cap per member, rules without project cap, disabled notice')
+    console.log('PASS: projects menu only when enabled, selected project expands below the card strip (no dialog, kept in URL), pool and weekly cards, join by code, pending not openable, project key with project_id shown once, transfer, approve with pending count, owner sets a monthly cap per member, rules without project cap, project transfer (no other member blocked, pick after approve, refund copy, 409 keeps the modal, new owner takes over), disabled notice')
   } finally {
     await browser.close()
     server.kill()
