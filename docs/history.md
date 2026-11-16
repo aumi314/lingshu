@@ -689,3 +689,13 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 请求详情的对话读取失败显示错误和原位重试，切换详情时旧请求结果仍由 effect 清理隔离；下载 JSON 携带 `response_truncated`，便于后续分析识别残缺回复。
 - 决策与记录器注释注明 WebSocket 保存展开后的 HTTP 请求体及转帧前 SSE；原始帧与之后补发终态另属 WS 层。
 - 验证：短写/零字节/正常写、8 MiB 截断与 Flush 单元回归、隔离数据库完整 relay 包测试、`TestReplyText`、Go vet、前端类型检查与构建通过；对话浏览器回归覆盖 HTTP 500 后重试恢复、完整/截断下载标志，日志页浏览器回归通过。本次交付 PR，发布以合并后验证为准。
+
+
+## 2026-11-16 Qwen4 Max 官方渠道上线
+
+- 模型 `qwen4-max`（ID 44），追加到既有 Qwen 渠道 ID 6，保留渠道原有模型、Key、协议地址与分组，适用于 Official API 分组。通过管理接口创建模型与更新映射，操作日志保留；无需应用发布。
+- 官方定价来源：[QwenCloud Qwen4-Max](https://www.qwencloud.com/models/qwen4-max?region=ap-southeast-1)。USD / 百万 token：输入 1.5、输出 4.5、缓存读 0.075、5 分钟显式缓存写 1.875；1 小时缓存写为 3，当前模型四价配置采用既有的 5 分钟口径。未添加价格规则和 Fast 倍率。
+- 正式型号已可用。`qwen4-max-preview` 的预览期与 Token Plan 限制属于另一型号；普通百炼 `/models` 当时尚未列出正式型号，但直连正式型号 HTTP 200，答案与 usage 正常。
+- 线上变更前备份 `/var/backups/lingshu/lingshu-20261116T070514Z.dump`；配置与冒烟证据 `/var/backups/lingshu/qwen4-setup-20261116T070517Z.json`，root 私有。Chat / Messages / Responses 冒烟均 HTTP 200，均报告真实输入输出用量。
+- 经公网 `https://gateway.piqode.com/v1/chat/completions` 流式调用成功，答案含 OK、收到 `[DONE]`；日志 ID 13634，渠道 6，输入 26、输出 16、缓存 0，`usage_estimated=false`。按 Official API 倍率 1.2，费用 `(26×1.5+16×4.5)/1000000×1.2 = 0.0001332 USD`，与日志精确一致。临时验收 Key 与管理会话已删除。
+- 仅文档交付 PR，不合并、不触发程序重启。线上配置已经生效。
