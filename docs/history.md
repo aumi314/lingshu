@@ -689,3 +689,23 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 请求详情的对话读取失败显示错误和原位重试，切换详情时旧请求结果仍由 effect 清理隔离；下载 JSON 携带 `response_truncated`，便于后续分析识别残缺回复。
 - 决策与记录器注释注明 WebSocket 保存展开后的 HTTP 请求体及转帧前 SSE；原始帧与之后补发终态另属 WS 层。
 - 验证：短写/零字节/正常写、8 MiB 截断与 Flush 单元回归、隔离数据库完整 relay 包测试、`TestReplyText`、Go vet、前端类型检查与构建通过；对话浏览器回归覆盖 HTTP 500 后重试恢复、完整/截断下载标志，日志页浏览器回归通过。本次交付 PR，发布以合并后验证为准。
+
+
+## Hy4 / Hy4 flash 上线验收（2026-11-16）
+
+本次为线上配置操作，程序、迁移 SQL、计费实现和渠道密钥保持原样。
+
+- 现状核实：渠道 11（Tencent Cloud，模板 `hunyuan`，Official API 分组 2）已有 `hy4`（模型 29），没有 `hy4-flash`；`hy4-preview` 仅存在于上游模型列表，线上原有映射中没有它，本次未新增 preview。
+- 价格来源：[TokenHub 官方国际站模型价格](https://intl.cloud.tencent.com/zh/document/product/1300/78937)，2026-11-16 查证。延续 `decisions.md`「官方价口径」的刊例价规则，不套用发布期五折。单位 USD / 百万 token：
+
+  | 模型 | 输入 | 输出 | 缓存读取 | 缓存写入 |
+  |---|---:|---:|---:|---:|
+  | `hy4` | 0.834 | 2.501 | 0.042 | 0 |
+  | `hy4-flash` | 0.070 | 0.281 | 0.003 | 0 |
+
+- 管理 API 操作：更新模型 29 的旧人民币换算价格；创建 `hy4-flash`（模型 45）并追加同名上游映射。读取复核原有渠道地址、启用状态、优先级、服务分组与 key 列表保持一致。
+- 上游三协议冒烟：`hy4` 的 Chat / Messages / Responses 均 HTTP 200，均报告真实 usage。Flash 首轮 Chat / Messages 返回 HTTP 402、错误码 `401006`（服务 ID 不存在或模型不匹配），Responses 成功；随后分别复测 Chat / Messages 均 HTTP 200，均报告真实 usage。
+- 公网真实调用：通过 `https://gateway.piqode.com/v1/chat/completions` 分别请求两个模型，流式正文均为 `OK`，均收到 `[DONE]`。日志 13904（hy4）25 输入 / 36 输出，倍率 1.2，扣费 $0.0001330632；日志 13905（hy4-flash）25 输入 / 23 输出，倍率 1.2，扣费 $0.0000098556。两条日志均路由渠道 11、状态 success、`usage_estimated=false`，按日志价格快照逐项 Decimal 核算相符。
+- 公网验证细节：首次单独 GET `/v1/models` 返回 403，未作为模型可用性依据；随后带验证 User-Agent 的两次公网流式调用均通过。
+- 备份：`/var/backups/lingshu/lingshu-20261116T123847Z.dump`；改前 / 改后配置、协议结果和计费凭证：`/var/backups/lingshu/hy4-setup-20261116T123910Z.json`（root 私有、0600）。验证用临时 API key 和登录 session 均已删除并复查数量为 0。
+- 收尾：现行价格和模型可用性规则继续适用，无新增规则；文档仅追加当前状态一句和本验收记录，保留历史价格作为当时证据；文档 PR 与线上配置独立，合并前配置已生效，分支和工作区保留供复核。

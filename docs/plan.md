@@ -118,6 +118,8 @@ lingshu/
 
 线上 `https://gateway.piqode.com`（DMIT）当前应用 `c32fde3`（2026-11-11）。功能不再分使用模式，都是可开关的组件（#85）；近期上线：服务分组集合（#72）、转接兼容默认客户端与提示缓存（#73）、调用设置与渠道亲和（#74）、上游卡死换渠道（#78、#79）、检测伪装成真实客户端（#89、#90）、对话留存（#86、#91，默认关）、项目额度（#92、#93，默认关）。Codex → Claude 转接的真实调用和缓存还没验收：只有 Messages 地址的 Claude 渠道（kirisame 号池授权过期、Anthropic Platform 余额不足）都不可用。
 
+2026-11-16：Official API 分组已接通 `hy4` / `hy4-flash`，按官方国际站美元刊例价配置，三种协议与公网流式计费验收通过（见 `history.md`「Hy4 / Hy4 flash 上线验收」）。
+
 | 模块 | 现在有什么 |
 |---|---|
 | 网关 | chat / messages / responses / systemone 四个入口透传，Messages / Responses 双向转接（应急开关在系统设置「调用设置」）；优先级分档、渠道亲和、按分组次数换渠道重试、冷却；预扣费、按用户的并发和频率限制；GPT Fast 档位计费 |
