@@ -239,7 +239,13 @@ func TestOperationLogCoverage(t *testing.T) {
 	step("PUT /api/admin/projects/{id}/frozen", a, "/api/admin/projects/"+itoa(proj.ID)+"/frozen", map[string]bool{"frozen": true}, nil, "project.update")
 	a.do("PUT", "/api/admin/projects/"+itoa(proj.ID)+"/frozen", map[string]bool{"frozen": false}, nil)
 	bob.do("POST", pp+"/transfer", map[string]any{"direction": "out", "amount": "1"}, nil)
-	step("DELETE /api/me/projects/{id}", bob, pp, nil, nil, "project.update")
+	carol.do("POST", "/api/me/projects/join", map[string]string{"code": proj.InviteCode}, nil)
+	bob.do("POST", pp+"/members/3/approve", nil, nil)
+	o = step("POST /api/me/projects/{id}/owner", bob, pp+"/owner", map[string]int64{"user_id": 3}, nil, "project.update")
+	if c := o.change("owner"); c == nil || string(c.From) != `"bob"` || string(c.To) != `"carol"` {
+		t.Fatalf("转让应记录原负责人和新负责人: %+v", o)
+	}
+	step("DELETE /api/me/projects/{id}", carol, pp, nil, nil, "project.update")
 
 	e.store.Pool.Exec(context.Background(), `UPDATE users SET role='super_admin' WHERE id=1`)
 	super := e.login("admin")

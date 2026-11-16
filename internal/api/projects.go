@@ -327,6 +327,25 @@ func (s *Server) transferProject(w http.ResponseWriter, r *http.Request) {
 	ok(w)
 }
 
+// transferProjectOwner 转让负责人，剩余额度退回当前创建人。
+func (s *Server) transferProjectOwner(w http.ResponseWriter, r *http.Request) {
+	p, found := s.projectAs(w, r, "owner")
+	if !found {
+		return
+	}
+	var in struct {
+		UserID int64 `json:"user_id"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if err := s.Store.TransferProjectOwner(r.Context(), currentUser(r).ID, p.ID, in.UserID); err != nil {
+		writeProjectError(w, err)
+		return
+	}
+	ok(w)
+}
+
 func (s *Server) closeProject(w http.ResponseWriter, r *http.Request) {
 	p, found := s.projectAs(w, r, "owner")
 	if !found {

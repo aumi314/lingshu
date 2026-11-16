@@ -158,7 +158,7 @@ export default function Projects() {
 }
 
 function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: Project; meID: number; onGone: () => void; onChanged: () => void; money: (v: string | number, d?: number) => string }) {
-  const { t, zone } = useApp()
+  const { t, zone, reload } = useApp()
   const { message, modal } = App.useApp()
   const owner = project.my_status === 'owner'
   const [members, setMembers] = useState<ProjectMember[]>([])
@@ -171,6 +171,10 @@ function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: P
   const [limitForm] = Form.useForm<{ limit_period: LimitPeriod; period_limit: number | null }>()
   const [amount, setAmount] = useState<number | null>(null)
   const [direction, setDirection] = useState<'in' | 'out'>('in')
+  const [transferOpen, setTransferOpen] = useState(false)
+  const [transferTo, setTransferTo] = useState<number | null>(null)
+  const [transferring, setTransferring] = useState(false)
+  const [transferError, setTransferError] = useState('')
 
   const loadDetail = useCallback(async () => {
     try {
@@ -226,6 +230,29 @@ function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: P
     run(() => put(`${base}/members/${m.user_id}/limit`, { limit_period: v.limit_period, period_limit: v.period_limit ? String(v.period_limit) : null }), t(`已更新 ${m.username} 的额度`, `Updated ${m.username}'s cap`))
   }
   const avail = Number(project.balance) - Number(project.reserved)
+  // 转让项目：创建人转给其他正式成员，池里的钱退回我
+  const transferCandidates = members.filter((m) => m.status === 'active' && m.user_id !== project.owner_id)
+  const transferBusy = Number(project.reserved) > 0 // 有请求在进行时不能转让
+  const transferOwner = async () => {
+    if (transferTo == null || transferring) return
+    setTransferring(true)
+    setTransferError('')
+    const target = members.find((m) => m.user_id === transferTo)
+    try {
+      await post(`${base}/owner`, { user_id: transferTo })
+      setTransferOpen(false)
+      setTransferTo(null)
+      message.success(t(`项目已转让给 ${target?.username ?? ''}，池里的钱已退回你的余额`, `Transferred to ${target?.username ?? ''}; the pool balance went back to you`))
+      onChanged()
+      loadDetail()
+      reload()
+    } catch (e) {
+      setTransferError((e as Error).message)
+      message.error((e as Error).message)
+    } finally {
+      setTransferring(false)
+    }
+  }
 
   const keysTab = (
     <Space direction="vertical" style={{ width: '100%' }} size={12}>
@@ -344,6 +371,35 @@ function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: P
         </Space>
       </div>
       <div style={{ marginTop: 28 }}>
+        <Typography.Title level={5}>{t('转让项目', 'Transfer project')}</Typography.Title>
+        <Typography.Paragraph type="secondary">
+          {t(
+            '将项目转给其他正式成员，池内余额退回你的账户。新负责人转入额度后即可继续调用，你保留普通成员身份。',
+            'Hand the project to another active member: the pool balance goes back to your balance and the new owner has to add funds again for the project to keep working. You stay a member, and open service groups follow the new owner’s permissions.',
+          )}
+        </Typography.Paragraph>
+        <Button
+          disabled={transferCandidates.length === 0 || transferBusy}
+          onClick={() => {
+            setTransferTo(null)
+            setTransferError('')
+            setTransferOpen(true)
+          }}
+        >
+          {t('转让给其他成员', 'Transfer to another member')}
+        </Button>
+        {transferCandidates.length === 0 && (
+          <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
+            {t('还没有其他正式成员，先在「成员」里通过一个申请再转让', 'No other active members yet; approve one under Members first')}
+          </Typography.Text>
+        )}
+        {transferBusy && (
+          <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
+            {t('有请求正在进行，等它们结束再转让', 'Calls are still running; transfer once they finish')}
+          </Typography.Text>
+        )}
+      </div>
+      <div style={{ marginTop: 28 }}>
         <Button
           danger
           onClick={() =>
@@ -399,6 +455,41 @@ function ProjectDetail({ project, meID, onGone, onChanged, money }: { project: P
         <Alert type="warning" showIcon title={t('只显示这一次，请现在复制保存', 'Shown only once; copy it now')} style={{ marginBottom: 12 }} />
         <Typography.Paragraph copyable={{ text: created }} className="mono" style={{ wordBreak: 'break-all' }}>{created}</Typography.Paragraph>
         <Typography.Text type="secondary">{t('用它调用时，花的是项目池的钱。', 'Calls with it spend the project pool.')}</Typography.Text>
+      </Modal>
+      <Modal
+        open={transferOpen}
+        title={t('转让项目', 'Transfer project')}
+        onOk={transferOwner}
+        onCancel={() => {
+          if (transferring) return
+          setTransferOpen(false)
+          setTransferError('')
+        }}
+        okText={t('确认转让', 'Transfer')}
+        confirmLoading={transferring}
+        okButtonProps={{ disabled: transferTo == null }}
+        destroyOnHidden
+      >
+        <Typography.Paragraph>
+          {t(
+            `选择接收项目的正式成员。池子里现有的 ${money(avail)} 会退回你的余额；新创建人需要自己重新转入额度，项目才能继续调用。你保留为项目成员。`,
+            `Pick an active member as the new owner. The remaining ${money(avail)} goes back to your balance, and the new owner has to add funds again for the project to keep working. You stay a member.`,
+          )}
+        </Typography.Paragraph>
+        <Select
+          style={{ width: '100%' }}
+          placeholder={t('选择新负责人', 'Pick the new owner')}
+          value={transferTo}
+          onChange={(v) => setTransferTo(v)}
+          options={transferCandidates.map((m) => ({ value: m.user_id, label: m.username }))}
+        />
+        <Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>
+          {t(
+            '开放分组会保留；新负责人没有使用权限的分组暂不可调用，可在「规则」中调整。',
+            'Open service groups follow the new owner: from now on they can only be changed within the groups they may use.',
+          )}
+        </Typography.Paragraph>
+        {transferError && <Alert type="error" showIcon title={transferError} style={{ marginTop: 12 }} />}
       </Modal>
     </Card>
   )
