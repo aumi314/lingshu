@@ -688,13 +688,19 @@ export default function Channels() {
 
       <Modal
         open={fetched !== null}
-        title={t(`上游有 ${fetched?.length ?? 0} 个模型，勾选要接入的`, `${fetched?.length ?? 0} upstream models — pick the ones to add`)}
+        title={t(`上游有 ${fetched?.length ?? 0} 个模型，勾选要接入的`, `${fetched?.length ?? 0} upstream models — select the ones to connect`)}
         onCancel={() => setFetched(null)}
         onOk={() => {
-          addRows(picked)
+          const available = new Set(fetched)
+          const selected = new Set(picked)
+          setRows((old) => {
+            const kept = old.filter((r) => !available.has(r.upstream) || selected.has(r.upstream))
+            const have = new Set(kept.map((r) => r.upstream))
+            return [...kept, ...picked.filter((n) => !have.has(n)).map((n) => ({ key: rowSeq++, upstream: n, model_id: matchModel(n) }))]
+          })
           setFetched(null)
         }}
-        okText={picked.length ? t(`添加 ${picked.length} 个`, `Add ${picked.length}`) : t('添加', 'Add')}
+        okText={t('确定', 'Confirm')}
         width={820}
       >
         <Input.Search
@@ -711,9 +717,8 @@ export default function Channels() {
           style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '6px 16px', maxHeight: 460, overflowY: 'auto', overflowX: 'hidden', alignContent: 'start' }}
         >
           {fetched
-            ?.filter((n) => !modelSearch.trim() || n.toLowerCase().includes(modelSearch.trim().toLowerCase()))
-            .map((n) => (
-              <Checkbox key={n} value={n} style={{ minWidth: 0 }}>
+            ?.map((n) => (
+              <Checkbox key={n} value={n} style={{ minWidth: 0, display: !modelSearch.trim() || n.toLowerCase().includes(modelSearch.trim().toLowerCase()) ? undefined : 'none' }}>
                 <span style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
                   <span className="mono" title={n} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {n}
