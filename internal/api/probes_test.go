@@ -264,12 +264,33 @@ func seedProbeChannel(t *testing.T, e *env, name, key, chatURL, messagesURL, res
 	var id int64
 	err := e.store.Pool.QueryRow(context.Background(), `
 		INSERT INTO channels (name, api_key, base_url_chat, base_url_messages, base_url_responses)
-		VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		name, key, chatURL, messagesURL, responsesURL).Scan(&id)
+		VALUES ($1, '', $2, $3, $4) RETURNING id`,
+		name, chatURL, messagesURL, responsesURL).Scan(&id)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := e.store.Pool.Exec(context.Background(), `INSERT INTO channel_keys (channel_id, api_key) VALUES ($1, $2)`, id, key); err != nil {
+		t.Fatal(err)
+	}
 	return id
+}
+
+func assertProbeAuth(t *testing.T, requests []probeUpstreamRequest) {
+	t.Helper()
+	if len(requests) == 0 {
+		t.Fatal("检测没有发出上游请求")
+	}
+	for _, request := range requests {
+		if strings.HasSuffix(request.path, "/v1/messages") {
+			if got := request.header.Get("X-Api-Key"); got != "upstream-key" {
+				t.Errorf("%s 的上游 x-api-key = %q，want upstream-key", request.path, got)
+			}
+			continue
+		}
+		if got := request.header.Get("Authorization"); got != "Bearer upstream-key" {
+			t.Errorf("%s 的上游认证头 = %q，want Bearer upstream-key", request.path, got)
+		}
+	}
 }
 
 type probeRunView struct {
@@ -397,6 +418,7 @@ func TestProbeQualityGPT(t *testing.T) {
 	if len(requests) != len(run.Report.Calls) || len(requests) < 10 {
 		t.Fatalf("请求数 %d，报告 %d", len(requests), len(run.Report.Calls))
 	}
+	assertProbeAuth(t, requests)
 	for _, request := range requests {
 		if request.path != "/responses" || request.model != "up-sol" {
 			t.Fatalf("质量测试应走标准 Responses: %s %s", request.path, request.model)
@@ -428,6 +450,7 @@ func TestProbeFingerprintGPT(t *testing.T) {
 	if len(requests) != 525 || len(run.Report.Calls) != 525 {
 		t.Fatalf("指纹请求数 = %d / %d, want 525", len(requests), len(run.Report.Calls))
 	}
+	assertProbeAuth(t, requests)
 	for _, request := range requests {
 		if request.path != "/chat/completions" || request.model != "up-sol" {
 			t.Fatalf("指纹辨别应走标准 Chat: %s %s", request.path, request.model)
@@ -475,6 +498,7 @@ func TestProbeQualityClaude(t *testing.T) {
 	if len(requests) != len(run.Report.Calls) || len(requests) < 9 {
 		t.Fatalf("Claude 请求数 = %d / %d", len(requests), len(run.Report.Calls))
 	}
+	assertProbeAuth(t, requests)
 	for _, request := range requests {
 		if request.path != "/v1/messages" || request.model != "up-claude" {
 			t.Fatalf("Claude 质量测试应走标准 Messages: %s %s", request.path, request.model)
