@@ -114,13 +114,9 @@ lingshu/
 - 上游错误响应里如果出现渠道 key，替换成 `***` 再返回给用户和写日志。
 - 带 `previous_response_id` 的请求：按日志里的 `upstream_response_id` 找到原渠道，只发往原渠道。
 
-## 5. 当前状态（2026-11-11）
+## 5. 当前状态（2026-11-18）
 
-线上 `https://gateway.piqode.com`（DMIT）当前应用 `c32fde3`（2026-11-11）。功能不再分使用模式，都是可开关的组件（#85）；近期上线：服务分组集合（#72）、转接兼容默认客户端与提示缓存（#73）、调用设置与渠道亲和（#74）、上游卡死换渠道（#78、#79）、检测伪装成真实客户端（#89、#90）、对话留存（#86、#91，默认关）、项目额度（#92、#93，默认关）。Codex → Claude 转接的真实调用和缓存还没验收：只有 Messages 地址的 Claude 渠道（kirisame 号池授权过期、Anthropic Platform 余额不足）都不可用。
-
-项目转让已实现：创建者可交接给正式成员，额度池原子退回原创建者，在途请求结算后再转让，待 PR 合并发布（2026-11-16）。
-
-渠道拉取模型弹窗改为「确定」，按勾选同步增删映射并保留搜索隐藏的选择，待 PR 合并发布（2026-11-18）。
+线上 `https://gateway.piqode.com`（DMIT）当前应用 `b4b60de`（2026-11-18）。功能不再分使用模式，都是可开关的组件（#85）；近期上线：中转模板余额查询（#97）、项目成员额度上限与转让（#98、#101）、拉取模型按勾选同步映射（#102）、模型检测拆成渠道质量 / 模型指纹两个按钮并恢复伪装（#103、#105、#107）。配置上线：`qwen4-max`、`hy4` / `hy4-flash`（2026-11-16）、`gpt-6.2-sol` / `gpt-6.2-astra`（2026-11-17，模型检测的官方样本待采）。Codex → Claude 转接的真实调用和缓存还没验收（见下一步「Claude 渠道」）。
 
 | 模块 | 现在有什么 |
 |---|---|
@@ -139,14 +135,15 @@ lingshu/
 
 - **模型检测完善**
   - 鹈鹕只作参考、不进页面检测（xhigh 单次也只有约三分之一真实蹬踏，见 `research/model-probe.md`）。
-  - 第三方检测站（hvoy、ztest、cctest）的抓包在 `references/probe-sites/`，结论见 `research/model-probe.md`。借鉴项还剩：更逼真的 Claude Code / Codex 伪装、Claude 服务端工具（web_search、code_execution）和图片输入。数字序列指纹已评估，分不清具体型号，不接入（见 `research/model-probe.md`）。
+  - GPT-6.2 官方样本：官方 Codex 账号已只提供 6.2-sol / 6.2-astra（旧 6.1-sol、6-astra 样本保留，用来认出冒充）。每个型号每轮约 1200 个请求、要两轮，会占用用户的 Codex 额度，开跑前先和用户确认；采完重选 GPT 题池和 sol / astra 专用题组（最难分的是 6.2-sol 对 6.1-sol、6.2-sol 对 6.2-astra）。2026-11-18 第一轮只留下分词数据，在本机 `~/worktrees/probe-62/`。
+  - 第三方检测站（hvoy、ztest、cctest）的抓包在 `references/probe-sites/`，结论见 `research/model-probe.md`。借鉴项还剩：Claude 服务端工具（web_search、code_execution）和图片输入。数字序列指纹已评估，分不清具体型号，不接入（见 `research/model-probe.md`）。
   - 知识时效题库：提示词要求直接回答、禁止联网搜索、禁止参考对话；用官方账号采集四个型号的样本。
   - 官方 API 环境（无 Codex 注入提示词）的样本：luna 在 API 环境下距离 0.44，贴近阈值。
   - 更可靠的推理强度降级检测（现有 low / high 对比只作参考）。新增候选项“Juice”：官方 Codex 一律拒答，回答了就说明不是官方环境（咔咔 3/3 回答 48），见 `research/model-probe.md`。
-  - Claude 官方样本已采（Opus、Sonnet 各一轮，OpenRouter 锁定 Anthropic）；需要时补第二轮；Sonnet 单独检测、知识时效题未做。
+  - Claude 官方样本两轮（OpenRouter 锁定 Anthropic 一轮、kirisame 一轮，交叉验证见 `research/claude-probe.md` 第九节），题池 65 道；Sonnet 单独检测、知识时效题未做。
 - **对话留存**：第一版已做（系统设置「调用设置」开关，默认关；管理员在全站日志请求详情里看和下载）。后续：按会话浏览、成员看自己的、批量导出、保留期限与清理、密钥打码、告知用户。
-- **项目额度**：已做（规则见 `decisions.md`「项目额度」），组件默认关闭，在「系统设置 → 主设置 → 项目」开启，「用户」里逐个打开“允许创建项目”；成员侧边栏「我的项目」。后续候选：成员单人上限、余额不足提醒、按项目看调用日志。研究见 `research/team-gateway.md`。
+- **项目额度**：已做（规则见 `decisions.md`「项目额度」），组件默认关闭，在「系统设置 → 主设置 → 项目」开启，「用户」里逐个打开“允许创建项目”；成员侧边栏「我的项目」。后续候选：余额不足提醒、按项目看调用日志。研究见 `research/team-gateway.md`。
 - **自有号池**：现用 sub2api 反代质量不够；作为灵枢的兄弟项目单独做，不急，灵枢只把它当渠道接。
-- **Claude 渠道**：kirisame（渠道 23，Account Pool）2026-11-11 返回 `OAuth refresh failed`（号池授权过期，待朋友处理）；Anthropic Platform 余额不足；现役是 Relay-claude 分组的超超 claude（检测 67 完整档 94 分）。任一只有 Messages 地址的 Claude 渠道恢复后，补做 Codex → Claude 转接的真实调用和缓存命中验收。
+- **Claude 渠道**：Relay-claude 分组现役 kirisame（渠道 23）和大王 claude（渠道 62，2026-11-17 换分组后复测为满血 Opus、计费正常，实扣约官方价 0.72 倍，约 1% 请求 524，见 `research/claude-probe.md` 第十节）；Anthropic Platform 余额不足。kirisame 只放行 Claude Code 客户端（2026-11-17 实测，校验规则见同文件第九节），检测流量已能通过，转接请求不伪装客户端。Codex → Claude 转接的真实调用和缓存命中验收还没做，可以在大王上补。
 - **等响应头时限复核**：2026-11-11 起日志记 `upstream_header_ms`，多数中转要等首字才回响应头（上线首半小时中位数 7.3 秒）。几天后看被判超时、换渠道后成功的比例，误伤明显就把 30 秒调到 45 秒。
 - **运维缺口**：异地备份、告警通知（见 `decisions.md`「待定」）。
