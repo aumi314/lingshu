@@ -109,3 +109,34 @@ OpenRouter 上 claude-opus-5.5 的服务方是 Anthropic、AWS Bedrock、Google 
 - 服务端工具 `web_search`、`code_execution`：在 Anthropic 后端执行，格式转换的中转做不出；Claude Code 的 WebSearch 就靠它，缺了是实打实的功能缺口。
 - 图片输入（验证码文字识别）：Claude Code 里贴截图很常见。
 
+
+## 九、号池的 Claude Code 客户端校验（2026-11-17，kirisame 实测）
+
+kirisame 恢复后返回 403 `claude_code_only`：我们服务器上手写的标定脚本和 `probe.py` 的简版请求都被拒，但真的 Claude Code（2.1.326，`-p` 模式经灵枢路由过去）能过。把真实请求抓下来（本地假上游），直接发给 kirisame，再一项项换成我们的版本二分，被拒的请求不扣费。结论，它只查四条：
+
+1. `x-stainless-*` 一整套 SDK 请求头要齐（arch、lang、os、package-version、retry-count、runtime、runtime-version、timeout），只缺一个也拒；
+2. 要有 `anthropic-version`；
+3. `X-Claude-Code-Session-Id` 要和 `metadata.user_id` 里的 `session_id` 一致；
+4. UA 的版本号要等于系统提示计费头 `cc_version` 去掉最后一段（UA `claude-cli/2.1.319 (external, cli)` 配 `cc_version=2.1.319.781`；UA 写成 `2.1.319.781` 就对不上）。
+
+不查的：`cch`（真实的 2.1.326 根本没带）、版本新旧（2.1.281 也行）、计费头后缀是否"算对"、长系统提示、工具、`oauth` beta、多带 `Authorization: Bearer`、`account_uuid` 是不是 UUID 格式、`?beta=true`、`thinking` / `context_management` 等字段。系统提示只要计费头加 "You are Claude Code…" 两行、不带工具就能过。
+
+- 线上完整伪装（`/etc/lingshu/probe-disguise.json`，UA 2.1.281 配计费头 2.1.281）本身合规，`setUpstreamAuth` 会补 `anthropic-version`，按线上格式拼的等价请求通过。
+- 线上没有伪装文件时的简版（`probe_messages.go` 的 `probeClaudeUA` 是 `2.1.319.781`、没有 SDK 头）不合规。
+- `probe.py` 已按这四条改（分支 `claude/probe-lite-guard`）。
+- kirisame 并发很低：两轮样本采集（并发各 6）进行时，其他请求返回 529 `pool_overloaded`（`all_accounts_busy` / `pool_queue_timeout`），等席位释放后正常。
+- 完整 Claude Code 伪装下的基准请求：Opus、Sonnet 都是 **34212** 个输入 token（两次一致）；Opus 难题（答案 74，high）答对、思考 7881 token；"只回 kiwi"守住。
+
+**第二轮官方 Claude 样本**：在 kirisame 上用上面合规的两行系统提示采（和第一轮 OpenRouter 的请求形态相同），Opus、Sonnet 各 195 题 × 6 次，0 错误。两轮同型号的分布差 Opus 0.23、Sonnet 0.30，异型号约 0.47，确认是同一批模型、可以合并（同轮内部约 0.16，跨轮略大是时间漂移）。第一轮选出的 84 道 ≥ 0.3 的题，第二轮里只有 55 道还 ≥ 0.3、18 道掉到 0.1 以下：单轮选题的“赢家诅咒”是真的。合并后（前 6 个是第一轮、后 6 个是第二轮，`SeparatingPrompts` 的前后半对比正好就是跨轮检验）≥ 0.3 的是 **65** 道。
+
+kirisame 不是官方渠道，合并前单独核验了来源：只拿第一轮官方样本当对照、把 kirisame 第二轮当被测渠道离线评判。合并选出的 65 题上，kirisame Opus 离官方 Opus 0.20、离官方 Sonnet 0.76，kirisame Sonnet 离官方 Sonnet 0.31、离官方 Opus 0.91；只用官方第一轮自己选出的 84 题（不受第二轮影响），分别是 0.26 / 0.78、0.39 / 0.77。kirisame 和官方是同一批模型。
+
+## 十、大王 claude 换分组后复测（2026-11-18，手动）
+
+背景：检测 86 那次（"claude日本"分组）上游每个请求多报约 26 万 token（余额接口的当日统计：538 个 Opus 请求，平均普通输入约 2.2 万、缓存读取约 27 万），实扣 $48.91，中转退了款。用户换分组后同一把 key 复测，脚本在 DMIT 的 `/root/lingshu-probe/dawang/`（key 只在内存里），每一步用余额前后差核对实扣，不只信上游报的 token。
+
+- 计费：轻量请求报 42 个输入 token（和官方一致），完整 Claude Code 伪装报 34190（标定值 34212，差 22，无注入）。实扣正好是官方价的 0.72 倍（出事分组是 0.60 倍），说明分组确实换了。
+- 质量（完整伪装）：两道难题各 2 次全对，都有带签名的 thinking；同一道递推题 kirisame 思考 4238、大王 4235 / 4534，推理深度一致。只回某词、结尾标记、随机名工具、PDF 编号、`<随机串>` 原样输出都过；大海捞针约 13.7 万输入 token，三个编号全找到（首字 25 秒）。
+- 指纹（传输层伪装，65 题 × 6）：离官方 Opus 0.157、离 Sonnet 0.840（kirisame 是 0.20）；分词基准 42 / 43、12 段差值全部一致；4 个会话都像 Opus、各会话基准都是 42。
+- 速度和稳定：首字约 1.5 秒（轻量）/ 4 秒（完整伪装），输出约 130 tok/s（kirisame 约 35）。408 个短请求里 4 个 524（Cloudflare 100 秒超时，中转偶尔排队）。线上检测 91 的大海捞针也是 524，不是上下文截断。
+- 花费：大王实扣约 $1.07，kirisame 对照约 $0.15。

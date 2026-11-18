@@ -91,3 +91,9 @@ suite.json 追加 `numbers`（自己的题面，count 每次 290–330 随机，
 - 加采后（sol、astra 各 30，terra 24）重评：分清具体型号最好也只认对 54/100，领先幅度 0，样本加多不见好转；把 sol / astra 并成一组和 terra 比，单样本认对 75/84（全猜大模型也有 71%）。
 - 结论：不接入检测。它只能粗分大小模型，这件事单词指纹做得更稳；分不清具体型号。cctest 认出 gpt-5.5 靠的是大样本库，不是方法更强。样本和评估脚本存 `references/probe-sites/numbers/`，Claude 不再加采。
 
+
+## 完整伪装下的 GPT 基准（2026-11-17）
+
+完整 Codex 伪装（真实 input 前缀、Codex 请求头、走 Responses）下，官方 `codex/*` 的 sol、astra、terra、luna 对基准请求（"Reply with exactly: ok"）都报 **9845** 个输入 token，四个型号一致。同条件下难题（递推，答案 74）sol 答对、推理 3518 token；"只回 kiwi"守住。code gpt 报 14061，约等于 9845 加 Codex 号池自己的约 4200 注入。这个值用作渠道质量测试里"注入"项的官方基准（伪装下 ±150 内算无额外注入）。
+
+GPT-6.2（2026-11-18）：官方 Codex 账号已改为提供 gpt-6.2-sol / gpt-6.2-astra，gpt-6.1-sol / gpt-6-astra 从列表里消失，旧样本再也补不了，要保留（用来认出拿 6.1 冒充 6.2）。完整 Codex 伪装下 6.2 两个型号的基准仍是 9845（同时复测 6.1-terra、6-luna 也是 9845，方法可复现）；不带伪装时官方 Codex 环境的注入比 6.1 时多（一道短题 prompt_tokens 约 5400，6.1 时分词基准约 4100），按型号从样本里读。
