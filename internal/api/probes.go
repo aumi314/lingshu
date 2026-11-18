@@ -147,6 +147,11 @@ func (s *Server) startProbe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GPT 模型指纹辨别需要 Chat 地址")
 		return
 	}
+	secret, err := s.Store.ChannelSecret(r.Context(), selected.ID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	s.probeAdmission.Lock()
 	defer s.probeAdmission.Unlock()
 	total, channelCount, err := s.Store.CountRunningProbesForChannel(r.Context(), in.ChannelID)
@@ -164,7 +169,7 @@ func (s *Server) startProbe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.probeProgress.Store(run.ID, [2]int{0, 0})
-	go s.runProbe(run, selected)
+	go s.runProbe(run, secret)
 	writeJSON(w, http.StatusOK, map[string]any{"id": run.ID})
 }
 
