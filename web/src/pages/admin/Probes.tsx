@@ -134,10 +134,10 @@ export default function Probes() {
               })} />
           </Form.Item>
           <Space>
-            <Tooltip title={t('约 9–12 个标准 API 请求，检查推理、工具、指令和上下文', 'About 9–12 standard API requests covering reasoning, tools, instructions and context')}>
+            <Tooltip title={t('约 9–26 个请求，检查分词、推理、工具、指令和上下文', 'About 9–26 requests covering tokenization, reasoning, tools, instructions and context')}>
               <Button type="primary" loading={startingMode === 'quality'} disabled={!!startingMode} onClick={() => void start('quality')}>{t('渠道质量测试', 'Channel quality')}</Button>
             </Tooltip>
-            <Tooltip title={t('约 400–525 个短请求，判断型号和号池是否混用', 'About 400–525 short requests for model fingerprinting')}>
+            <Tooltip title={t('约 390–507 个短请求，按答案分布计算型号匹配度', 'About 390–507 short requests to score model similarity from answer distributions')}>
               <Button loading={startingMode === 'fingerprint'} disabled={!!startingMode} onClick={() => void start('fingerprint')}>{t('模型指纹辨别', 'Model fingerprint')}</Button>
             </Tooltip>
           </Space>
@@ -286,7 +286,8 @@ function Result({ run, protocol, statusIcon, statusText }: { run: Run; protocol:
     <div>
       <Row gutter={[24, 16]}>
         <Col xs={24} md={6} style={{ textAlign: 'center' }}>
-          {isFingerprint ? null : r.score == null ? <Tag>{t('本次检测不评分', 'No score for this check')}</Tag> : <Progress type="circle" percent={r.score} strokeColor={color} size={150} format={(p) => <span style={{ fontSize: 34, fontWeight: 600 }}>{p}%</span>} />}
+          {r.probe_mode === 'fingerprint' && r.score != null && <div>{t('指纹匹配度', 'Fingerprint similarity')}</div>}
+          {r.score == null ? <Tag>{t('本次检测不评分', 'No score for this check')}</Tag> : <Progress type="circle" percent={r.score} strokeColor={color} size={150} format={(p) => <span style={{ fontSize: 34, fontWeight: 600 }}>{p}%</span>} />}
           <Typography.Title level={5} style={{ marginTop: 12 }}>{r.verdict}</Typography.Title>
           <div className="muted" style={{ fontSize: 13, lineHeight: 1.9 }}>
             <div>{dayjs(run.created_at).format('YYYY-MM-DD HH:mm')}</div>

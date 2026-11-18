@@ -158,19 +158,6 @@ func (p *plan) buildProtocolFingerprint() {
 	s := p.suite
 	_, bs, _ := Load()
 	base := bs[p.spec.Baseline]
-	for sess := 1; sess <= 3; sess++ {
-		p.add(Request{Item: "anchor", Session: sess, Prompt: strings.TrimSpace(s.Tokens.Suffix)})
-	}
-	p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(s.Tokens.Suffix)})
-	p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(s.Tokens.Suffix)})
-	p.add(Request{Item: "tokens", Prompt: s.Tokens.Suffix})
-	for name := range s.Tokens.Probes {
-		p.tokenNames = append(p.tokenNames, name)
-	}
-	sort.Strings(p.tokenNames)
-	for _, name := range p.tokenNames {
-		p.add(Request{Item: "tokens", Prompt: s.Tokens.Probes[name] + s.Tokens.Suffix})
-	}
 	if base == nil || len(base.Answers) == 0 {
 		return
 	}
@@ -189,8 +176,7 @@ func (p *plan) buildProtocolFingerprint() {
 }
 
 func (p *plan) buildProtocolQuality() {
-	s := p.suite
-	p.add(Request{Item: "anchor", Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
+	p.buildQualityTokens()
 	for _, k := range []string{"recurrence_hard", []string{"lattice_hard", "subset_mod", "digit_sum"}[p.rng.IntN(3)]} {
 		prob := NewMathProblem(k, p.rng)
 		p.math = append(p.math, prob)
@@ -261,7 +247,11 @@ func (p *plan) reportProtocol(calls []Call) *Report {
 	if len(by["needle"]) > 0 {
 		r.Items = append(r.Items, p.judgeNeedle(by["needle"]))
 	}
-	r.Observations = disguiseInjection(observe(calls, by["anchor"][:min(1, len(by["anchor"]))], by["anchor"], nil, nearest), p.spec)
+	anchors := by["anchor"]
+	if !p.legacy && len(by["tokens"]) > 0 {
+		anchors = by["tokens"]
+	}
+	r.Observations = disguiseInjection(observe(calls, anchors[:min(1, len(anchors))], by["anchor"], nil, nearest), p.spec)
 	if !p.legacy {
 		r.Observations = qualityObservations(r.Observations)
 	}

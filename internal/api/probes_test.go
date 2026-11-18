@@ -450,13 +450,13 @@ func TestProbeQualityGPT(t *testing.T) {
 	for _, item := range run.Report.Items {
 		status[item.Key] = item.Status
 	}
-	for _, key := range []string{"structured", "instruction", "needle"} {
+	for _, key := range []string{"tokens", "structured", "instruction", "needle"} {
 		if status[key] == "" {
 			t.Errorf("缺少检测项 %s: %+v", key, status)
 		}
 	}
 	requests := up.snapshot()
-	if len(requests) != len(run.Report.Calls) || len(requests) < 10 {
+	if len(requests) != len(run.Report.Calls) || len(requests) != 26 {
 		t.Fatalf("请求数 %d，报告 %d", len(requests), len(run.Report.Calls))
 	}
 	assertProbeAuth(t, requests)
@@ -484,12 +484,17 @@ func TestProbeFingerprintGPT(t *testing.T) {
 		t.Fatalf("发起指纹辨别: %d %s", code, body)
 	}
 	run := waitProbeRun(t, a, id)
-	if run.Status != "done" || run.Report.ProbeMode != probe.ModeFingerprint || run.Report.Protocol != "chat" || run.Report.Disguise || run.Score != nil {
+	if run.Status != "done" || run.Report.ProbeMode != probe.ModeFingerprint || run.Report.Protocol != "chat" || run.Report.Disguise || run.Score == nil {
 		t.Fatalf("指纹测试结果不对: %+v", run)
 	}
 	requests := up.snapshot()
-	if len(requests) != 525 || len(run.Report.Calls) != 525 {
-		t.Fatalf("指纹请求数 = %d / %d, want 525", len(requests), len(run.Report.Calls))
+	if len(requests) != 507 || len(run.Report.Calls) != 507 {
+		t.Fatalf("指纹请求数 = %d / %d, want 507", len(requests), len(run.Report.Calls))
+	}
+	for _, item := range run.Report.Items {
+		if item.Key != "fingerprint" && item.Key != "pair" {
+			t.Errorf("指纹报告包含额外检测项 %s", item.Key)
+		}
 	}
 	assertProbeAuth(t, requests)
 	for _, request := range requests {
@@ -536,7 +541,7 @@ func TestProbeQualityClaude(t *testing.T) {
 		t.Fatalf("Claude 质量测试结果不对: %+v", run)
 	}
 	requests := up.snapshot()
-	if len(requests) != len(run.Report.Calls) || len(requests) < 9 {
+	if len(requests) != len(run.Report.Calls) || len(requests) != 23 {
 		t.Fatalf("Claude 请求数 = %d / %d", len(requests), len(run.Report.Calls))
 	}
 	assertProbeAuth(t, requests)

@@ -24,7 +24,7 @@ func clearFingerprintLeader(ranking []Ranked) (Ranked, int, bool) {
 	return ranking[0], lead, lead >= 50 && ranking[0].Distance <= 0.45
 }
 
-func (p *plan) fingerprintEvidence(words, pairCalls []Call) (Item, *Item) {
+func (p *plan) fingerprintEvidence(words, pairCalls []Call) (Item, *Item, *int) {
 	item := Item{Key: "fingerprint", Title: "单词指纹", Status: Warn}
 	models := FamilyModels(Family(p.spec.Baseline))
 	var valid []Call
@@ -62,6 +62,8 @@ func (p *plan) fingerprintEvidence(words, pairCalls []Call) (Item, *Item) {
 	}
 	item.Details = map[string]any{"ranking": ranking, "sessions": sessions, "valid": len(valid), "planned": len(words)}
 	var pair *Item
+	var pairRanking []Ranked
+	pairCoverage := false
 	if p.pair != nil {
 		var pairValid []Call
 		for _, call := range pairCalls {
@@ -69,20 +71,19 @@ func (p *plan) fingerprintEvidence(words, pairCalls []Call) (Item, *Item) {
 				pairValid = append(pairValid, call)
 			}
 		}
-		pairRanking := Rank(answersOf(pairValid), p.pair.Models)
+		pairRanking = Rank(answersOf(pairValid), p.pair.Models)
 		pair = &Item{Key: "pair", Title: strings.Join(p.pair.Models, " / ") + " 区分", Status: Warn, Summary: "专用题组样本不足", Details: map[string]any{"ranking": pairRanking, "valid": len(pairValid), "planned": len(pairCalls)}}
-		if len(pairCalls) > 0 && len(pairValid)*100 >= len(pairCalls)*80 {
+		pairCoverage = len(pairCalls) > 0 && len(pairValid)*100 >= len(pairCalls)*80
+		if pairCoverage {
 			p.fingerprintConclusion(pair, pairRanking)
 		}
 	}
 	if !coverage {
 		item.Summary = fmt.Sprintf("有效样本不足（%d / %d），请检查请求明细后重测", len(valid), len(words))
-		return item, pair
+		return item, pair, nil
 	}
-	if len(distinct) > 1 {
-		item.Status, item.Summary = Fail, "不同检测组的答案分布不一致："+strings.Join(labels, "、")
-		return item, pair
-	}
+	scoreRanking := ranking
+	usePair := false
 	if pair != nil && len(ranking) >= 2 {
 		withinPair := func(model string) bool {
 			for _, candidate := range p.pair.Models {
@@ -93,12 +94,30 @@ func (p *plan) fingerprintEvidence(words, pairCalls []Call) (Item, *Item) {
 			return false
 		}
 		if withinPair(ranking[0].Model) && withinPair(ranking[1].Model) {
-			item.Status, item.Summary = pair.Status, pair.Summary
-			return item, pair
+			usePair = true
+			scoreRanking = nil
+			if pairCoverage {
+				scoreRanking = pairRanking
+			}
 		}
 	}
-	p.fingerprintConclusion(&item, ranking)
-	return item, pair
+	var score *int
+	for _, candidate := range scoreRanking {
+		if candidate.Model == p.spec.Baseline {
+			value := int((1-candidate.Distance)*100 + 0.5)
+			score = &value
+			break
+		}
+	}
+	switch {
+	case len(distinct) > 1:
+		item.Status, item.Summary = Fail, "不同检测组的答案分布不一致："+strings.Join(labels, "、")
+	case usePair:
+		item.Status, item.Summary = pair.Status, pair.Summary
+	default:
+		p.fingerprintConclusion(&item, ranking)
+	}
+	return item, pair, score
 }
 
 func (p *plan) fingerprintConclusion(item *Item, ranking []Ranked) {

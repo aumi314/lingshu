@@ -33,7 +33,7 @@ func TestNewProbeStopsBeforeBody(t *testing.T) {
 				t.Fatalf("unexpected report: reason=%q score=%v items=%v", report.StopReason, report.Score, report.Items)
 			}
 			count := int(sent.Load())
-			if count < 1 || count > 3 || report.Counts.Sent != count || report.Counts.Planned != 12 || report.Counts.Skipped != 12-count {
+			if count < 1 || count > 3 || report.Counts.Sent != count || report.Counts.Planned != 26 || report.Counts.Skipped != 26-count {
 				t.Fatalf("sent %d, counts %+v", count, report.Counts)
 			}
 			if test.stop == "billing_anomaly" && (report.StopCallIndex == nil || report.Calls[*report.StopCallIndex].InputTokens != 280000) {
