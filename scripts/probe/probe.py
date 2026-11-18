@@ -25,6 +25,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import uuid
 from itertools import combinations
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -38,8 +39,13 @@ SUITE = json.load(open(os.path.join(DATA, "suite.json"), encoding="utf-8"))
 # Claude Code 的请求形态（和 internal/relay/probe_messages.go 一致）：号池类中转只接受像 Claude Code 的请求，官方样本也按同样的系统提示采
 CLAUDE_SYSTEM = [{"type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.319.781; cc_entrypoint=cli;"},
                  {"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."}]
-CLAUDE_HEADERS = {"User-Agent": "claude-cli/2.1.319.781 (external, cli)", "x-app": "cli", "anthropic-version": "2023-06-01",
-                  "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,effort-2025-11-24"}
+# 号池的 Claude Code 校验（2026-11-17 在 kirisame 上二分实测）：x-stainless-* 一整套 SDK 请求头要齐、要有 anthropic-version、
+# X-Claude-Code-Session-Id 要和 metadata 里的 session_id 一致、UA 的版本号要等于计费头 cc_version 去掉最后一段；cch、长系统提示和工具都不查
+CLAUDE_HEADERS = {"User-Agent": "claude-cli/2.1.319 (external, cli)", "x-app": "cli", "anthropic-version": "2023-06-01",
+                  "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,effort-2025-11-24",
+                  "anthropic-dangerous-direct-browser-access": "true", "x-stainless-arch": "arm64", "x-stainless-lang": "js", "x-stainless-os": "MacOS",
+                  "x-stainless-package-version": "0.112.1", "x-stainless-retry-count": "0", "x-stainless-runtime": "node",
+                  "x-stainless-runtime-version": "v26.3.0", "x-stainless-timeout": "600"}
 
 
 def call_messages(args, content, effort=None, retries=3, max_tokens=None):
@@ -58,7 +64,7 @@ def call_messages(args, content, effort=None, retries=3, max_tokens=None):
     err = ""
     for attempt in range(retries):
         req = urllib.request.Request(url, data=json.dumps(body).encode(),
-                                     headers={**CLAUDE_HEADERS, "x-api-key": args.key, "Authorization": "Bearer " + args.key, "Content-Type": "application/json"})
+                                     headers={**CLAUDE_HEADERS, "X-Claude-Code-Session-Id": args.session, "x-api-key": args.key, "Authorization": "Bearer " + args.key, "Content-Type": "application/json"})
         start, first, parts, usage, meta, finish, done = time.time(), None, [], {}, {}, None, False
         try:
             with urllib.request.urlopen(req, timeout=1800) as r:
@@ -494,7 +500,7 @@ def run(args):
     os.makedirs(args.out, exist_ok=True)
     if not args.key:
         sys.exit("缺少 key：用 --key 或环境变量 PROBE_KEY")
-    args.session = str(random.getrandbits(128))  # 一轮样本是同一段对话（号池按会话路由）
+    args.session = str(uuid.uuid4())  # 一轮样本是同一段对话（号池按会话路由）
     name = args.name or args.model  # 样本里记的型号名：Claude 样本记站内名（claude-opus-5-5），请求用 OpenRouter 的名字
     path = os.path.join(args.out, re.sub(r"[^\w.-]", "_", name) + f"-r{args.round}.json")
     out = json.load(open(path)) if os.path.exists(path) else {}
