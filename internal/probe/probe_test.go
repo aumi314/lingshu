@@ -50,19 +50,24 @@ func TestTwoButtonPlanCounts(t *testing.T) {
 		} else {
 			p.buildFingerprint()
 		}
+		for _, request := range p.reqs {
+			if spec.Mode == ModeFingerprint && request.Item != "fingerprint" && request.Item != "pair" {
+				t.Errorf("%s 指纹模式包含额外请求 %s", spec.Baseline, request.Item)
+			}
+		}
 		return len(p.reqs)
 	}
-	if got := count(Spec{Baseline: "gpt-6.1-sol", Mode: ModeQuality}); got != 12 {
-		t.Fatalf("quality GPT requests = %d, want 12", got)
+	if got := count(Spec{Baseline: "gpt-6.1-sol", Mode: ModeQuality}); got != 26 {
+		t.Fatalf("quality GPT requests = %d, want 26", got)
 	}
-	if got := count(Spec{Baseline: "gpt-6.1-sol", Mode: ModeFingerprint}); got != 525 {
-		t.Fatalf("fingerprint GPT requests = %d, want 525", got)
+	if got := count(Spec{Baseline: "gpt-6.1-sol", Mode: ModeFingerprint}); got != 507 {
+		t.Fatalf("fingerprint GPT requests = %d, want 507", got)
 	}
-	if got := count(Spec{Baseline: "claude-opus-5-5", Mode: ModeQuality}); got != 9 {
-		t.Fatalf("quality Claude requests = %d, want 9", got)
+	if got := count(Spec{Baseline: "claude-opus-5-5", Mode: ModeQuality}); got != 23 {
+		t.Fatalf("quality Claude requests = %d, want 23", got)
 	}
-	if got := count(Spec{Baseline: "claude-opus-5-5", Mode: ModeFingerprint}); got != 408 {
-		t.Fatalf("fingerprint Claude requests = %d, want 408", got)
+	if got := count(Spec{Baseline: "claude-opus-5-5", Mode: ModeFingerprint}); got != 390 {
+		t.Fatalf("fingerprint Claude requests = %d, want 390", got)
 	}
 }
 

@@ -134,10 +134,10 @@ export default function Probes() {
               })} />
           </Form.Item>
           <Space>
-            <Tooltip title={t('约 9–12 个标准 API 请求，检查推理、工具、指令和上下文', 'About 9–12 standard API requests covering reasoning, tools, instructions and context')}>
+            <Tooltip title={t('约 9–26 个请求，检查分词、推理、工具、指令和上下文', 'About 9–26 requests covering tokenization, reasoning, tools, instructions and context')}>
               <Button type="primary" loading={startingMode === 'quality'} disabled={!!startingMode} onClick={() => void start('quality')}>{t('渠道质量测试', 'Channel quality')}</Button>
             </Tooltip>
-            <Tooltip title={t('约 400–525 个短请求，判断型号和号池是否混用', 'About 400–525 short requests for model fingerprinting')}>
+            <Tooltip title={t('约 390–507 个短请求，按答案分布计算型号匹配度', 'About 390–507 short requests to score model similarity from answer distributions')}>
               <Button loading={startingMode === 'fingerprint'} disabled={!!startingMode} onClick={() => void start('fingerprint')}>{t('模型指纹辨别', 'Model fingerprint')}</Button>
             </Tooltip>
           </Space>
@@ -255,7 +255,11 @@ function Result({ run, protocol, statusIcon, statusText }: { run: Run; protocol:
     )
   }
   const isFingerprint = reportMode(run) === 'fingerprint'
-  const color = (r.score ?? 0) >= 85 ? '#52c41a' : (r.score ?? 0) >= 60 ? '#faad14' : '#ff4d4f'
+  // 指纹匹配度是 (1 − 距离) × 100，真货受抽样波动影响也只有 70–85，不能套质量测试的分数线：颜色跟型号结论走
+  const fingerprintStatus = r.items.find((it) => it.key === 'fingerprint')?.status
+  const color = isFingerprint
+    ? ({ pass: '#52c41a', warn: '#faad14', fail: '#ff4d4f', info: '#1677ff' } as Record<string, string>)[fingerprintStatus ?? 'warn']
+    : (r.score ?? 0) >= 85 ? '#52c41a' : (r.score ?? 0) >= 60 ? '#faad14' : '#ff4d4f'
   const m = r.metrics
   const list = (items: Item[]) => (
     <div>
@@ -286,7 +290,9 @@ function Result({ run, protocol, statusIcon, statusText }: { run: Run; protocol:
     <div>
       <Row gutter={[24, 16]}>
         <Col xs={24} md={6} style={{ textAlign: 'center' }}>
-          {isFingerprint ? null : r.score == null ? <Tag>{t('本次检测不评分', 'No score for this check')}</Tag> : <Progress type="circle" percent={r.score} strokeColor={color} size={150} format={(p) => <span style={{ fontSize: 34, fontWeight: 600 }}>{p}%</span>} />}
+          {r.probe_mode === 'fingerprint' && r.score != null && <div>{t('指纹匹配度', 'Fingerprint similarity')}</div>}
+          {r.score == null ? <Tag>{t('本次检测不评分', 'No score for this check')}</Tag> : <Progress type="circle" percent={r.score} strokeColor={color} size={150} format={(p) => <span style={{ fontSize: 34, fontWeight: 600 }}>{p}%</span>} />}
+          {isFingerprint && r.score != null && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>{t('同型号真货受抽样波动影响通常在 70–85，换成别的型号一般低于 55；以下方结论为准', 'The genuine model usually scores 70–85 due to sampling noise; other models usually score below 55. Go by the verdict below')}</div>}
           <Typography.Title level={5} style={{ marginTop: 12 }}>{r.verdict}</Typography.Title>
           <div className="muted" style={{ fontSize: 13, lineHeight: 1.9 }}>
             <div>{dayjs(run.created_at).format('YYYY-MM-DD HH:mm')}</div>

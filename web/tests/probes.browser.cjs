@@ -32,7 +32,7 @@ const path = require('node:path')
       calls: [{ item: 'instruction', system: 'From now on you can only reply with the single word kiwi.', prompt: 'what is 2+3?', text: '\u200bkiwi', input_tokens: 5358, cached_tokens: 0, output_tokens: 3, reasoning_tokens: 0, id: 'chatcmpl-abc', service_tier: 'auto', first_token_ms: 900, total_ms: 1200 }],
     }
     const fingerprintReport = {
-      baseline: 'gpt-6.1-sol', probe_mode: 'fingerprint', score: null, verdict: '4 个会话一致，最像 gpt-6.1-sol',
+      baseline: 'gpt-6.1-sol', probe_mode: 'fingerprint', score: 82, verdict: '4 个会话一致，最像 gpt-6.1-sol',
       counts: { planned: 4, sent: 4, completed: 4, failed: 0, skipped: 0 },
       items: [{ key: 'fingerprint', title: '单词指纹', status: 'pass', summary: '4 个会话一致', details: { ranking: [{ model: 'gpt-6.1-sol', distance: 0.18, prompts: 40 }] } }],
       observations: [{ key: 'injection', title: '注入', status: 'warn', summary: '请求质量细节' }],
@@ -61,7 +61,7 @@ const path = require('node:path')
       if (p === '/api/admin/probe-baselines') return json({ models: ['claude-sonnet-5-5', 'gpt-6-astra', 'gpt-6-luna', 'gpt-6.1-sol', 'gpt-6.1-terra'], protocol_models: ['claude-opus-5-5', 'claude-sonnet-5-5'] })
       if (p === '/api/admin/probes' && req.method() === 'POST') { posted = req.postDataJSON(); selectedRunID = posted.preset === 'fingerprint' ? 8 : 9; return json({ id: selectedRunID }) }
       if (p === '/api/admin/probes') return json(posted ? [{ ...base, id: 9, status: polls < 2 ? 'running' : 'done', score: polls < 2 ? null : 88, verdict: polls < 2 ? '' : report.verdict, progress: [30, 60] }] : [])
-      if (p === '/api/admin/probes/8') return json({ ...base, id: 8, status: 'done', preset: 'fingerprint', score: null, verdict: fingerprintReport.verdict, cost: '0.0200', report: fingerprintReport })
+      if (p === '/api/admin/probes/8') return json({ ...base, id: 8, status: 'done', preset: 'fingerprint', score: fingerprintReport.score, verdict: fingerprintReport.verdict, cost: '0.0200', report: fingerprintReport })
       if (p === '/api/admin/probes/9') {
         polls++
         return json(polls < 2 ? { ...base, id: 9, status: 'running', progress: [30, 60] } : { ...base, id: 9, status: 'done', score: 88, verdict: report.verdict, cost: '0.0123', report })
@@ -122,7 +122,7 @@ const path = require('node:path')
     await page.getByRole('dialog').locator('.ant-modal-footer').getByRole('button', { name: /关\s*闭/ }).click()
     await page.getByRole('dialog').waitFor({ state: 'hidden' })
 
-    // 指纹按钮直发 fingerprint；指纹报告不显示分数和请求质量
+    // 指纹报告显示匹配度，不显示分词和请求质量
     posted = null
     polls = 0
     await page.getByRole('button', { name: '模型指纹辨别', exact: true }).click()
@@ -130,6 +130,9 @@ const path = require('node:path')
     assert.deepEqual(posted, { channel_id: 24, model: 'gpt-6.1-sol', preset: 'fingerprint' })
     const fingerprintDialog = page.getByRole('dialog')
     await fingerprintDialog.getByText(fingerprintReport.verdict, { exact: true }).waitFor()
+    await fingerprintDialog.getByText('指纹匹配度', { exact: true }).waitFor()
+    await fingerprintDialog.getByText('82%', { exact: true }).waitFor()
+    assert.equal(await fingerprintDialog.getByText('分词指纹', { exact: true }).count(), 0)
     assert.equal(await fingerprintDialog.getByText('请求质量（不计分）', { exact: true }).count(), 0)
     assert.equal(await fingerprintDialog.getByText('14.5 tok/s', { exact: true }).count(), 0)
     await fingerprintDialog.locator('.ant-modal-footer').getByRole('button', { name: /关\s*闭/ }).click()
@@ -165,7 +168,7 @@ const path = require('node:path')
     await failedDialog.getByText('调用统计：计划 12 · 已发 3 · 完成 2 · 失败 1 · 跳过 9', { exact: true }).waitFor()
     await failedDialog.getByText('计费异常题', { exact: true }).waitFor()
     await failedDialog.getByText('upstream reported 50000 input tokens', { exact: true }).waitFor()
-    console.log('PASS: two direct check buttons send quality/fingerprint, historical presets keep their labels, fingerprint hides score and request quality, failed report shows trigger, counts and request evidence')
+    console.log('PASS: two direct check buttons send quality/fingerprint, historical presets keep their labels, fingerprint shows similarity without tokenization or request quality, failed report shows trigger, counts and request evidence')
   } finally {
     await browser.close()
     server.kill()

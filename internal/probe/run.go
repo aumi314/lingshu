@@ -266,7 +266,7 @@ func Run(ctx context.Context, call Caller, spec Spec, progress Progress) (*Repor
 	verify := make([]int, 0, 3)
 	for i := range plan.reqs {
 		item := plan.reqs[i].Item
-		if len(verify) < 3 && (item == "tokens" || plan.protocol && spec.Mode == ModeQuality && item == "anchor" || spec.Mode == ModeQuality && item == "instruction") {
+		if len(verify) < 3 && (item == "tokens" || !legacy && spec.Mode == ModeFingerprint && item == "fingerprint" || spec.Mode == ModeQuality && (item == "anchor" || item == "instruction")) {
 			verify = append(verify, i)
 		}
 	}
@@ -342,7 +342,7 @@ func Run(ctx context.Context, call Caller, spec Spec, progress Progress) (*Repor
 		report.StopCallIndex = &stopIndex
 	}
 	stopMu.Unlock()
-	if spec.mode() == ModeFingerprint || report.StopReason != "" {
+	if legacy || report.StopReason != "" {
 		report.Score = nil
 	}
 	if report.StopReason == "" && ctx.Err() != nil {
@@ -537,21 +537,26 @@ func (p *plan) build() {
 }
 
 func (p *plan) buildFingerprint() {
+	p.buildFingerprintAnswers()
+}
+
+func (p *plan) buildQualityTokens() {
 	s := p.suite
-	p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(s.Tokens.Suffix)})
-	p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(s.Tokens.Suffix)})
-	p.add(Request{Item: "tokens", Prompt: s.Tokens.Suffix})
+	p.add(Request{Item: "anchor", Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
+	_, baselines, _ := Load()
+	if base := baselines[p.spec.Baseline]; base == nil || len(base.TokenDeltas) == 0 {
+		return
+	}
+	p.reqs[len(p.reqs)-1].Item = "tokens"
+	p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
+	p.add(Request{Item: "tokens", Prompt: s.Tokens.Suffix, MaxTokens: 16})
 	for name := range s.Tokens.Probes {
 		p.tokenNames = append(p.tokenNames, name)
 	}
 	sort.Strings(p.tokenNames)
 	for _, name := range p.tokenNames {
-		p.add(Request{Item: "tokens", Prompt: s.Tokens.Probes[name] + s.Tokens.Suffix})
+		p.add(Request{Item: "tokens", Prompt: s.Tokens.Probes[name] + s.Tokens.Suffix, MaxTokens: 16})
 	}
-	p.add(Request{Item: "anchor", Session: 1, Prompt: strings.TrimSpace(s.Tokens.Suffix)})
-	p.add(Request{Item: "anchor", Session: 2, Prompt: strings.TrimSpace(s.Tokens.Suffix)})
-	p.add(Request{Item: "anchor", Session: 3, Prompt: strings.TrimSpace(s.Tokens.Suffix)})
-	p.buildFingerprintAnswers()
 }
 
 func (p *plan) buildFingerprintAnswers() {
@@ -591,7 +596,7 @@ func (p *plan) buildFingerprintAnswers() {
 
 func (p *plan) buildQuality() {
 	s := p.suite
-	p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
+	p.buildQualityTokens()
 	kinds := []string{"recurrence_hard", []string{"lattice_hard", "subset_mod", "digit_sum"}[p.rng.IntN(3)]}
 	for _, k := range kinds {
 		prob := NewMathProblem(k, p.rng)
@@ -645,8 +650,10 @@ func (p *plan) report(calls []Call) *Report {
 	r := &Report{Baseline: p.spec.Baseline, SuiteVersion: p.suite.Version, Calls: calls}
 	var hint string
 	var sessionNearest []string
-	if p.legacy {
+	if len(by["tokens"]) > 0 {
 		r.Items = append(r.Items, p.judgeTokens(by["tokens"], base))
+	}
+	if p.legacy {
 		var fingerprint Item
 		fingerprint, hint, sessionNearest = p.judgeFingerprint(by["fingerprint"])
 		r.Items = append(r.Items, fingerprint)
@@ -660,7 +667,11 @@ func (p *plan) report(calls []Call) *Report {
 	if len(by["needle"]) > 0 {
 		r.Items = append(r.Items, p.judgeNeedle(by["needle"]))
 	}
-	r.Observations = disguiseInjection(observe(calls, by["tokens"], by["anchor"], base, sessionNearest), p.spec)
+	anchors := by["tokens"]
+	if len(anchors) == 0 {
+		anchors = by["anchor"]
+	}
+	r.Observations = disguiseInjection(observe(calls, anchors, by["anchor"], base, sessionNearest), p.spec)
 	if !p.legacy {
 		r.Observations = qualityObservations(r.Observations)
 	}
@@ -670,25 +681,18 @@ func (p *plan) report(calls []Call) *Report {
 }
 
 func (p *plan) reportFingerprint(calls []Call) *Report {
-	_, bs, _ := Load()
-	base := bs[p.spec.Baseline]
 	by := map[string][]Call{}
 	for _, c := range calls {
 		by[c.Item] = append(by[c.Item], c)
 	}
 	r := &Report{Baseline: p.spec.Baseline, SuiteVersion: p.suite.Version, Calls: calls, Metrics: metrics(calls)}
-	if len(by["tokens"]) > 0 {
-		r.Items = append(r.Items, p.judgeTokens(by["tokens"], base))
-	}
-	fingerprint, pair := p.fingerprintEvidence(by["fingerprint"], by["pair"])
+	fingerprint, pair, score := p.fingerprintEvidence(by["fingerprint"], by["pair"])
+	r.Score = score
 	r.Items = append(r.Items, fingerprint)
 	if pair != nil {
 		r.Items = append(r.Items, *pair)
 	}
 	r.Verdict = fingerprint.Summary
-	if fingerprint.Status != Warn && len(r.Items) > 0 && r.Items[0].Key == "tokens" && r.Items[0].Status == Fail && p.completeTokenEvidence(by["tokens"]) {
-		r.Verdict = "分词差值与对照家族不符"
-	}
 	return r
 }
 
@@ -840,18 +844,6 @@ func (p *plan) judgeTokens(cs []Call, base *Baseline) Item {
 		it.Status, it.Summary = Fail, fmt.Sprintf("只有 %d / %d 段和官方一致，分词器很可能不是这个家族", match, total)
 	}
 	return it
-}
-
-func (p *plan) completeTokenEvidence(calls []Call) bool {
-	if len(calls) != len(p.tokenNames)+3 || len(p.tokenNames) == 0 {
-		return false
-	}
-	for _, call := range calls[2:] {
-		if call.Error != "" || !call.UsageReported || call.InputTokens <= 0 {
-			return false
-		}
-	}
-	return true
 }
 
 // fixedOffset 判断偏差是否只有“0 附近”和“某一个固定数附近”两种（允许 ±1）：是的话返回那个固定数和它出现的次数，否则返回 0。
