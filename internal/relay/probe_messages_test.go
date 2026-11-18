@@ -189,3 +189,54 @@ func TestProbeChatRetriesNoneOnEmptyStream(t *testing.T) {
 		t.Errorf("空流应换成 low 重试并成功: %+v", c)
 	}
 }
+
+// 指纹用的传输层伪装要过号池的 Claude Code 校验（docs/research/claude-probe.md 第九节，kirisame 二分实测）：
+// 整套 x-stainless-* 头、anthropic-version、会话头等于 metadata 的 session_id、UA 版本等于计费头 cc_version 去掉最后一段；
+// 系统提示恰好两行、不带工具和 thinking、max_tokens 1024（和 scripts/probe/probe.py 采官方样本的请求一致）。服务器有完整模板也不用。
+func TestProbeMessagesTransportDisguise(t *testing.T) {
+	var got map[string]any
+	var hd http.Header
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hd = r.Header.Clone()
+		b, _ := io.ReadAll(r.Body)
+		json.Unmarshal(b, &got)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, probeMessagesSSE)
+	}))
+	defer up.Close()
+	d := &ProbeDisguise{}
+	d.Claude.System = []map[string]any{{"type": "text", "text": "full template"}}
+	d.Claude.Headers = map[string]string{"user-agent": "claude-cli/2.1.281 (external, cli)"}
+	h := &Handler{Client: up.Client(), Disguise: d}
+	ch := &store.Channel{BaseURLMessages: up.URL, APIKey: "sk-test"}
+	h.ProbeMessages(context.Background(), ch, "claude-opus-5-5", "3f1c2b8e-0000-4000-8000-000000000001", probe.Request{Prompt: "Name a random gemstone.", DisguiseSet: true})
+
+	for _, k := range []string{"X-Stainless-Arch", "X-Stainless-Lang", "X-Stainless-Os", "X-Stainless-Package-Version", "X-Stainless-Retry-Count", "X-Stainless-Runtime", "X-Stainless-Runtime-Version", "X-Stainless-Timeout", "Anthropic-Version"} {
+		if hd.Get(k) == "" {
+			t.Errorf("缺少请求头 %s", k)
+		}
+	}
+	var uid map[string]string
+	json.Unmarshal([]byte(got["metadata"].(map[string]any)["user_id"].(string)), &uid)
+	if hd.Get("X-Claude-Code-Session-Id") == "" || hd.Get("X-Claude-Code-Session-Id") != uid["session_id"] {
+		t.Errorf("会话头 %q 应等于 metadata 的 session_id %q", hd.Get("X-Claude-Code-Session-Id"), uid["session_id"])
+	}
+	sys, _ := got["system"].([]any)
+	if len(sys) != 2 {
+		t.Fatalf("系统提示应恰好两行（不用完整模板）: %v", got["system"])
+	}
+	billing := sys[0].(map[string]any)["text"].(string)
+	ua := strings.TrimSuffix(strings.TrimPrefix(hd.Get("User-Agent"), "claude-cli/"), " (external, cli)")
+	if !strings.Contains(billing, "cc_version="+ua+".") {
+		t.Errorf("UA 版本 %q 要等于计费头 cc_version 去掉最后一段: %q", ua, billing)
+	}
+	if _, ok := got["tools"]; ok {
+		t.Errorf("指纹请求不应带工具")
+	}
+	if _, ok := got["thinking"]; ok {
+		t.Errorf("指纹请求不开 thinking")
+	}
+	if got["max_tokens"] != float64(1024) {
+		t.Errorf("max_tokens = %v, want 1024", got["max_tokens"])
+	}
+}

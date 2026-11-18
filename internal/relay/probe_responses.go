@@ -107,15 +107,13 @@ func (h *Handler) probeResponsesOnce(ctx context.Context, ch *store.Channel, ups
 		}
 		hd.Set("X-Codex-Turn-Metadata", turnMeta)
 		hd.Set("X-Codex-Window-Id", session+":0")
-	} else if !req.DisguiseSet {
+	} else {
 		hd.Set("User-Agent", probeUserAgent)
 		hd.Set("Originator", "codex-tui")
 	}
-	if !req.DisguiseSet {
-		hd.Set("Session-Id", session)
-		hd.Set("Thread-Id", session)
-		hd.Set("X-Client-Request-Id", session)
-	}
+	hd.Set("Session-Id", session)
+	hd.Set("Thread-Id", session)
+	hd.Set("X-Client-Request-Id", session)
 	setUpstreamAuth(hd, usage.Responses, ch.APIKey)
 
 	start := time.Now()

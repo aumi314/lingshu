@@ -557,14 +557,34 @@ func TestToolNameIsRandom(t *testing.T) {
 	}
 }
 
-// 完整伪装下注入项只作参考；部分短请求多出一截仍报需关注。
-func TestDisguiseInjectionAdvisory(t *testing.T) {
-	obs := []Item{{Key: "injection", Status: Warn, Summary: "每个请求带约 14061 个输入 token", Details: map[string]any{"anchor_tokens": int64(14061)}}}
-	if got := disguiseInjection(obs, true); got[0].Status != Info || !strings.Contains(got[0].Summary, "14061") {
-		t.Errorf("伪装下只作参考: %+v", got[0])
+// 完整伪装下注入项和同模板的官方基准比：±150 内无额外注入，多出的报需关注，模板没标定只作参考；部分短请求多出一截仍报需关注。
+func TestDisguiseInjectionTemplateBase(t *testing.T) {
+	inj := func(anchor int64, summary string) []Item {
+		return []Item{{Key: "injection", Status: Warn, Summary: summary, Details: map[string]any{"anchor_tokens": anchor}}}
 	}
-	obs = []Item{{Key: "injection", Status: Warn, Summary: "x；另有 3 / 60 个短请求多出约 4000 个输入 token", Details: map[string]any{"anchor_tokens": int64(30000)}}}
-	if got := disguiseInjection(obs, true); got[0].Status != Warn || !strings.Contains(got[0].Summary, "另有 3 / 60") {
+	codex := Spec{Disguise: true, Template: "codex 0.160.0", TemplateHash: "4468e298e601"}
+	claude := Spec{Disguise: true, Template: "claude-code 2.1.281", TemplateHash: "62ac38171048"}
+	cases := []struct {
+		name   string
+		spec   Spec
+		anchor int64
+		status Status
+		want   string
+	}{
+		{"官方 Codex 一致", codex, 9845, Pass, "没有额外注入"},
+		{"Codex 号池多约 4200", codex, 14061, Warn, "多约 4216"},
+		{"大王 claude 差 22", claude, 34190, Pass, "没有额外注入"},
+		{"模板未标定", Spec{Disguise: true, Template: "codex 0.170.0", TemplateHash: "000000000000"}, 9845, Info, "还没标定"},
+	}
+	for _, c := range cases {
+		if got := disguiseInjection(inj(c.anchor, "x"), c.spec); got[0].Status != c.status || !strings.Contains(got[0].Summary, c.want) {
+			t.Errorf("%s: %+v", c.name, got[0])
+		}
+	}
+	if got := disguiseInjection(inj(9845, "x；另有 3 / 60 个短请求多出约 4000 个输入 token"), codex); got[0].Status != Warn || !strings.Contains(got[0].Summary, "另有 3 / 60") {
 		t.Errorf("多出一截仍需关注: %+v", got[0])
+	}
+	if got := disguiseInjection(inj(14061, "x"), Spec{}); got[0].Summary != "x" {
+		t.Errorf("没有完整伪装时不改: %+v", got[0])
 	}
 }

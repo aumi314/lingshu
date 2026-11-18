@@ -229,21 +229,56 @@ func (up *probeUpstream) serveMessages(w http.ResponseWriter, send func(string),
 	send(`{"type":"message_stop"}`)
 }
 
-func (up *probeUpstream) assertNoImitation(t *testing.T) {
+// assertFullDisguise：渠道质量测试的每个请求都用服务器上的真实客户端模板（中转认不出检测流量）。
+func (up *probeUpstream) assertFullDisguise(t *testing.T, ua string) {
 	t.Helper()
 	for _, request := range up.snapshot() {
-		if got := request.header.Get("User-Agent"); strings.Contains(strings.ToLower(got), "codex") || strings.Contains(strings.ToLower(got), "claude-cli") {
-			t.Errorf("%s 的新模式请求带了客户端伪装 UA %q", request.path, got)
+		if got := request.header.Get("User-Agent"); got != ua {
+			t.Errorf("%s 质量测试应带模板的 UA %q，实际 %q", request.path, ua, got)
 		}
-		if got := request.header.Get("X-App"); got == "cli" {
-			t.Errorf("%s 的新模式请求带了 Claude Code 标识", request.path)
+		switch request.path {
+		case "/responses":
+			if _, ok := request.body["client_metadata"]; !ok {
+				t.Errorf("Codex 模板请求缺少 client_metadata")
+			}
+		case "/v1/messages":
+			if !strings.Contains(probeJSONText(request.body["system"]), "private Claude Code system prompt") {
+				t.Errorf("Claude 模板请求缺少模板系统提示: %v", request.body["system"])
+			}
+			assertClaudeSession(t, request)
 		}
-		if body, ok := request.body["client_metadata"]; ok {
-			t.Errorf("%s 的新模式请求带了 Codex 客户端元数据: %v", request.path, body)
+	}
+}
+
+// assertClaudeSession：号池要求 X-Claude-Code-Session-Id 和 metadata.user_id 里的 session_id 一致。
+func assertClaudeSession(t *testing.T, request probeUpstreamRequest) {
+	t.Helper()
+	meta, _ := request.body["metadata"].(map[string]any)
+	userID, _ := meta["user_id"].(string)
+	var parsed struct {
+		SessionID string `json:"session_id"`
+	}
+	_ = json.Unmarshal([]byte(userID), &parsed)
+	if parsed.SessionID == "" || request.header.Get("X-Claude-Code-Session-Id") != parsed.SessionID {
+		t.Errorf("会话头 %q 应等于 metadata 的 session_id %q", request.header.Get("X-Claude-Code-Session-Id"), parsed.SessionID)
+	}
+}
+
+// assertTransportOnly：模型指纹只用传输层伪装（Codex 客户端标识和会话头，号池按会话路由），不带模板内容，和官方样本的采集条件一致。
+func (up *probeUpstream) assertTransportOnly(t *testing.T) {
+	t.Helper()
+	sessions := map[string]bool{}
+	for _, request := range up.snapshot() {
+		if got := request.header.Get("User-Agent"); !strings.Contains(got, "codex") {
+			t.Errorf("%s 指纹请求应带 Codex 客户端标识，实际 %q", request.path, got)
 		}
-		if body, ok := request.body["metadata"]; ok {
-			t.Errorf("%s 的新模式请求带了 Claude Code 会话元数据: %v", request.path, body)
+		if _, ok := request.body["client_metadata"]; ok {
+			t.Errorf("%s 指纹请求不应带模板的客户端元数据", request.path)
 		}
+		sessions[request.header.Get("Session-Id")] = true
+	}
+	if len(sessions) != probe.Sessions || sessions[""] {
+		t.Errorf("指纹请求应分在 %d 个会话里，实际 %v", probe.Sessions, sessions)
 	}
 }
 
@@ -302,11 +337,12 @@ type probeRunView struct {
 	Score         *int   `json:"score"`
 	Cost          string `json:"cost"`
 	Report        struct {
-		ProbeMode  string `json:"probe_mode"`
-		Protocol   string `json:"protocol"`
-		Disguise   bool   `json:"disguise"`
-		StopReason string `json:"stop_reason"`
-		Counts     struct {
+		ProbeMode    string `json:"probe_mode"`
+		Protocol     string `json:"protocol"`
+		Disguise     bool   `json:"disguise"`
+		TemplateHash string `json:"template_hash"`
+		StopReason   string `json:"stop_reason"`
+		Counts       struct {
 			Planned   int `json:"planned"`
 			Sent      int `json:"sent"`
 			Completed int `json:"completed"`
@@ -357,6 +393,11 @@ func TestProbeStartValidation(t *testing.T) {
 	seedProbeModel(t, e, "gpt-6-astra", "up-astra", responseChannel)
 	blockedChannel := seedProbeChannel(t, e, "blocked", "upstream-key", "", "", up.url())
 	seedProbeModel(t, e, "gpt-6-luna", "up-luna", blockedChannel)
+	if code, body, _ := startProbe(t, a, map[string]any{"channel_id": responseChannel, "model": "gpt-6-astra", "preset": probe.ModeQuality}); code != http.StatusBadRequest || !strings.Contains(body, "伪装模板") {
+		t.Fatalf("服务器没有 Codex 模板时质量测试应拒绝发起: %d %s", code, body)
+	}
+	e.api.Relay.Disguise = &relay.ProbeDisguise{}
+	e.api.Relay.Disguise.Codex.Input = json.RawMessage(`[{"type":"message"}]`)
 
 	for _, preset := range []string{"", "quick", "full", "unknown"} {
 		payload := map[string]any{"channel_id": chatChannel, "model": "gpt-6.1-sol", "preset": preset}
@@ -396,13 +437,13 @@ func TestProbeQualityGPT(t *testing.T) {
 	seedProbeModel(t, e, "gpt-6.1-sol", "up-sol", channelID)
 	e.api.Relay.Disguise = &relay.ProbeDisguise{}
 	e.api.Relay.Disguise.Codex.Input = json.RawMessage(`[{"type":"message"}]`)
-	e.api.Relay.Disguise.Codex.Headers = map[string]string{"User-Agent": "private-codex-template"}
+	e.api.Relay.Disguise.Codex.Headers = map[string]string{"user-agent": "private-codex-template"}
 	code, body, id := startProbe(t, a, map[string]any{"channel_id": channelID, "model": "gpt-6.1-sol", "preset": probe.ModeQuality})
 	if code != http.StatusOK {
 		t.Fatalf("发起质量测试: %d %s", code, body)
 	}
 	run := waitProbeRun(t, a, id)
-	if run.Status != "done" || run.Report.ProbeMode != probe.ModeQuality || run.Report.Protocol != "responses" || run.Report.Disguise || run.Score == nil {
+	if run.Status != "done" || run.Report.ProbeMode != probe.ModeQuality || run.Report.Protocol != "responses" || !run.Report.Disguise || run.Report.TemplateHash == "" || run.Score == nil {
 		t.Fatalf("质量测试结果不对: %+v", run)
 	}
 	status := map[string]string{}
@@ -421,10 +462,10 @@ func TestProbeQualityGPT(t *testing.T) {
 	assertProbeAuth(t, requests)
 	for _, request := range requests {
 		if request.path != "/responses" || request.model != "up-sol" {
-			t.Fatalf("质量测试应走标准 Responses: %s %s", request.path, request.model)
+			t.Fatalf("质量测试应走 Responses: %s %s", request.path, request.model)
 		}
 	}
-	up.assertNoImitation(t)
+	up.assertFullDisguise(t, "private-codex-template")
 	var logs int
 	e.store.Pool.QueryRow(context.Background(), `SELECT count(*) FROM request_logs`).Scan(&logs)
 	if logs != 0 {
@@ -453,10 +494,10 @@ func TestProbeFingerprintGPT(t *testing.T) {
 	assertProbeAuth(t, requests)
 	for _, request := range requests {
 		if request.path != "/chat/completions" || request.model != "up-sol" {
-			t.Fatalf("指纹辨别应走标准 Chat: %s %s", request.path, request.model)
+			t.Fatalf("指纹辨别应走 Chat: %s %s", request.path, request.model)
 		}
 	}
-	up.assertNoImitation(t)
+	up.assertTransportOnly(t)
 
 	var list []map[string]any
 	a.do("GET", "/api/admin/probes", nil, &list)
@@ -485,13 +526,13 @@ func TestProbeQualityClaude(t *testing.T) {
 	seedProbeModel(t, e, "claude-opus-5-5", "up-claude", channelID)
 	e.api.Relay.Disguise = &relay.ProbeDisguise{}
 	e.api.Relay.Disguise.Claude.System = []map[string]any{{"type": "text", "text": "private Claude Code system prompt"}}
-	e.api.Relay.Disguise.Claude.Headers = map[string]string{"User-Agent": "private-claude-template"}
+	e.api.Relay.Disguise.Claude.Headers = map[string]string{"user-agent": "private-claude-template"}
 	code, body, id := startProbe(t, a, map[string]any{"channel_id": channelID, "model": "claude-opus-5-5", "preset": probe.ModeQuality})
 	if code != http.StatusOK {
 		t.Fatalf("发起 Claude 质量测试: %d %s", code, body)
 	}
 	run := waitProbeRun(t, a, id)
-	if run.Status != "done" || run.Report.ProbeMode != probe.ModeQuality || run.Report.Protocol != "messages" || run.Report.Disguise || run.Score == nil {
+	if run.Status != "done" || run.Report.ProbeMode != probe.ModeQuality || run.Report.Protocol != "messages" || !run.Report.Disguise || run.Report.TemplateHash == "" || run.Score == nil {
 		t.Fatalf("Claude 质量测试结果不对: %+v", run)
 	}
 	requests := up.snapshot()
@@ -501,10 +542,10 @@ func TestProbeQualityClaude(t *testing.T) {
 	assertProbeAuth(t, requests)
 	for _, request := range requests {
 		if request.path != "/v1/messages" || request.model != "up-claude" {
-			t.Fatalf("Claude 质量测试应走标准 Messages: %s %s", request.path, request.model)
+			t.Fatalf("Claude 质量测试应走 Messages: %s %s", request.path, request.model)
 		}
 	}
-	up.assertNoImitation(t)
+	up.assertFullDisguise(t, "private-claude-template")
 }
 
 func TestProbePartialReportOnQuotaError(t *testing.T) {

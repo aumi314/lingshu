@@ -147,6 +147,17 @@ func (s *Server) startProbe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GPT 模型指纹辨别需要 Chat 地址")
 		return
 	}
+	// 渠道质量测试必须用真实客户端的完整伪装（中转认出检测流量就能专门转给好的上游），服务器没有对应模板就不发起，不静默退回简版
+	if in.Preset == probe.ModeQuality {
+		family, client := "gpt", "Codex"
+		if protocol {
+			family, client = "claude", "Claude Code"
+		}
+		if _, ok := s.Relay.Disguise.Template(family); !ok {
+			writeError(w, http.StatusBadRequest, "服务器没有 "+client+" 伪装模板，渠道质量测试要用真实客户端的请求形态才测得准。配置方法见 docs/deploy.md「模型检测伪装配置」；可以先跑模型指纹辨别")
+			return
+		}
+	}
 	secret, err := s.Store.ChannelSecret(r.Context(), selected.ID)
 	if err != nil {
 		writeStoreError(w, err)
@@ -223,7 +234,13 @@ func (s *Server) runProbe(run store.ProbeRun, ch *store.Channel) {
 		}
 		return c
 	}
-	report, err := probe.Run(ctx, caller, probe.Spec{Baseline: run.Baseline, UpstreamModel: run.UpstreamModel, Mode: probe.NormalizeMode(run.Preset)}, func(done, total int) {
+	spec := probe.Spec{Baseline: run.Baseline, UpstreamModel: run.UpstreamModel, Mode: probe.NormalizeMode(run.Preset)}
+	if spec.Mode == probe.ModeQuality {
+		if tp, ok := s.Relay.Disguise.Template(probe.Family(run.Baseline)); ok {
+			spec.Disguise, spec.Template, spec.TemplateHash, spec.TemplateTokens = true, tp.Name, tp.Hash, tp.Tokens
+		}
+	}
+	report, err := probe.Run(ctx, caller, spec, func(done, total int) {
 		s.probeProgress.Store(run.ID, [2]int{done, total})
 	})
 	if report != nil {

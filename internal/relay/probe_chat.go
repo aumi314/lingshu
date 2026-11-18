@@ -106,13 +106,11 @@ func (h *Handler) probeChatOnce(ctx context.Context, ch *store.Channel, upstream
 	hd := httpReq.Header
 	hd.Set("Content-Type", "application/json")
 	hd.Set("Accept", "text/event-stream")
-	if !req.DisguiseSet {
-		hd.Set("User-Agent", probeUserAgent)
-		hd.Set("Originator", "codex-tui")
-		hd.Set("Session-Id", session)
-		hd.Set("Thread-Id", session)
-		hd.Set("X-Client-Request-Id", session)
-	}
+	hd.Set("User-Agent", probeUserAgent)
+	hd.Set("Originator", "codex-tui")
+	hd.Set("Session-Id", session)
+	hd.Set("Thread-Id", session)
+	hd.Set("X-Client-Request-Id", session)
 	setUpstreamAuth(hd, usage.Chat, ch.APIKey)
 
 	start := time.Now()

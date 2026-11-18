@@ -22,6 +22,7 @@ import re
 import statistics
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -201,30 +202,38 @@ def probe_fingerprint(args):
         if args.fingerprint_limit:
             prompts = prompts[: args.fingerprint_limit]
     samples = args.fingerprint_samples or f["samples"]
-    jobs = [p for p in prompts for _ in range(samples)]
-    state = {"streak": 0, "stopped": False}
+    # 边采边落盘、可以接着采：这一轮文件里已有的答案保留，每题只补到 samples 个；每 20 个答案写一次盘，中断（额度用完、被停掉）也不丢
+    prev = fingerprint_answers(args.previous["fingerprint"]) if args.previous.get("fingerprint") else {}
+    answers = {p: list(prev.get(p, []))[:samples] for p in prompts}
+    jobs = [p for p in prompts for _ in range(samples - len(answers[p]))]
+    if prev:
+        print(f"接着上次采：已有 {sum(map(len, answers.values()))} 个答案，还要 {len(jobs)} 个", file=sys.stderr, flush=True)
+    state = {"streak": 0, "stopped": False, "errors": args.previous.get("fingerprint", {}).get("errors", 0), "new": 0}
+    lock = threading.Lock()
+
+    def result(partial):
+        return {"samples": samples, "errors": state["errors"], "stopped": state["stopped"], "partial": partial, "answers": {**prev, **answers}}
 
     def one(p):
         if state["stopped"]:
-            return p, None, "已停止"
+            return
         suffix = (" " + f["suffix_zh"]) if has_cjk(p) and f.get("suffix_zh") else f["suffix"]
         r = call(args, p + suffix, effort=f["effort"])
-        if r.get("error"):
-            state["streak"] += 1
-            if state["streak"] >= 10:
-                state["stopped"] = True
-                print(f"连续出错，停止：{r['error'][:120]}", file=sys.stderr, flush=True)
-            return p, None, r["error"]
-        state["streak"] = 0
-        return p, normalize(r.get("text", "")), None
-    answers = {p: [] for p in prompts}
-    errors = 0
-    for p, a, e in parallel(args, one, jobs):
-        if e:
-            errors += 1
-        else:
-            answers[p].append(a)
-    return {"samples": samples, "errors": errors, "stopped": state["stopped"], "answers": answers}
+        with lock:
+            if r.get("error"):
+                state["errors"] += 1
+                state["streak"] += 1
+                if state["streak"] >= 10 and not state["stopped"]:
+                    state["stopped"] = True
+                    print(f"连续出错，停止（已采的答案都在盘上，重跑同一轮会接着采）：{r['error'][:120]}", file=sys.stderr, flush=True)
+                return
+            state["streak"] = 0
+            answers[p].append(normalize(r.get("text", "")))
+            state["new"] += 1
+            if state["new"] % 20 == 0:
+                args.checkpoint("fingerprint", result(True))
+    parallel(args, one, jobs)
+    return result(state["stopped"])
 
 
 # ---- 数学题：按种子生成，本地算标准答案；记正确率和推理 token（思考深度、稳定性） ----
@@ -505,18 +514,18 @@ def run(args):
     path = os.path.join(args.out, re.sub(r"[^\w.-]", "_", name) + f"-r{args.round}.json")
     out = json.load(open(path)) if os.path.exists(path) else {}
     out.update({"suite_version": SUITE["version"], "model": name, "round": args.round})
+    args.previous = dict(out)  # 这一轮已有的结果：单词指纹接着采
+
+    def checkpoint(section, partial):
+        out[section] = partial
+        json.dump(out, open(path, "w"), ensure_ascii=False, indent=1)
+    args.checkpoint = checkpoint
     if args.protocol == "messages":
         out["source"] = {"protocol": "messages", "base": args.base, "request_model": args.model, "provider": args.provider or None}
     for name in args.only.split(","):
         start = time.time()
         print(f"[{args.model} 第 {args.round} 轮] {name} …", file=sys.stderr, flush=True)
         result = PROBES[name](args)
-        # 只补跑部分单词指纹题时，合并进这一轮已有的答案（新跑的题替换旧答案），不覆盖整份
-        if name == "fingerprint" and "fingerprint" in out and (args.fingerprint_from or args.fingerprint_limit or args.fingerprint_prompts):
-            merged = fingerprint_answers(out["fingerprint"])
-            merged.update(result["answers"])
-            result["answers"] = merged
-            result["errors"] += out["fingerprint"].get("errors", 0)
         out[name] = result
         out[name]["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         out[name]["elapsed_seconds"] = round(time.time() - start, 1)

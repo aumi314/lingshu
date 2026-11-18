@@ -73,12 +73,15 @@ type Caller func(ctx context.Context, req Request) Call
 
 // Spec 是一次检测的设置。
 type Spec struct {
-	Baseline      string // 对照的官方型号，如 gpt-6.1-sol；协议检测时是站内模型名
-	UpstreamModel string // 渠道上的模型名，协议检测核对响应里的 model
-	Mode          string // quality / fingerprint；旧 quick / full 仅用于读取历史记录
-	Quick         bool   // 快速档：单词指纹少抽一些题，不做大海捞针
-	Disguise      bool   // 请求带了真实客户端的完整伪装（基准请求本身就有上万 token 的客户端提示）
-	Seed          uint64 // 随机种子（抽题、出题参数、随机校验码）；0 表示随机
+	Baseline       string // 对照的官方型号，如 gpt-6.1-sol；协议检测时是站内模型名
+	UpstreamModel  string // 渠道上的模型名，协议检测核对响应里的 model
+	Mode           string // quality / fingerprint；旧 quick / full 仅用于读取历史记录
+	Quick          bool   // 快速档：单词指纹少抽一些题，不做大海捞针
+	Disguise       bool   // 请求带了真实客户端的完整伪装（基准请求本身就有上万 token 的客户端提示）
+	Template       string // 完整伪装用的模板（客户端和版本），报告如实记录
+	TemplateHash   string // 模板内容 hash：注入基准按它对应
+	TemplateTokens int    // 粗估的模板 token 数：模板没标定时给费用保护当预期
+	Seed           uint64 // 随机种子（抽题、出题参数、随机校验码）；0 表示随机
 }
 
 // ProtocolModels 是还没有官方样本、只做协议层检测的型号（Claude，走 Messages 协议，docs/decisions.md「模型检测」）。
@@ -118,8 +121,10 @@ type Report struct {
 	Baseline      string         `json:"baseline"`
 	Mode          string         `json:"mode,omitempty"` // protocol：没有官方样本，只做协议层检测
 	ProbeMode     string         `json:"probe_mode,omitempty"`
-	Protocol      string         `json:"protocol,omitempty"` // 这次走的协议：responses / chat / messages
-	Disguise      bool           `json:"disguise,omitempty"` // 用了完整伪装（真实客户端的系统提示和工具）
+	Protocol      string         `json:"protocol,omitempty"`      // 这次走的协议：responses / chat / messages
+	Disguise      bool           `json:"disguise,omitempty"`      // 用了完整伪装（真实客户端的系统提示和工具）
+	Template      string         `json:"template,omitempty"`      // 完整伪装的模板，如 claude-code 2.1.281
+	TemplateHash  string         `json:"template_hash,omitempty"` // 模板内容 hash
 	SuiteVersion  int            `json:"suite_version"`
 	Score         *int           `json:"score"` // 0–100：通过记 1、警告记 0.5、不通过记 0；指纹档和不完整检测为 null
 	Verdict       string         `json:"verdict"`
@@ -173,10 +178,11 @@ func Run(ctx context.Context, call Caller, spec Spec, progress Progress) (*Repor
 			plan.buildFingerprint()
 		}
 	}
+	// 渠道质量测试用完整伪装（真实客户端的系统提示和工具，中转认不出检测流量）；模型指纹用传输层伪装（和官方样本的采集条件一致）
 	for i := range plan.reqs {
 		if !legacy {
 			plan.reqs[i].DisguiseSet = true
-			plan.reqs[i].FullDisguise = false
+			plan.reqs[i].FullDisguise = spec.mode() == ModeQuality
 		}
 	}
 
@@ -189,9 +195,17 @@ func Run(ctx context.Context, call Caller, spec Spec, progress Progress) (*Repor
 	var stopMu sync.Mutex
 	child, cancel := context.WithCancel(ctx)
 	defer cancel()
+	// 费用保护的预期输入用独立基准，不用被测上游自己报的值：完整伪装按模板的官方基准（没标定就按模板长度粗估），否则按官方样本
 	baseTokens := int64(42)
 	if b := bs[spec.Baseline]; b != nil && b.TokenBase > 0 {
 		baseTokens = int64(b.TokenBase)
+	}
+	if spec.Disguise && !legacy {
+		if b, ok := templateBases[spec.TemplateHash]; ok {
+			baseTokens = int64(b)
+		} else if spec.TemplateTokens > 0 {
+			baseTokens = int64(spec.TemplateTokens)
+		}
 	}
 	execute := func(indices []int, limit int, preflight bool) {
 		sem := make(chan struct{}, limit)
@@ -314,6 +328,9 @@ func Run(ctx context.Context, call Caller, spec Spec, progress Progress) (*Repor
 	}
 	if !legacy {
 		report.ProbeMode = spec.mode()
+		if spec.Disguise {
+			report.Disguise, report.Template, report.TemplateHash = true, spec.Template, spec.TemplateHash
+		}
 	}
 	report.Counts = RunCounts{Planned: len(plan.reqs), Sent: int(sent.Load()), Completed: completed, Failed: failed, Skipped: skipped}
 	stopMu.Lock()
@@ -341,7 +358,7 @@ func callWithRetry(ctx context.Context, call Caller, req Request) Call {
 	for attempt := 0; attempt < 4; attempt++ {
 		c = call(ctx, req)
 		msg := strings.ToLower(c.Error)
-		retry := c.HTTPStatus == http.StatusTooManyRequests || c.HTTPStatus == http.StatusServiceUnavailable || c.HTTPStatus == 529 || strings.Contains(msg, "overloaded") || strings.Contains(msg, "rate_limit") || strings.Contains(msg, "too many requests")
+		retry := c.HTTPStatus == http.StatusTooManyRequests || c.HTTPStatus == http.StatusServiceUnavailable || c.HTTPStatus == 529 || gatewayError(c) || strings.Contains(msg, "overloaded") || strings.Contains(msg, "rate_limit") || strings.Contains(msg, "too many requests")
 		if !retry || attempt == 3 || ctx.Err() != nil {
 			return c
 		}
@@ -352,6 +369,11 @@ func callWithRetry(ctx context.Context, call Caller, req Request) Call {
 		}
 	}
 	return c
+}
+
+// gatewayError：网关没等到上游（502 / 504，Cloudflare 的 524 是 100 秒没有首字节）。和渠道质量无关，重试；重试后仍失败也不当成模型的问题。
+func gatewayError(c Call) bool {
+	return c.HTTPStatus == http.StatusBadGateway || c.HTTPStatus == http.StatusGatewayTimeout || c.HTTPStatus == 524
 }
 
 func quotaError(c Call, msg string) bool {
@@ -583,7 +605,9 @@ func (p *plan) buildQuality() {
 	p.spread(Request{Item: "effort", Prompt: p.effortProb.Question, Effort: "high", MaxTokens: 16000})
 	p.nonce = fmt.Sprintf("LS-%08x", p.rng.Uint32())
 	p.nonceValue = 10 + p.rng.IntN(90)
-	p.spread(Request{Item: "structured", MaxTokens: 256, Prompt: fmt.Sprintf("Return only the JSON object required by the provided schema.\nUse exactly {\"nonce\":%q,\"value\":%d}.", p.nonce, p.nonceValue), ResponseFormat: map[string]any{"type": "json_schema"}})
+	p.spread(Request{Item: "structured", MaxTokens: 256, Prompt: fmt.Sprintf("Return only the JSON object required by the provided schema.\nUse exactly {\"nonce\":%q,\"value\":%d}.", p.nonce, p.nonceValue), ResponseFormat: map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "lingshu_check", "strict": true, "schema": map[string]any{
+		"type": "object", "additionalProperties": false, "required": []string{"nonce", "value"},
+		"properties": map[string]any{"nonce": map[string]any{"type": "string"}, "value": map[string]any{"type": "integer"}}}}}})
 	p.city = []string{"Reykjavik", "Montevideo", "Ljubljana", "Windhoek"}[p.rng.IntN(4)]
 	p.spread(Request{Item: "tool", MaxTokens: 256, Prompt: fmt.Sprintf("What is the weather in %s right now? Use the tool.", p.city), Tools: []map[string]any{{"type": "function", "function": map[string]any{"name": p.newToolName(), "description": "Get weather", "parameters": map[string]any{"type": "object", "properties": map[string]any{"city": map[string]any{"type": "string"}}, "required": []string{"city"}}}}}})
 	p.onlyWord = []string{"vvv", "kiwi", "zephyr", "quartz"}[p.rng.IntN(4)]
@@ -636,7 +660,7 @@ func (p *plan) report(calls []Call) *Report {
 	if len(by["needle"]) > 0 {
 		r.Items = append(r.Items, p.judgeNeedle(by["needle"]))
 	}
-	r.Observations = disguiseInjection(observe(calls, by["tokens"], by["anchor"], base, sessionNearest), p.spec.Disguise)
+	r.Observations = disguiseInjection(observe(calls, by["tokens"], by["anchor"], base, sessionNearest), p.spec)
 	if !p.legacy {
 		r.Observations = qualityObservations(r.Observations)
 	}
@@ -701,24 +725,45 @@ func finalize(r *Report, hint string) {
 	}
 }
 
-// disguiseInjection：完整伪装下基准请求本身带着客户端的系统提示和工具（约 1–3 万 token），和官方简版环境比没有意义，
-// 注入项只作参考；但“部分短请求多出一大截”（各请求之间比）照常报需关注。官方伪装环境的基准还没标定。
-func disguiseInjection(obs []Item, disguise bool) []Item {
-	if !disguise {
+// templateBases：完整伪装下官方基准请求（"Reply with exactly: ok"）报的输入 token，按模板 hash 对应（docs/research/model-probe.md、claude-probe.md）。
+// 换了伪装模板 hash 就变，要重新标定：GPT 用本机 Magpie 的 codex/*，Claude 在 DMIT 上跑 /root/lingshu-probe/calib_claude.py。
+var templateBases = map[string]int{
+	"62ac38171048": 34212, // claude-code 2.1.281：kirisame 的 Opus / Sonnet 一致，2026-11-17
+	"4468e298e601": 9845,  // codex 0.160.0：官方 sol、astra、terra、luna、6.2-sol、6.2-astra 一致，2026-11-17 / 18
+}
+
+// disguiseInjection：完整伪装下基准请求本身带着客户端的系统提示和工具（约 1–3 万 token），改和同一模板下的官方基准比；
+// 模板没标定时只作参考。“部分短请求多出一大截”（各请求之间比）照常报需关注。
+func disguiseInjection(obs []Item, spec Spec) []Item {
+	if !spec.Disguise {
 		return obs
 	}
+	base, calibrated := templateBases[spec.TemplateHash]
 	for i := range obs {
 		if obs[i].Key != "injection" {
 			continue
 		}
-		anchor := obs[i].Details["anchor_tokens"]
+		anchor, _ := obs[i].Details["anchor_tokens"].(int64)
 		extra := ""
 		if j := strings.Index(obs[i].Summary, "；另有"); j >= 0 {
 			extra = obs[i].Summary[j:]
 		}
-		obs[i].Summary = fmt.Sprintf("完整伪装下基准请求带着客户端提示，共 %v 个输入 token，暂无官方伪装环境的基准可比，只作参考", anchor) + extra
-		obs[i].Status = Info
-		if extra != "" {
+		delete(obs[i].Details, "official_codex_tokens")
+		switch {
+		case !calibrated:
+			obs[i].Status, obs[i].Summary = Info, fmt.Sprintf("完整伪装下基准请求共 %d 个输入 token；这个伪装模板（%s）的官方基准还没标定，只作参考", anchor, spec.Template)
+		case abs(anchor-int64(base)) <= 150:
+			obs[i].Status, obs[i].Summary = Pass, fmt.Sprintf("完整伪装下基准请求 %d 个输入 token，和官方同模板环境（%d）一致，没有额外注入", anchor, base)
+		case anchor > int64(base):
+			obs[i].Status, obs[i].Summary = Warn, fmt.Sprintf("完整伪装下基准请求 %d 个输入 token，比官方同模板环境（%d）多约 %d：上游额外注入了内容，这部分按输入计费", anchor, base, anchor-int64(base))
+		default:
+			obs[i].Status, obs[i].Summary = Info, fmt.Sprintf("完整伪装下基准请求 %d 个输入 token，比官方同模板环境（%d）少约 %d：客户端提示可能被上游删减或压缩", anchor, base, int64(base)-anchor)
+		}
+		if calibrated {
+			obs[i].Details["official_template_tokens"] = base
+		}
+		obs[i].Summary += extra
+		if extra != "" && obs[i].Status != Warn {
 			obs[i].Status = Warn
 		}
 	}

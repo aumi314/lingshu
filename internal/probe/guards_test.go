@@ -56,3 +56,42 @@ func TestFingerprintMarginIsSymmetric(t *testing.T) {
 		}
 	}
 }
+
+// 完整伪装下费用保护按模板的官方基准算预期：Codex 号池正常多出约 4200 不中止，上游虚报 28 万仍在核验阶段中止。
+func TestQualityBillingGuardUsesTemplateBase(t *testing.T) {
+	spec := Spec{Baseline: "gpt-6.1-sol", Mode: ModeQuality, Seed: 1, Disguise: true, Template: "codex 0.160.0", TemplateHash: "4468e298e601"}
+	for _, test := range []struct {
+		input int64
+		stop  string
+	}{{14061, ""}, {280000, "billing_anomaly"}} {
+		report, err := Run(context.Background(), func(_ context.Context, request Request) Call {
+			if !request.FullDisguise {
+				t.Errorf("质量测试的 %s 请求应带完整伪装", request.Item)
+			}
+			return Call{UsageReported: true, InputTokens: test.input, Text: "ok", Done: true, FinishReason: "stop", ID: "resp_1"}
+		}, spec, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.StopReason != test.stop || !report.Disguise || report.TemplateHash != "4468e298e601" {
+			t.Errorf("input %d: stop=%q disguise=%v template=%q", test.input, report.StopReason, report.Disguise, report.TemplateHash)
+		}
+	}
+}
+
+// 网关超时（Cloudflare 524 等）算可重试；大海捞针重试后仍超时记“没测成”，不判不达标、不计分。
+func TestNeedleGatewayTimeoutIsNotAFailure(t *testing.T) {
+	for _, status := range []int{http.StatusBadGateway, http.StatusGatewayTimeout, 524} {
+		if !gatewayError(Call{HTTPStatus: status}) {
+			t.Errorf("HTTP %d 应算网关错误", status)
+		}
+	}
+	p := &plan{needleCodes: []string{"A", "B", "C"}}
+	it := p.judgeNeedle([]Call{{HTTPStatus: 524, Error: "HTTP 524 <!DOCTYPE html>"}})
+	if it.Status != Info {
+		t.Errorf("524 应记没测成: %+v", it)
+	}
+	if it := p.judgeNeedle([]Call{{HTTPStatus: 500, Error: "HTTP 500"}}); it.Status != Fail {
+		t.Errorf("其他失败仍判不通过: %+v", it)
+	}
+}
