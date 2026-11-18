@@ -691,6 +691,34 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - 验证：短写/零字节/正常写、8 MiB 截断与 Flush 单元回归、隔离数据库完整 relay 包测试、`TestReplyText`、Go vet、前端类型检查与构建通过；对话浏览器回归覆盖 HTTP 500 后重试恢复、完整/截断下载标志，日志页浏览器回归通过。本次交付 PR，发布以合并后验证为准。
 
 
+## 2026-11-16 Qwen4 Max 官方渠道上线
+
+- 模型 `qwen4-max`（ID 44），追加到既有 Qwen 渠道 ID 6，保留渠道原有模型、Key、协议地址与分组，适用于 Official API 分组。通过管理接口创建模型与更新映射，操作日志保留；无需应用发布。
+- 官方定价来源：[QwenCloud Qwen4-Max](https://www.qwencloud.com/models/qwen4-max?region=ap-southeast-1)。USD / 百万 token：输入 1.5、输出 4.5、缓存读 0.075、5 分钟显式缓存写 1.875；1 小时缓存写为 3，当前模型四价配置采用既有的 5 分钟口径。未添加价格规则和 Fast 倍率。
+- 正式型号已可用。`qwen4-max-preview` 的预览期与 Token Plan 限制属于另一型号；普通百炼 `/models` 当时尚未列出正式型号，但直连正式型号 HTTP 200，答案与 usage 正常。
+- 线上变更前备份 `/var/backups/lingshu/lingshu-20261116T070514Z.dump`；配置与冒烟证据 `/var/backups/lingshu/qwen4-setup-20261116T070517Z.json`，root 私有。Chat / Messages / Responses 冒烟均 HTTP 200，均报告真实输入输出用量。
+- 经公网 `https://gateway.piqode.com/v1/chat/completions` 流式调用成功，答案含 OK、收到 `[DONE]`；日志 ID 13634，渠道 6，输入 26、输出 16、缓存 0，`usage_estimated=false`。按 Official API 倍率 1.2，费用 `(26×1.5+16×4.5)/1000000×1.2 = 0.0001332 USD`，与日志精确一致。临时验收 Key 与管理会话已删除。
+- 线上配置当时已生效，不需要发布；记录原在 PR #99，2026-11-18 并入收尾 PR。
+
+## 2026-11-16 Hy4 / Hy4 flash 上线验收
+
+本次为线上配置操作，程序、迁移 SQL、计费实现和渠道密钥保持原样。
+
+- 现状核实：渠道 11（Tencent Cloud，模板 `hunyuan`，Official API 分组 2）已有 `hy4`（模型 29），没有 `hy4-flash`；`hy4-preview` 仅存在于上游模型列表，线上原有映射中没有它，本次未新增 preview。
+- 价格来源：[TokenHub 官方国际站模型价格](https://intl.cloud.tencent.com/zh/document/product/1300/78937)，2026-11-16 查证。延续 `decisions.md`「官方价口径」的刊例价规则，不套用发布期五折。单位 USD / 百万 token：
+
+  | 模型 | 输入 | 输出 | 缓存读取 | 缓存写入 |
+  |---|---:|---:|---:|---:|
+  | `hy4` | 0.834 | 2.501 | 0.042 | 0 |
+  | `hy4-flash` | 0.070 | 0.281 | 0.003 | 0 |
+
+- 管理 API 操作：更新模型 29 的旧人民币换算价格；创建 `hy4-flash`（模型 45）并追加同名上游映射。读取复核原有渠道地址、启用状态、优先级、服务分组与 key 列表保持一致。
+- 上游三协议冒烟：`hy4` 的 Chat / Messages / Responses 均 HTTP 200，均报告真实 usage。Flash 首轮 Chat / Messages 返回 HTTP 402、错误码 `401006`（服务 ID 不存在或模型不匹配），Responses 成功；随后分别复测 Chat / Messages 均 HTTP 200，均报告真实 usage。
+- 公网真实调用：通过 `https://gateway.piqode.com/v1/chat/completions` 分别请求两个模型，流式正文均为 `OK`，均收到 `[DONE]`。日志 13904（hy4）25 输入 / 36 输出，倍率 1.2，扣费 $0.0001330632；日志 13905（hy4-flash）25 输入 / 23 输出，倍率 1.2，扣费 $0.0000098556。两条日志均路由渠道 11、状态 success、`usage_estimated=false`，按日志价格快照逐项 Decimal 核算相符。
+- 公网验证细节：首次单独 GET `/v1/models` 返回 403，未作为模型可用性依据；随后带验证 User-Agent 的两次公网流式调用均通过。
+- 备份：`/var/backups/lingshu/lingshu-20261116T123847Z.dump`；改前 / 改后配置、协议结果和计费凭证：`/var/backups/lingshu/hy4-setup-20261116T123910Z.json`（root 私有、0600）。验证用临时 API key 和登录 session 均已删除并复查数量为 0。
+- 收尾：现行价格和模型可用性规则继续适用，无新增规则；文档仅追加当前状态一句和本验收记录，保留历史价格作为当时证据；线上配置当时已生效；记录原在 PR #100，2026-11-18 并入收尾 PR。
+
 ## 项目创建者转让（2026-11-16，待 PR 合并发布）
 
 - 创建者在「我的项目 → 规则 → 转让项目」选择其他正式成员；接收人须启用，接收已有项目不要求创建新项目的权限。弹窗说明池内余额全部退回本人、新负责人重新转入、原创建者保留普通成员身份。无候选人时引导先审批成员；提交期间显示加载状态，409 等失败保留弹窗可重试；成功刷新项目身份和个人余额。
