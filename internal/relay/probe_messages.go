@@ -34,13 +34,18 @@ func (h *Handler) ProbeMessages(ctx context.Context, ch *store.Channel, upstream
 		return c
 	}
 	d := h.Disguise
+	if req.DisguiseSet && !req.FullDisguise {
+		d = nil
+	}
 	var system []map[string]any
 	if d.hasClaude() { // 完整伪装：真实 Claude Code 的系统提示，检测自己的系统指令接在最后
 		system = d.claudeSystem(upstreamModel, req.System)
 	} else {
-		system = []map[string]any{
-			{"type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.319.781; cc_entrypoint=cli;"},
-			{"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."},
+		if !req.DisguiseSet {
+			system = []map[string]any{
+				{"type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.319.781; cc_entrypoint=cli;"},
+				{"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."},
+			}
 		}
 		if req.System != "" {
 			system = append(system, map[string]any{"type": "text", "text": req.System})
@@ -58,13 +63,19 @@ func (h *Handler) ProbeMessages(ctx context.Context, ch *store.Channel, upstream
 	userID, _ := json.Marshal(map[string]string{"device_id": hex.EncodeToString(device), "account_uuid": NewProbeSession(), "session_id": session})
 	maxTokens := req.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = 4096 // Messages 协议必须给 max_tokens
+		maxTokens = 1024 // Keep fingerprint collection compatible with scripts/probe/probe.py.
 		if d.hasClaude() && d.Claude.MaxTokens > 0 {
 			maxTokens = d.Claude.MaxTokens
 		}
 	}
 	body := map[string]any{"model": upstreamModel, "max_tokens": maxTokens, "stream": true, "system": system,
 		"messages": []map[string]any{{"role": "user", "content": content}}, "metadata": map[string]any{"user_id": string(userID)}}
+	if len(system) == 0 {
+		delete(body, "system")
+	}
+	if req.DisguiseSet {
+		delete(body, "metadata")
+	}
 	if req.Effort != "" {
 		body["thinking"] = map[string]any{"type": "adaptive"}
 		body["output_config"] = map[string]any{"effort": req.Effort}
@@ -95,9 +106,11 @@ func (h *Handler) ProbeMessages(ctx context.Context, ch *store.Channel, upstream
 		hd.Set("X-Client-Request-Id", NewProbeSession())
 	} else {
 		hd.Set("Accept", "text/event-stream")
-		hd.Set("User-Agent", probeClaudeUA)
-		hd.Set("X-App", "cli")
-		hd.Set("Anthropic-Beta", probeClaudeBeta)
+		if !req.DisguiseSet {
+			hd.Set("User-Agent", probeClaudeUA)
+			hd.Set("X-App", "cli")
+			hd.Set("Anthropic-Beta", probeClaudeBeta)
+		}
 	}
 	setUpstreamAuth(hd, usage.Messages, ch.APIKey)
 

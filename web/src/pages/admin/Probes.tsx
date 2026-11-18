@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Alert, App, Button, Card, Col, Collapse, Empty, Form, Modal, Progress, Radio, Row, Select, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
+import { Alert, App, Button, Card, Col, Collapse, Empty, Form, Modal, Progress, Row, Select, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
 import { CheckCircleFilled, CloseCircleFilled, ExclamationCircleFilled, InfoCircleFilled, LoadingOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { get, post, type Channel } from '../../api'
@@ -13,10 +13,10 @@ type Call = {
   error?: string; input_tokens: number; cached_tokens: number; output_tokens: number; reasoning_tokens: number
   id?: string; service_tier?: string; first_token_ms: number; total_ms: number
 }
-type Report = { baseline: string; mode?: 'protocol'; protocol?: 'responses' | 'chat' | 'messages'; disguise?: boolean; score: number; verdict: string; items: Item[]; observations: Item[]; metrics: Record<string, number>; calls: Call[] }
+type Report = { baseline: string; mode?: 'protocol'; probe_mode?: 'quality' | 'fingerprint'; protocol?: 'responses' | 'chat' | 'messages'; disguise?: boolean; score: number | null; verdict: string; stop_reason?: string; stop_call_index?: number; counts?: { planned: number; sent: number; completed: number; failed: number; skipped: number }; items: Item[]; observations: Item[]; metrics: Record<string, number>; calls: Call[] }
 type Run = {
   id: number; created_at: string; finished_at: string | null; created_by: string; channel_id: number | null; channel_name: string
-  model: string; upstream_model: string; baseline: string; preset: 'quick' | 'full'; status: 'running' | 'done' | 'failed'
+  model: string; upstream_model: string; baseline: string; preset: 'quality' | 'fingerprint' | 'quick' | 'full'; status: 'running' | 'done' | 'failed'
   score: number | null; verdict: string; cost: string; report?: Report; progress?: [number, number]
 }
 
@@ -35,8 +35,8 @@ export default function Probes() {
   const [protocolModels, setProtocolModels] = useState<string[]>([]) // 走 Messages 协议检测的型号（Claude）；没有官方样本时只做协议层检测
   const [runs, setRuns] = useState<Run[]>([])
   const [selected, setSelected] = useState<Run | null>(null)
-  const [starting, setStarting] = useState(false)
-  const [form] = Form.useForm<{ channel_id?: number; model?: string; preset: 'quick' | 'full' }>()
+  const [startingMode, setStartingMode] = useState<'quality' | 'fingerprint' | null>(null)
+  const [form] = Form.useForm<{ channel_id?: number; model?: string }>()
   const channelID = Form.useWatch('channel_id', form)
 
   const statusText: Record<Status, string> = { pass: t('通过', 'Pass'), warn: t('需关注', 'Check'), fail: t('不通过', 'Fail'), info: t('参考', 'Info') }
@@ -56,14 +56,26 @@ export default function Probes() {
 
   // 进行中的检测每 2 秒刷新一次进度
   const running = selected?.status === 'running' || runs.some((r) => r.status === 'running')
+  const runningSelectionID = selected?.status === 'running' ? selected.id : undefined
   useEffect(() => {
     if (!running) return
+    let cancelled = false
+    let refreshing = false
     const timer = setInterval(() => {
       void loadRuns()
-      if (selected?.status === 'running') void open(selected.id)
+      if (runningSelectionID == null || refreshing) return
+      refreshing = true
+      void get<Run>(`/api/admin/probes/${runningSelectionID}`).then((result) => {
+        if (!cancelled) setSelected((current) => current?.id === runningSelectionID && current.status === 'running' ? result : current)
+      }).catch((error: Error) => {
+        if (!cancelled) message.error(error.message)
+      }).finally(() => { refreshing = false })
     }, 2000)
-    return () => clearInterval(timer)
-  }, [running, selected, loadRuns, open])
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [running, runningSelectionID, loadRuns, message])
 
   // GPT 走 Chat、和官方样本比；Claude 走 Messages、只做协议层检测
   const probeChannels = channels.filter((c) => (c.base_url_responses || c.base_url_chat || c.base_url_messages) && c.models.length > 0)
@@ -78,19 +90,19 @@ export default function Probes() {
     return { ok: false, note: t('（暂无官方样本）', ' (no baseline)') }
   }
 
-  const start = async () => {
+  const start = async (preset: 'quality' | 'fingerprint') => {
     const v = await form.validateFields()
-    setStarting(true)
+    setStartingMode(preset)
     try {
       // 对照型号就是站内模型名（没有官方样本的模型选不了）
-      const r = await post<{ id: number }>('/api/admin/probes', { channel_id: v.channel_id, model: v.model, preset: v.preset })
+      const r = await post<{ id: number }>('/api/admin/probes', { channel_id: v.channel_id, model: v.model, preset })
       message.success(t('检测已开始，后台运行，关掉页面也会跑完', 'Started; it keeps running in the background'))
       await loadRuns()
       await open(r.id)
     } catch (e) {
       message.error((e as Error).message)
     } finally {
-      setStarting(false)
+      setStartingMode(null)
     }
   }
 
@@ -99,13 +111,13 @@ export default function Probes() {
       <Typography.Title level={3} className="page-title">{t('模型检测', 'Model check')}</Typography.Title>
       <Typography.Paragraph type="secondary">
         {t(
-          '选渠道和模型，向渠道直接发一组检测题，和同名官方型号的样本对比，看上游有没有换模型、降推理强度、注入内容。Claude 走 Messages 协议，另外检查协议格式、thinking、文档。检测请求伪装成常见客户端、每次随机出题，不走路由、不进调用日志、不扣用户余额；花费按站内价估算，由渠道承担。',
-          'Sends a set of probe questions straight to the channel and compares the answers with official baselines. Probe requests bypass routing, are not logged as calls and are not charged to users.',
+          '选渠道和模型，按已配置的标准 API 直接发一组检测请求，检查型号、推理强度、工具调用和上下文表现。检测请求不走路由、不进调用日志、不扣用户余额；花费按站内价估算，由渠道承担。',
+          'Sends standard API probe requests straight to the selected channel and checks model identity, reasoning, tool use and context behavior. Probe requests bypass routing, are not logged as calls and are not charged to users.',
         )}
       </Typography.Paragraph>
 
       <Card style={{ marginBottom: 16 }}>
-        <Form form={form} layout="inline" initialValues={{ preset: 'quick' }} style={{ rowGap: 12 }}>
+        <Form form={form} layout="inline" style={{ rowGap: 12 }}>
           <Form.Item name="channel_id" label={t('渠道', 'Channel')} rules={[{ required: true, message: t('选择渠道', 'Pick a channel') }]}>
             <Select style={{ width: 220 }} showSearch optionFilterProp="label" onChange={() => form.setFieldValue('model', undefined)}
               options={probeChannels.map((c) => ({ value: c.id, label: c.name + (c.enabled ? '' : t('（已停用）', ' (disabled)')) }))} />
@@ -121,13 +133,14 @@ export default function Probes() {
                 }
               })} />
           </Form.Item>
-          <Form.Item name="preset" label={t('档位', 'Preset')}>
-            <Radio.Group optionType="button" options={[
-              { value: 'quick', label: <Tooltip title={t('单词指纹抽 40 题、每题问 4 次，几分钟跑完，花费低', '40 fingerprint prompts × 4')}>{t('快速', 'Quick')}</Tooltip> },
-              { value: 'full', label: <Tooltip title={t('区分度高的指纹题全上、每题问 6 次，另加一次约 10 万 token 的大海捞针（查上下文截断、压缩）；时间和花费明显更高', 'All separating prompts × 6, plus a ~100K-token needle test')}>{t('完整', 'Full')}</Tooltip> },
-            ]} />
-          </Form.Item>
-          <Button type="primary" loading={starting} onClick={start}>{t('开始检测', 'Start')}</Button>
+          <Space>
+            <Tooltip title={t('约 9–12 个标准 API 请求，检查推理、工具、指令和上下文', 'About 9–12 standard API requests covering reasoning, tools, instructions and context')}>
+              <Button type="primary" loading={startingMode === 'quality'} disabled={!!startingMode} onClick={() => void start('quality')}>{t('渠道质量测试', 'Channel quality')}</Button>
+            </Tooltip>
+            <Tooltip title={t('约 400–525 个短请求，判断型号和号池是否混用', 'About 400–525 short requests for model fingerprinting')}>
+              <Button loading={startingMode === 'fingerprint'} disabled={!!startingMode} onClick={() => void start('fingerprint')}>{t('模型指纹辨别', 'Model fingerprint')}</Button>
+            </Tooltip>
+          </Space>
         </Form>
         {baselines.length === 0 && <Alert style={{ marginTop: 12 }} type="warning" showIcon title={t('没有官方样本，无法检测', 'No baselines available')} />}
       </Card>
@@ -157,8 +170,8 @@ export default function Probes() {
             { title: t('时间', 'Time'), dataIndex: 'created_at', render: (v: string) => <span className="nowrap">{dayjs(v).format('MM-DD HH:mm')}</span> },
             { title: t('渠道', 'Channel'), dataIndex: 'channel_name' },
             { title: t('模型', 'Model'), render: (_, r) => <span className="mono">{r.model}</span> },
-            { title: t('档位', 'Preset'), dataIndex: 'preset', render: (v: string) => (v === 'full' ? t('完整', 'Full') : t('快速', 'Quick')) },
-            { title: t('得分', 'Score'), render: (_, r) => r.status === 'running' ? <RunningTag run={r} /> : r.status === 'failed' ? <Tag color="red">{t('失败', 'Failed')}</Tag> : <b>{r.score}%</b> },
+            { title: t('检测类型', 'Check type'), dataIndex: 'preset', render: (v: string) => v === 'quality' || v === 'quick' ? (v === 'quick' ? t('快速', 'Quick') : t('渠道质量测试', 'Channel quality')) : v === 'fingerprint' ? t('模型指纹辨别', 'Model fingerprint') : t('完整', 'Full') },
+            { title: t('得分', 'Score'), render: (_, r) => r.status === 'running' ? <RunningTag run={r} /> : r.score == null ? <Tag>{t('无评分', 'No score')}</Tag> : <b>{r.score}%</b> },
             { title: t('结论', 'Verdict'), dataIndex: 'verdict', render: (v: string) => <span style={{ whiteSpace: 'normal' }}>{v || '—'}</span> },
             { title: t('花费', 'Cost'), dataIndex: 'cost', align: 'right', render: (v: string) => money(v, 4) },
           ]}
@@ -175,11 +188,25 @@ function RunningTag({ run }: { run: Run }) {
   return <Tag icon={<LoadingOutlined />} color="processing">{total ? `${done} / ${total}` : t('检测中', 'Running')}</Tag>
 }
 
+function reportMode(run: Run): 'quality' | 'fingerprint' {
+  if (run.report?.probe_mode) return run.report.probe_mode
+  return run.preset === 'full' ? 'fingerprint' : 'quality'
+}
+
 function Result({ run, protocol, statusIcon, statusText }: { run: Run; protocol: boolean; statusIcon: Record<Status, ReactNode>; statusText: Record<Status, string> }) {
   const { t, money } = useApp()
   const [item, setItem] = useState<string | undefined>()
   const r = run.report
   const calls = useMemo(() => (r?.calls ?? []).filter((c) => !item || c.item === item), [r, item])
+  const stopReasonText = (reason?: string) => {
+    switch (reason) {
+      case 'billing_anomaly': return t('上游异常计费', 'Billing anomaly')
+      case 'quota': return t('渠道余额不足', 'Channel balance exhausted')
+      case 'preflight_failed': return t('核验请求失败', 'Preflight requests failed')
+      case 'cancelled': return t('检测已取消', 'Check cancelled')
+      default: return reason || t('未知原因', 'Unknown')
+    }
+  }
   if (run.status === 'running') {
     const [done, total] = run.progress ?? [0, 0]
     return (
@@ -192,10 +219,43 @@ function Result({ run, protocol, statusIcon, statusText }: { run: Run; protocol:
       </div>
     )
   }
-  if (run.status === 'failed' || !r) {
+  if (run.status === 'failed' && !r) {
     return <Alert type="error" showIcon title={t('检测失败', 'Check failed')} description={run.verdict} />
   }
-  const color = r.score >= 85 ? '#52c41a' : r.score >= 60 ? '#faad14' : '#ff4d4f'
+  if (!r) return <Alert type="error" showIcon title={t('检测失败', 'Check failed')} description={run.verdict} />
+  if (run.status === 'failed') {
+    const counts = r.counts
+    return (
+      <div>
+        <Alert type="error" showIcon title={t('检测未完成', 'Check incomplete')} description={<Space direction="vertical" size={4} style={{ width: '100%' }}>
+          <span>{run.verdict || r.verdict}</span>
+          <span className="muted">{t(`已发 ${counts?.sent ?? 0} / 计划 ${counts?.planned ?? 0} 个请求`, `Sent ${counts?.sent ?? 0} of ${counts?.planned ?? 0} planned requests`)}</span>
+        </Space>} />
+        <Card size="small" title={t('失败证据', 'Failure evidence')} style={{ marginTop: 12 }}>
+          <Space wrap style={{ marginBottom: r.calls.length ? 12 : 0 }}>
+            <Tag color="red">{t('触发原因', 'Trigger')}：{stopReasonText(r.stop_reason)}{r.stop_call_index != null && <span>{`（第 ${r.stop_call_index + 1} 个请求）`}</span>}</Tag>
+            <Tag>{counts ? <span>{`调用统计：计划 ${counts.planned} · 已发 ${counts.sent} · 完成 ${counts.completed} · 失败 ${counts.failed} · 跳过 ${counts.skipped}`}</span> : '调用统计：—'}</Tag>
+          </Space>
+          {r.calls.length > 0 && <Table<Call>
+            rowKey={(_, i) => String(i)}
+            rowClassName={(_, i) => (r.stop_call_index === i ? 'ant-table-row-selected' : '')}
+            size="small"
+            dataSource={r.calls}
+            pagination={{ pageSize: 20 }}
+            columns={[
+              { title: '#', render: (_, __, i) => i + 1, width: 56 },
+              { title: t('检测项', 'Check'), dataIndex: 'item' },
+              { title: t('提示词', 'Prompt'), render: (_, c) => <Tooltip title={<pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{c.prompt}</pre>}><span>{short(c.prompt, 60)}</span></Tooltip> },
+              { title: t('错误', 'Error'), render: (_, c) => c.error ? <Typography.Text type="danger">{short(c.error, 120)}</Typography.Text> : '—' },
+              { title: t('输入 tokens', 'Input tokens'), dataIndex: 'input_tokens' },
+            ]}
+          />}
+        </Card>
+      </div>
+    )
+  }
+  const isFingerprint = reportMode(run) === 'fingerprint'
+  const color = (r.score ?? 0) >= 85 ? '#52c41a' : (r.score ?? 0) >= 60 ? '#faad14' : '#ff4d4f'
   const m = r.metrics
   const list = (items: Item[]) => (
     <div>
@@ -226,20 +286,22 @@ function Result({ run, protocol, statusIcon, statusText }: { run: Run; protocol:
     <div>
       <Row gutter={[24, 16]}>
         <Col xs={24} md={6} style={{ textAlign: 'center' }}>
-          <Progress type="circle" percent={r.score} strokeColor={color} size={150} format={(p) => <span style={{ fontSize: 34, fontWeight: 600 }}>{p}%</span>} />
+          {isFingerprint ? null : r.score == null ? <Tag>{t('本次检测不评分', 'No score for this check')}</Tag> : <Progress type="circle" percent={r.score} strokeColor={color} size={150} format={(p) => <span style={{ fontSize: 34, fontWeight: 600 }}>{p}%</span>} />}
           <Typography.Title level={5} style={{ marginTop: 12 }}>{r.verdict}</Typography.Title>
           <div className="muted" style={{ fontSize: 13, lineHeight: 1.9 }}>
             <div>{dayjs(run.created_at).format('YYYY-MM-DD HH:mm')}</div>
             <div>{run.channel_name} · <span className="mono">{run.model}</span>{run.upstream_model !== run.model && <> ← <span className="mono">{run.upstream_model}</span></>}</div>
-            <div>{r.mode === 'protocol' ? t('协议层检测，暂无官方样本', 'Protocol check, no baseline') : <>{t('对照', 'Baseline')} <span className="mono">{run.baseline}</span></>} · {run.preset === 'full' ? t('完整', 'Full') : t('快速', 'Quick')} · {t('花费约', 'Cost ~')} {money(run.cost, 4)}</div>
-            {r.protocol && <div>{t('走', 'Via')} <span className="mono">{{ responses: 'Responses', chat: 'Chat', messages: 'Messages' }[r.protocol]}</span> · {r.disguise ? t('完整伪装（真实客户端的提示和工具）', 'full client disguise') : t('简版伪装', 'minimal disguise')}</div>}
+            <div>{r.mode === 'protocol' ? t('协议层检测，暂无官方样本', 'Protocol check, no baseline') : <>{t('对照', 'Baseline')} <span className="mono">{run.baseline}</span></>} · {isFingerprint ? t('模型指纹辨别', 'Model fingerprint') : t('渠道质量测试', 'Channel quality')} · {t('花费约', 'Cost ~')} {money(run.cost, 4)}</div>
+            {r.protocol && <div>{t('走', 'Via')} <span className="mono">{{ responses: 'Responses', chat: 'Chat', messages: 'Messages' }[r.protocol]}</span></div>}
           </div>
         </Col>
         <Col xs={24} md={18}>
           <Typography.Text strong>{t('检测项', 'Checks')}</Typography.Text>
           {list(r.items)}
-          <Typography.Text strong style={{ display: 'block', marginTop: 12 }}>{t('请求质量（不计分）', 'Request quality (not scored)')}</Typography.Text>
-          {list(r.observations)}
+          {!isFingerprint && <>
+            <Typography.Text strong style={{ display: 'block', marginTop: 12 }}>{t('请求质量（不计分）', 'Request quality (not scored)')}</Typography.Text>
+            {list(r.observations)}
+          </>}
         </Col>
       </Row>
       <Row gutter={[12, 12]} style={{ marginTop: 16 }}>

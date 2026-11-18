@@ -14,168 +14,494 @@ import (
 	"time"
 
 	"github.com/aumi314/lingshu/internal/probe"
+	"github.com/aumi314/lingshu/internal/relay"
 )
 
-// 模型检测：发起、后台跑完、结果入库；请求直接打到渠道、伪装成 Codex 客户端；流式工具调用分片能拼回来。
-func TestProbeRun(t *testing.T) {
-	e := newEnv(t)
-	a := e.login("admin")
-	ctx := context.Background()
+type probeUpstream struct {
+	t      *testing.T
+	server *httptest.Server
 
-	var mu sync.Mutex
-	seen := map[string]int{} // 上游收到的会话编号、User-Agent、模型名
-	only := regexp.MustCompile(`single word (\w+)`)
-	marker := regexp.MustCompile(`\[\[END-[0-9a-f]+\]\]`)
-	exact := regexp.MustCompile(`Use exactly (\{.*\})`)
-	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Model    string `json:"model"`
-			Messages []struct {
-				Role, Content string
-			} `json:"messages"`
-			Tools []any `json:"tools"`
-		}
-		raw, _ := io.ReadAll(r.Body)
-		json.Unmarshal(raw, &body)
-		mu.Lock()
-		seen["session "+r.Header.Get("Session-Id")]++
-		seen["ua "+r.Header.Get("User-Agent")]++
-		seen["model "+body.Model]++
-		mu.Unlock()
-		w.Header().Set("Content-Type", "text/event-stream")
-		send := func(v string) { fmt.Fprintf(w, "data: %s\n\n", v) }
-		chunk := func(delta string) {
-			send(`{"id":"chatcmpl-x","model":"up-sol","choices":[{"index":0,"delta":` + delta + `}]}`)
-		}
-		system, prompt := "", ""
-		for _, m := range body.Messages {
-			if m.Role == "system" {
-				system = m.Content
-			} else {
-				prompt = m.Content
+	mu       sync.Mutex
+	requests []probeUpstreamRequest
+	status   int
+	delay    time.Duration
+}
+
+type probeUpstreamRequest struct {
+	path   string
+	model  string
+	body   map[string]any
+	header http.Header
+}
+
+var (
+	probeOnlyWord = regexp.MustCompile(`single word (\w+)`)
+	probeMarker   = regexp.MustCompile(`\[\[END-[0-9a-f]+\]\]`)
+	probeExact    = regexp.MustCompile(`Use exactly (\{.*\})`)
+)
+
+func newProbeUpstream(t *testing.T) *probeUpstream {
+	t.Helper()
+	up := &probeUpstream{t: t, status: http.StatusOK}
+	up.server = httptest.NewServer(http.HandlerFunc(up.serve))
+	t.Cleanup(up.server.Close)
+	return up
+}
+
+func (up *probeUpstream) url() string { return up.server.URL }
+
+func (up *probeUpstream) setStatus(status int) {
+	up.mu.Lock()
+	up.status = status
+	up.mu.Unlock()
+}
+
+func (up *probeUpstream) setDelay(delay time.Duration) {
+	up.mu.Lock()
+	up.delay = delay
+	up.mu.Unlock()
+}
+
+func (up *probeUpstream) snapshot() []probeUpstreamRequest {
+	up.mu.Lock()
+	defer up.mu.Unlock()
+	return append([]probeUpstreamRequest(nil), up.requests...)
+}
+
+func (up *probeUpstream) serve(w http.ResponseWriter, r *http.Request) {
+	raw, _ := io.ReadAll(r.Body)
+	var body map[string]any
+	_ = json.Unmarshal(raw, &body)
+	up.mu.Lock()
+	up.requests = append(up.requests, probeUpstreamRequest{path: r.URL.Path, model: probeBodyModel(body), body: body, header: r.Header.Clone()})
+	status := up.status
+	delay := up.delay
+	up.mu.Unlock()
+	if delay > 0 {
+		time.Sleep(delay)
+	}
+	if status != http.StatusOK {
+		http.Error(w, `{"error":{"message":"insufficient balance"}}`, status)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	send := func(s string) { fmt.Fprintf(w, "data: %s\n\n", s) }
+	switch {
+	case strings.HasSuffix(r.URL.Path, "/responses"):
+		up.serveResponses(w, send, body)
+	case strings.HasSuffix(r.URL.Path, "/v1/messages"):
+		up.serveMessages(w, send, body)
+	default:
+		up.serveChat(w, send, body)
+	}
+}
+
+func probeBodyModel(body map[string]any) string {
+	model, _ := body["model"].(string)
+	return model
+}
+
+func probeBodyString(body map[string]any, key string) string {
+	value, _ := body[key].(string)
+	return value
+}
+
+func probeChatPrompt(body map[string]any) (string, string) {
+	system, prompt := "", ""
+	if messages, ok := body["messages"].([]any); ok {
+		for _, raw := range messages {
+			m, _ := raw.(map[string]any)
+			switch m["role"] {
+			case "system", "developer":
+				system += probeJSONText(m["content"])
+			case "user":
+				prompt = probeJSONText(m["content"])
 			}
 		}
-		text := "47"
-		switch {
-		case only.MatchString(system):
-			text = only.FindStringSubmatch(system)[1]
-		case marker.MatchString(system):
-			text = "Hello!\n" + marker.FindString(system)
-		case exact.MatchString(prompt):
-			text = exact.FindStringSubmatch(prompt)[1]
-		}
-		if len(body.Tools) > 0 { // 工具调用分三片：名字、参数前半、参数后半
-			city := strings.TrimSuffix(strings.TrimPrefix(prompt, "What is the weather in "), " right now? Use the tool.")
-			name := body.Tools[0].(map[string]any)["function"].(map[string]any)["name"].(string) // 工具名每次随机，回传请求里声明的名字
-			chunk(`{"tool_calls":[{"index":0,"function":{"name":"` + name + `","arguments":""}}]}`)
-			chunk(`{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}}]}`)
-			chunk(`{"tool_calls":[{"index":0,"function":{"arguments":"\"` + city + `\"}"}}]}`)
-		} else {
-			b, _ := json.Marshal(map[string]string{"content": text})
-			chunk(string(b))
-		}
-		send(`{"id":"chatcmpl-x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`)
-		send(`{"id":"chatcmpl-x","choices":[],"usage":{"prompt_tokens":4158,"completion_tokens":5,"prompt_tokens_details":{"cached_tokens":4000}}}`)
-		send("[DONE]")
-	}))
-	defer up.Close()
-	for _, q := range []string{
-		`INSERT INTO models (id, name, input_price, output_price, cache_read_price) VALUES (1, 'gpt-6.1-sol', 2, 10, 0.1)`,
-		`INSERT INTO channels (id, name, api_key, base_url_chat) VALUES (1, 'relay', 'upstream-key', '` + up.URL + `')`,
-		`INSERT INTO channel_models (channel_id, model_id, upstream_name) VALUES (1, 1, 'up-sol')`,
-	} {
-		if _, err := e.store.Pool.Exec(ctx, q); err != nil {
-			t.Fatal(err)
-		}
 	}
+	return system, prompt
+}
 
-	if code, _ := e.login("bob").do("POST", "/api/admin/probes", map[string]any{"channel_id": 1, "model": "gpt-6.1-sol"}, nil); code != 403 {
-		t.Fatalf("普通用户不能发起检测: %d", code)
+func probeJSONText(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case []any:
+		var parts []string
+		for _, item := range v {
+			parts = append(parts, probeJSONText(item))
+		}
+		return strings.Join(parts, " ")
+	case map[string]any:
+		if text, ok := v["text"].(string); ok {
+			return text
+		}
 	}
-	if code, body := a.do("POST", "/api/admin/probes", map[string]any{"channel_id": 1, "model": "gpt-6.1-sol", "baseline": "no-such"}, nil); code != 400 || !strings.Contains(body, "官方样本") {
-		t.Fatalf("没有样本的对照型号应拒绝: %d %s", code, body)
+	return ""
+}
+
+func probeAnswer(system, prompt string) string {
+	if m := probeOnlyWord.FindStringSubmatch(system); m != nil {
+		return m[1]
 	}
-	if code, body := a.do("POST", "/api/admin/probes", map[string]any{"channel_id": 1, "model": "gpt-6-luna"}, nil); code != 400 || !strings.Contains(body, "没有映射") {
-		t.Fatalf("渠道没映射的模型应拒绝: %d %s", code, body)
+	if m := probeMarker.FindStringSubmatch(system); m != nil {
+		return "Hello!\n" + m[0]
 	}
-	var started struct{ ID int64 }
-	if code, body := a.do("POST", "/api/admin/probes", map[string]any{"channel_id": 1, "model": "gpt-6.1-sol", "preset": "quick"}, &started); code != 200 {
-		t.Fatalf("发起检测: %d %s", code, body)
+	if m := probeExact.FindStringSubmatch(prompt); m != nil {
+		return m[1]
 	}
-	var run struct {
-		Status, Verdict, Baseline, UpstreamModel string `json:"-"`
-		Score                                    *int   `json:"score"`
-		Cost                                     string `json:"cost"`
-		Report                                   struct {
-			Items        []struct{ Key, Status, Summary string } `json:"items"`
-			Observations []struct{ Key, Status, Summary string } `json:"observations"`
-			Calls        []json.RawMessage                       `json:"calls"`
-		} `json:"report"`
+	return "47"
+}
+
+func (up *probeUpstream) serveChat(w http.ResponseWriter, send func(string), body map[string]any) {
+	system, prompt := probeChatPrompt(body)
+	answer := probeAnswer(system, prompt)
+	if tools, ok := body["tools"].([]any); ok && len(tools) > 0 {
+		tool, _ := tools[0].(map[string]any)
+		fn, _ := tool["function"].(map[string]any)
+		name, _ := fn["name"].(string)
+		city := strings.TrimSuffix(strings.TrimPrefix(prompt, "What is the weather in "), " right now? Use the tool.")
+		send(fmt.Sprintf(`{"id":"chatcmpl-x","model":"up-sol","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":%q,"arguments":""}}]}}]}`, name))
+		send(`{"id":"chatcmpl-x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}}]}}]}`)
+		send(fmt.Sprintf(`{"id":"chatcmpl-x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":%q}}]}}]}`, `"`+city+`"}`))
+	} else {
+		text, _ := json.Marshal(map[string]string{"content": answer})
+		send(`{"id":"chatcmpl-x","model":"up-sol","choices":[{"index":0,"delta":` + string(text) + `}]}`)
 	}
-	var raw map[string]any
+	send(`{"id":"chatcmpl-x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`)
+	send(`{"id":"chatcmpl-x","choices":[],"usage":{"prompt_tokens":4158,"completion_tokens":5,"prompt_tokens_details":{"cached_tokens":4000}}}`)
+	send("[DONE]")
+}
+
+func (up *probeUpstream) serveResponses(w http.ResponseWriter, send func(string), body map[string]any) {
+	system, prompt := "", ""
+	if input, ok := body["input"].([]any); ok {
+		for _, raw := range input {
+			item, _ := raw.(map[string]any)
+			if item["role"] == "developer" || item["role"] == "system" {
+				system += probeJSONText(item["content"])
+			} else {
+				prompt = probeJSONText(item["content"])
+			}
+		}
+	}
+	answer := probeAnswer(system, prompt)
+	output := []any{}
+	if tools, ok := body["tools"].([]any); ok && len(tools) > 0 {
+		tool, _ := tools[0].(map[string]any)
+		name, _ := tool["name"].(string)
+		city := strings.TrimSuffix(strings.TrimPrefix(prompt, "What is the weather in "), " right now? Use the tool.")
+		output = append(output, map[string]any{"type": "function_call", "name": name, "arguments": `{"city":"` + city + `"}`})
+	} else {
+		output = append(output, map[string]any{"type": "message", "content": []any{map[string]any{"type": "output_text", "text": answer}}})
+	}
+	send(`{"type":"response.created","response":{"id":"resp-x","model":"up-sol"}}`)
+	completed, _ := json.Marshal(map[string]any{"type": "response.completed", "response": map[string]any{"id": "resp-x", "model": "up-sol", "status": "completed", "output": output, "usage": map[string]any{"input_tokens": 4158, "input_tokens_details": map[string]any{"cached_tokens": 4000}, "output_tokens": 5}}})
+	send(string(completed))
+}
+
+func (up *probeUpstream) serveMessages(w http.ResponseWriter, send func(string), body map[string]any) {
+	system, prompt := "", ""
+	if blocks, ok := body["system"].([]any); ok {
+		for _, raw := range blocks {
+			block, _ := raw.(map[string]any)
+			system += probeBodyString(block, "text")
+		}
+	}
+	prompt = probeJSONText(body["messages"])
+	answer := probeAnswer(system, prompt)
+	if tools, ok := body["tools"].([]any); ok && len(tools) > 0 {
+		tool, _ := tools[0].(map[string]any)
+		name := probeBodyString(tool, "name")
+		if name == "" {
+			name = "get_weather"
+		}
+		city := strings.TrimSuffix(strings.TrimPrefix(prompt, "What is the weather in "), " right now? Use the tool.")
+		send(fmt.Sprintf(`{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","name":%q}}`, name))
+		send(`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"city\":"}}`)
+		send(fmt.Sprintf(`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":%q}}`, `"`+city+`"}`))
+	} else {
+		send(`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
+		send(fmt.Sprintf(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":%q}}`, answer))
+	}
+	send(`{"type":"message_start","message":{"id":"msg-x","model":"up-claude","usage":{"input_tokens":4158,"cache_read_input_tokens":4000,"output_tokens":5}}}`)
+	send(`{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}`)
+	send(`{"type":"message_stop"}`)
+}
+
+func (up *probeUpstream) assertNoImitation(t *testing.T) {
+	t.Helper()
+	for _, request := range up.snapshot() {
+		if got := request.header.Get("User-Agent"); strings.Contains(strings.ToLower(got), "codex") || strings.Contains(strings.ToLower(got), "claude-cli") {
+			t.Errorf("%s 的新模式请求带了客户端伪装 UA %q", request.path, got)
+		}
+		if got := request.header.Get("X-App"); got == "cli" {
+			t.Errorf("%s 的新模式请求带了 Claude Code 标识", request.path)
+		}
+		if body, ok := request.body["client_metadata"]; ok {
+			t.Errorf("%s 的新模式请求带了 Codex 客户端元数据: %v", request.path, body)
+		}
+		if body, ok := request.body["metadata"]; ok {
+			t.Errorf("%s 的新模式请求带了 Claude Code 会话元数据: %v", request.path, body)
+		}
+	}
+}
+
+func seedProbeModel(t *testing.T, e *env, name, upstream string, channelID int64) {
+	t.Helper()
+	ctx := context.Background()
+	var modelID int64
+	if err := e.store.Pool.QueryRow(ctx, `INSERT INTO models (name, input_price, output_price, cache_read_price) VALUES ($1, 2, 10, 0.1) RETURNING id`, name).Scan(&modelID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.store.Pool.Exec(ctx, `INSERT INTO channel_models (channel_id, model_id, upstream_name) VALUES ($1, $2, $3)`, channelID, modelID, upstream); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func seedProbeChannel(t *testing.T, e *env, name, key, chatURL, messagesURL, responsesURL string) int64 {
+	t.Helper()
+	var id int64
+	err := e.store.Pool.QueryRow(context.Background(), `
+		INSERT INTO channels (name, api_key, base_url_chat, base_url_messages, base_url_responses)
+		VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		name, key, chatURL, messagesURL, responsesURL).Scan(&id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+type probeRunView struct {
+	Status        string `json:"status"`
+	Verdict       string `json:"verdict"`
+	Baseline      string `json:"baseline"`
+	UpstreamModel string `json:"upstream_model"`
+	Preset        string `json:"preset"`
+	Score         *int   `json:"score"`
+	Cost          string `json:"cost"`
+	Report        struct {
+		ProbeMode  string `json:"probe_mode"`
+		Protocol   string `json:"protocol"`
+		Disguise   bool   `json:"disguise"`
+		StopReason string `json:"stop_reason"`
+		Counts     struct {
+			Planned   int `json:"planned"`
+			Sent      int `json:"sent"`
+			Completed int `json:"completed"`
+			Skipped   int `json:"skipped"`
+		} `json:"counts"`
+		Items []struct {
+			Key, Status, Summary string
+		} `json:"items"`
+		Calls []json.RawMessage `json:"calls"`
+	} `json:"report"`
+}
+
+func waitProbeRun(t *testing.T, a *client, id int64) probeRunView {
+	t.Helper()
 	deadline := time.Now().Add(60 * time.Second)
 	for {
-		raw = nil
-		a.do("GET", fmt.Sprintf("/api/admin/probes/%d", started.ID), nil, &raw)
+		var raw map[string]any
+		a.do("GET", fmt.Sprintf("/api/admin/probes/%d", id), nil, &raw)
 		if raw["status"] != "running" || time.Now().After(deadline) {
-			break
+			b, _ := json.Marshal(raw)
+			var run probeRunView
+			if err := json.Unmarshal(b, &run); err != nil {
+				t.Fatalf("解析检测记录失败: %v %s", err, b)
+			}
+			if run.Status == "running" {
+				t.Fatal("检测超时仍在运行")
+			}
+			return run
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	b, _ := json.Marshal(raw)
-	json.Unmarshal(b, &run)
-	if raw["status"] != "done" || run.Score == nil || raw["baseline"] != "gpt-6.1-sol" || raw["upstream_model"] != "up-sol" {
-		t.Fatalf("检测应跑完并入库: %v", raw["status"])
+}
+
+func startProbe(t *testing.T, a *client, payload map[string]any) (int, string, int64) {
+	t.Helper()
+	var started struct{ ID int64 }
+	code, body := a.do("POST", "/api/admin/probes", payload, &started)
+	return code, body, started.ID
+}
+
+func TestProbeStartValidation(t *testing.T) {
+	e := newEnv(t)
+	a := e.login("admin")
+	up := newProbeUpstream(t)
+	chatChannel := seedProbeChannel(t, e, "chat-only", "upstream-key", up.url(), "", "")
+	seedProbeModel(t, e, "gpt-6.1-sol", "up-sol", chatChannel)
+	responseChannel := seedProbeChannel(t, e, "responses-only", "upstream-key", "", "", up.url())
+	seedProbeModel(t, e, "gpt-6-astra", "up-astra", responseChannel)
+	blockedChannel := seedProbeChannel(t, e, "blocked", "upstream-key", "", "", up.url())
+	seedProbeModel(t, e, "gpt-6-luna", "up-luna", blockedChannel)
+
+	for _, preset := range []string{"", "quick", "full", "unknown"} {
+		payload := map[string]any{"channel_id": chatChannel, "model": "gpt-6.1-sol", "preset": preset}
+		if code, body, _ := startProbe(t, a, payload); code != http.StatusBadRequest || !strings.Contains(body, "quality 或 fingerprint") {
+			t.Errorf("旧 preset %q 应拒绝: %d %s", preset, code, body)
+		}
+	}
+	if code, body, _ := startProbe(t, a, map[string]any{"channel_id": chatChannel, "model": "gpt-6.1-sol", "preset": probe.ModeQuality}); code != http.StatusBadRequest || !strings.Contains(body, "Responses") {
+		t.Fatalf("质量模式需要 Responses 地址: %d %s", code, body)
+	}
+	if code, body, _ := startProbe(t, a, map[string]any{"channel_id": responseChannel, "model": "gpt-6-astra", "preset": probe.ModeFingerprint}); code != http.StatusBadRequest || !strings.Contains(body, "Chat") {
+		t.Fatalf("指纹模式需要 Chat 地址: %d %s", code, body)
+	}
+
+	ctx := context.Background()
+	if _, err := e.store.Pool.Exec(ctx, `INSERT INTO probe_runs (channel_id, channel_name, model, upstream_model, baseline, preset, status) VALUES ($1, 'blocked', 'gpt-6-luna', 'up-luna', 'gpt-6-luna', 'quality', 'running')`, blockedChannel); err != nil {
+		t.Fatal(err)
+	}
+	if code, body, _ := startProbe(t, a, map[string]any{"channel_id": blockedChannel, "model": "gpt-6-luna", "preset": probe.ModeQuality}); code != http.StatusTooManyRequests {
+		t.Fatalf("同一渠道已有检测应拒绝: %d %s", code, body)
+	}
+	for range maxRunningProbes {
+		if _, err := e.store.Pool.Exec(ctx, `INSERT INTO probe_runs (channel_name, model, upstream_model, baseline, preset, status) VALUES ('idle', 'm', 'm', 'gpt-6-luna', 'quality', 'running')`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if code, body, _ := startProbe(t, a, map[string]any{"channel_id": chatChannel, "model": "gpt-6.1-sol", "preset": probe.ModeFingerprint}); code != http.StatusTooManyRequests {
+		t.Fatalf("全局已有检测时应拒绝其他渠道: %d %s", code, body)
+	}
+}
+
+func TestProbeQualityGPT(t *testing.T) {
+	e := newEnv(t)
+	a := e.login("admin")
+	up := newProbeUpstream(t)
+	channelID := seedProbeChannel(t, e, "responses", "upstream-key", "", "", up.url())
+	seedProbeModel(t, e, "gpt-6.1-sol", "up-sol", channelID)
+	e.api.Relay.Disguise = &relay.ProbeDisguise{}
+	e.api.Relay.Disguise.Codex.Input = json.RawMessage(`[{"type":"message"}]`)
+	e.api.Relay.Disguise.Codex.Headers = map[string]string{"User-Agent": "private-codex-template"}
+	code, body, id := startProbe(t, a, map[string]any{"channel_id": channelID, "model": "gpt-6.1-sol", "preset": probe.ModeQuality})
+	if code != http.StatusOK {
+		t.Fatalf("发起质量测试: %d %s", code, body)
+	}
+	run := waitProbeRun(t, a, id)
+	if run.Status != "done" || run.Report.ProbeMode != probe.ModeQuality || run.Report.Protocol != "responses" || run.Report.Disguise || run.Score == nil {
+		t.Fatalf("质量测试结果不对: %+v", run)
 	}
 	status := map[string]string{}
-	for _, it := range append(run.Report.Items, run.Report.Observations...) {
-		status[it.Key] = it.Status
+	for _, item := range run.Report.Items {
+		status[item.Key] = item.Status
 	}
-	for _, k := range []string{"structured", "instruction", "stream", "invisible"} {
-		if status[k] != "pass" {
-			t.Errorf("%s 应通过: %v", k, run.Report)
+	for _, key := range []string{"structured", "instruction", "needle"} {
+		if status[key] == "" {
+			t.Errorf("缺少检测项 %s: %+v", key, status)
 		}
 	}
-	for _, k := range []string{"tokens", "fingerprint", "pair", "reasoning", "injection", "mixed", "protocol"} {
-		if status[k] == "" {
-			t.Errorf("缺少检测项 %s", k)
+	requests := up.snapshot()
+	if len(requests) != len(run.Report.Calls) || len(requests) < 10 {
+		t.Fatalf("请求数 %d，报告 %d", len(requests), len(run.Report.Calls))
+	}
+	for _, request := range requests {
+		if request.path != "/responses" || request.model != "up-sol" {
+			t.Fatalf("质量测试应走标准 Responses: %s %s", request.path, request.model)
 		}
 	}
-	if len(run.Report.Calls) < 150 || run.Cost == "0" {
-		t.Errorf("请求数 %d、花费 %s", len(run.Report.Calls), run.Cost)
-	}
-	// 上游看到 4 个会话编号（一次检测抽查几个上游）、Codex 客户端的 User-Agent 和映射后的上游模型名
-	sessions, uas := 0, 0
-	for k := range seen {
-		if strings.HasPrefix(k, "session ") {
-			sessions++
-		}
-		if strings.HasPrefix(k, "ua codex-tui/") {
-			uas++
-		}
-	}
-	if sessions != probe.Sessions || uas != 1 || seen["model up-sol"] != len(run.Report.Calls) {
-		t.Errorf("请求伪装或模型映射不对: %v", seen)
-	}
-	// 列表不带完整结果；检测请求不进调用日志
-	var list []map[string]any
-	a.do("GET", "/api/admin/probes", nil, &list)
-	if len(list) != 1 || list[0]["report"] != nil {
-		t.Errorf("列表: %v", list)
-	}
+	up.assertNoImitation(t)
 	var logs int
-	e.store.Pool.QueryRow(ctx, `SELECT count(*) FROM request_logs`).Scan(&logs)
+	e.store.Pool.QueryRow(context.Background(), `SELECT count(*) FROM request_logs`).Scan(&logs)
 	if logs != 0 {
 		t.Errorf("检测请求不应写调用日志: %d", logs)
 	}
-	// 重启时进行中的检测标成失败
-	e.store.Pool.Exec(ctx, `INSERT INTO probe_runs (channel_name, model, upstream_model, baseline, preset, status) VALUES ('x', 'm', 'm', 'gpt-6.1-sol', 'quick', 'running')`)
+}
+
+func TestProbeFingerprintGPT(t *testing.T) {
+	e := newEnv(t)
+	a := e.login("admin")
+	up := newProbeUpstream(t)
+	channelID := seedProbeChannel(t, e, "chat", "upstream-key", up.url(), "", "")
+	seedProbeModel(t, e, "gpt-6.1-sol", "up-sol", channelID)
+	code, body, id := startProbe(t, a, map[string]any{"channel_id": channelID, "model": "gpt-6.1-sol", "preset": probe.ModeFingerprint})
+	if code != http.StatusOK {
+		t.Fatalf("发起指纹辨别: %d %s", code, body)
+	}
+	run := waitProbeRun(t, a, id)
+	if run.Status != "done" || run.Report.ProbeMode != probe.ModeFingerprint || run.Report.Protocol != "chat" || run.Report.Disguise || run.Score != nil {
+		t.Fatalf("指纹测试结果不对: %+v", run)
+	}
+	requests := up.snapshot()
+	if len(requests) != 525 || len(run.Report.Calls) != 525 {
+		t.Fatalf("指纹请求数 = %d / %d, want 525", len(requests), len(run.Report.Calls))
+	}
+	for _, request := range requests {
+		if request.path != "/chat/completions" || request.model != "up-sol" {
+			t.Fatalf("指纹辨别应走标准 Chat: %s %s", request.path, request.model)
+		}
+	}
+	up.assertNoImitation(t)
+
+	var list []map[string]any
+	a.do("GET", "/api/admin/probes", nil, &list)
+	if len(list) != 1 || list[0]["report"] != nil {
+		t.Errorf("列表不应带完整报告: %v", list)
+	}
+	ctx := context.Background()
+	if _, err := e.store.Pool.Exec(ctx, `INSERT INTO probe_runs (channel_name, model, upstream_model, baseline, preset, status) VALUES ('x', 'm', 'm', 'gpt-6.1-sol', 'quick', 'running')`); err != nil {
+		t.Fatal(err)
+	}
 	if err := e.store.FailStaleProbeRuns(ctx); err != nil {
 		t.Fatal(err)
 	}
 	var running int
 	e.store.Pool.QueryRow(ctx, `SELECT count(*) FROM probe_runs WHERE status = 'running'`).Scan(&running)
 	if running != 0 {
-		t.Errorf("重启后不应还有进行中的检测")
+		t.Errorf("重启后不应还有进行中的检测: %d", running)
+	}
+}
+
+func TestProbeQualityClaude(t *testing.T) {
+	e := newEnv(t)
+	a := e.login("admin")
+	up := newProbeUpstream(t)
+	channelID := seedProbeChannel(t, e, "messages", "upstream-key", "", up.url(), "")
+	seedProbeModel(t, e, "claude-opus-5-5", "up-claude", channelID)
+	e.api.Relay.Disguise = &relay.ProbeDisguise{}
+	e.api.Relay.Disguise.Claude.System = []map[string]any{{"type": "text", "text": "private Claude Code system prompt"}}
+	e.api.Relay.Disguise.Claude.Headers = map[string]string{"User-Agent": "private-claude-template"}
+	code, body, id := startProbe(t, a, map[string]any{"channel_id": channelID, "model": "claude-opus-5-5", "preset": probe.ModeQuality})
+	if code != http.StatusOK {
+		t.Fatalf("发起 Claude 质量测试: %d %s", code, body)
+	}
+	run := waitProbeRun(t, a, id)
+	if run.Status != "done" || run.Report.ProbeMode != probe.ModeQuality || run.Report.Protocol != "messages" || run.Report.Disguise || run.Score == nil {
+		t.Fatalf("Claude 质量测试结果不对: %+v", run)
+	}
+	requests := up.snapshot()
+	if len(requests) != len(run.Report.Calls) || len(requests) < 9 {
+		t.Fatalf("Claude 请求数 = %d / %d", len(requests), len(run.Report.Calls))
+	}
+	for _, request := range requests {
+		if request.path != "/v1/messages" || request.model != "up-claude" {
+			t.Fatalf("Claude 质量测试应走标准 Messages: %s %s", request.path, request.model)
+		}
+	}
+	up.assertNoImitation(t)
+}
+
+func TestProbePartialReportOnQuotaError(t *testing.T) {
+	e := newEnv(t)
+	a := e.login("admin")
+	up := newProbeUpstream(t)
+	up.setStatus(http.StatusPaymentRequired)
+	channelID := seedProbeChannel(t, e, "no-balance", "upstream-key", up.url(), "", "")
+	seedProbeModel(t, e, "gpt-6.1-sol", "up-sol", channelID)
+	code, body, id := startProbe(t, a, map[string]any{"channel_id": channelID, "model": "gpt-6.1-sol", "preset": probe.ModeFingerprint})
+	if code != http.StatusOK {
+		t.Fatalf("发起检测: %d %s", code, body)
+	}
+	run := waitProbeRun(t, a, id)
+	if run.Status != "failed" || run.Report.StopReason != "quota" || run.Score != nil {
+		t.Fatalf("余额不足应留下部分报告并不评分: %+v", run)
+	}
+	if run.Report.Counts.Sent == 0 || run.Report.Counts.Sent >= run.Report.Counts.Planned || run.Report.Counts.Completed != 0 || run.Report.Counts.Skipped == 0 {
+		t.Fatalf("部分报告计数不对: %+v", run.Report.Counts)
+	}
+	if len(run.Report.Calls) != run.Report.Counts.Planned {
+		t.Fatalf("部分报告调用数 = %d, planned = %d", len(run.Report.Calls), run.Report.Counts.Planned)
 	}
 }

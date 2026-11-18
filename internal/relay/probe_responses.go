@@ -30,6 +30,9 @@ func (h *Handler) probeResponsesOnce(ctx context.Context, ch *store.Channel, ups
 		return c
 	}
 	d := h.Disguise
+	if req.DisguiseSet && !req.FullDisguise {
+		d = nil
+	}
 	now := time.Now()
 	body := map[string]any{"model": upstreamModel, "stream": true, "store": false, "include": []string{"reasoning.encrypted_content"}, "prompt_cache_key": session}
 	reasoning := map[string]any{}
@@ -104,13 +107,15 @@ func (h *Handler) probeResponsesOnce(ctx context.Context, ch *store.Channel, ups
 		}
 		hd.Set("X-Codex-Turn-Metadata", turnMeta)
 		hd.Set("X-Codex-Window-Id", session+":0")
-	} else {
+	} else if !req.DisguiseSet {
 		hd.Set("User-Agent", probeUserAgent)
 		hd.Set("Originator", "codex-tui")
 	}
-	hd.Set("Session-Id", session)
-	hd.Set("Thread-Id", session)
-	hd.Set("X-Client-Request-Id", session)
+	if !req.DisguiseSet {
+		hd.Set("Session-Id", session)
+		hd.Set("Thread-Id", session)
+		hd.Set("X-Client-Request-Id", session)
+	}
 	setUpstreamAuth(hd, usage.Responses, ch.APIKey)
 
 	start := time.Now()

@@ -88,3 +88,12 @@ func (s *Store) CountRunningProbes(ctx context.Context) (int, error) {
 	err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM probe_runs WHERE status = 'running'`).Scan(&n)
 	return n, err
 }
+
+// CountRunningProbesForChannel 返回全局和指定渠道的进行中检测数。
+func (s *Store) CountRunningProbesForChannel(ctx context.Context, channelID int64) (int, int, error) {
+	var total, channelCount int
+	err := s.Pool.QueryRow(ctx, `
+		SELECT count(*), count(*) FILTER (WHERE channel_id = $1)
+		FROM probe_runs WHERE status = 'running'`, channelID).Scan(&total, &channelCount)
+	return total, channelCount, err
+}
