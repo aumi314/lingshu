@@ -49,6 +49,10 @@ const needleMinTokens = 60000
 
 func (p *plan) judgeNeedle(cs []Call) Item {
 	it := Item{Key: "needle", Title: "大海捞针"}
+	if len(cs) == 1 && gatewayError(cs[0]) { // 网关超时（如 Cloudflare 524）：长文没等到首字，不是上下文被截断，不计分
+		it.Status, it.Summary = Info, fmt.Sprintf("没测成：重试后网关仍超时（HTTP %d），和上下文是否完整无关，不计分；可以稍后重测", cs[0].HTTPStatus)
+		return it
+	}
 	if len(cs) != 1 || cs[0].Error != "" {
 		it.Status, it.Summary = Fail, "请求失败："+firstError(cs)
 		return it
@@ -257,7 +261,7 @@ func (p *plan) reportProtocol(calls []Call) *Report {
 	if len(by["needle"]) > 0 {
 		r.Items = append(r.Items, p.judgeNeedle(by["needle"]))
 	}
-	r.Observations = disguiseInjection(observe(calls, by["anchor"][:min(1, len(by["anchor"]))], by["anchor"], nil, nearest), p.spec.Disguise)
+	r.Observations = disguiseInjection(observe(calls, by["anchor"][:min(1, len(by["anchor"]))], by["anchor"], nil, nearest), p.spec)
 	if !p.legacy {
 		r.Observations = qualityObservations(r.Observations)
 	}

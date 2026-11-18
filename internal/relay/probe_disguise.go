@@ -1,6 +1,8 @@
 package relay
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -66,7 +68,37 @@ func (d *ProbeDisguise) directPrompt(prompt string, hasProbeTools, hasDisguiseTo
 }
 
 func (d *ProbeDisguise) hasClaude() bool { return d != nil && len(d.Claude.System) > 0 }
-func (d *ProbeDisguise) hasCodex() bool  { return d != nil && len(d.Codex.Input) > 0 }
+
+var clientVersion = regexp.MustCompile(`\d+\.\d+\.\d+`)
+
+// ProbeTemplate 描述一次渠道质量测试实际用的伪装模板：报告记录它，注入基准按 Hash 对应（换了模板就要重新标定）。
+type ProbeTemplate struct {
+	Name   string // 客户端和版本，如 claude-code 2.1.281、codex 0.160.0
+	Hash   string // 这一家模板内容的 sha256 前 12 位
+	Tokens int    // 粗估的模板 token 数（字符数 / 3），模板没标定时给费用保护当预期
+}
+
+// Template 返回某个家族（claude / gpt）的伪装模板；没有配置时 ok 为 false。
+func (d *ProbeDisguise) Template(family string) (ProbeTemplate, bool) {
+	var part any
+	var name string
+	var chars int
+	switch {
+	case family == "claude" && d.hasClaude():
+		part, name = d.Claude, "claude-code "+clientVersion.FindString(d.Claude.Headers["user-agent"])
+		sys, _ := json.Marshal(d.Claude.System)
+		tools, _ := json.Marshal(d.Claude.Tools)
+		chars = len(sys) + len(tools)
+	case family == "gpt" && d.hasCodex():
+		part, name, chars = d.Codex, "codex "+clientVersion.FindString(d.Codex.Headers["user-agent"]), len(d.Codex.Input)
+	default:
+		return ProbeTemplate{}, false
+	}
+	raw, _ := json.Marshal(part)
+	sum := sha256.Sum256(raw)
+	return ProbeTemplate{Name: name, Hash: hex.EncodeToString(sum[:])[:12], Tokens: chars / 3}, true
+}
+func (d *ProbeDisguise) hasCodex() bool { return d != nil && len(d.Codex.Input) > 0 }
 
 var claudeIDPattern = regexp.MustCompile(`^claude-([a-z]+)-(\d+)-(\d+)`)
 

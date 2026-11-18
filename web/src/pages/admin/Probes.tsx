@@ -13,7 +13,7 @@ type Call = {
   error?: string; input_tokens: number; cached_tokens: number; output_tokens: number; reasoning_tokens: number
   id?: string; service_tier?: string; first_token_ms: number; total_ms: number
 }
-type Report = { baseline: string; mode?: 'protocol'; probe_mode?: 'quality' | 'fingerprint'; protocol?: 'responses' | 'chat' | 'messages'; disguise?: boolean; score: number | null; verdict: string; stop_reason?: string; stop_call_index?: number; counts?: { planned: number; sent: number; completed: number; failed: number; skipped: number }; items: Item[]; observations: Item[]; metrics: Record<string, number>; calls: Call[] }
+type Report = { baseline: string; mode?: 'protocol'; probe_mode?: 'quality' | 'fingerprint'; protocol?: 'responses' | 'chat' | 'messages'; disguise?: boolean; template?: string; score: number | null; verdict: string; stop_reason?: string; stop_call_index?: number; counts?: { planned: number; sent: number; completed: number; failed: number; skipped: number }; items: Item[]; observations: Item[]; metrics: Record<string, number>; calls: Call[] }
 type Run = {
   id: number; created_at: string; finished_at: string | null; created_by: string; channel_id: number | null; channel_name: string
   model: string; upstream_model: string; baseline: string; preset: 'quality' | 'fingerprint' | 'quick' | 'full'; status: 'running' | 'done' | 'failed'
@@ -111,8 +111,8 @@ export default function Probes() {
       <Typography.Title level={3} className="page-title">{t('模型检测', 'Model check')}</Typography.Title>
       <Typography.Paragraph type="secondary">
         {t(
-          '选渠道和模型，按已配置的标准 API 直接发一组检测请求，检查型号、推理强度、工具调用和上下文表现。检测请求不走路由、不进调用日志、不扣用户余额；花费按站内价估算，由渠道承担。',
-          'Sends standard API probe requests straight to the selected channel and checks model identity, reasoning, tool use and context behavior. Probe requests bypass routing, are not logged as calls and are not charged to users.',
+          '选渠道和模型，按真实客户端的请求形态直接发一组检测请求，检查型号、推理强度、工具调用和上下文表现。检测请求不走路由、不进调用日志、不扣用户余额；花费按站内价估算，由渠道承担。',
+          'Sends probe requests shaped like real clients straight to the selected channel and checks model identity, reasoning, tool use and context behavior. Probe requests bypass routing, are not logged as calls and are not charged to users.',
         )}
       </Typography.Paragraph>
 
@@ -292,7 +292,7 @@ function Result({ run, protocol, statusIcon, statusText }: { run: Run; protocol:
             <div>{dayjs(run.created_at).format('YYYY-MM-DD HH:mm')}</div>
             <div>{run.channel_name} · <span className="mono">{run.model}</span>{run.upstream_model !== run.model && <> ← <span className="mono">{run.upstream_model}</span></>}</div>
             <div>{r.mode === 'protocol' ? t('协议层检测，暂无官方样本', 'Protocol check, no baseline') : <>{t('对照', 'Baseline')} <span className="mono">{run.baseline}</span></>} · {isFingerprint ? t('模型指纹辨别', 'Model fingerprint') : t('渠道质量测试', 'Channel quality')} · {t('花费约', 'Cost ~')} {money(run.cost, 4)}</div>
-            {r.protocol && <div>{t('走', 'Via')} <span className="mono">{{ responses: 'Responses', chat: 'Chat', messages: 'Messages' }[r.protocol]}</span></div>}
+            {r.protocol && <div>{t('走', 'Via')} <span className="mono">{{ responses: 'Responses', chat: 'Chat', messages: 'Messages' }[r.protocol]}</span>{r.probe_mode && <> · {r.disguise ? <>{t('完整伪装', 'Full client disguise')}{r.template && <> <span className="mono">{r.template}</span></>}</> : t('传输层伪装', 'Transport-level disguise')}</>}</div>}
           </div>
         </Col>
         <Col xs={24} md={18}>

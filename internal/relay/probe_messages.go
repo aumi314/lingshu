@@ -18,11 +18,20 @@ import (
 	"github.com/aumi314/lingshu/internal/store"
 )
 
-// 检测请求伪装成 Claude Code（2026-11-07 从 hvoy 的抓包核对过的形态）：Claude 号池类中转只接受像 Claude Code 的请求，不伪装测不到真实链路。
+// 传输层伪装（指纹检测用，和 scripts/probe/probe.py 采官方样本的请求一致）：Claude 号池类中转只接受像 Claude Code 的请求。
+// 号池的校验（docs/research/claude-probe.md 第九节，2026-11-17 在 kirisame 上二分实测）：x-stainless-* 一整套 SDK 请求头要齐、
+// 要有 anthropic-version、X-Claude-Code-Session-Id 要和 metadata 里的 session_id 一致、UA 的版本号要等于计费头 cc_version 去掉最后一段。
 const (
-	probeClaudeUA   = "claude-cli/2.1.319.781 (external, cli)"
-	probeClaudeBeta = "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,effort-2025-11-24"
+	probeClaudeUA      = "claude-cli/2.1.319 (external, cli)"
+	probeClaudeBilling = "x-anthropic-billing-header: cc_version=2.1.319.781; cc_entrypoint=cli;"
+	probeClaudeBeta    = "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,effort-2025-11-24"
 )
+
+var probeClaudeSDKHeaders = map[string]string{
+	"Anthropic-Dangerous-Direct-Browser-Access": "true", "X-Stainless-Arch": "arm64", "X-Stainless-Lang": "js", "X-Stainless-Os": "MacOS",
+	"X-Stainless-Package-Version": "0.112.1", "X-Stainless-Retry-Count": "0", "X-Stainless-Runtime": "node",
+	"X-Stainless-Runtime-Version": "v26.3.0", "X-Stainless-Timeout": "600",
+}
 
 // ProbeMessages 向渠道发一次 Claude 检测请求（Messages 协议、流式），和 ProbeChat 一样直接用渠道自己的地址、key 和代理：
 // 不走路由、不计费、不写调用日志、不影响渠道健康状态。req.Effort 非空时开 adaptive thinking 并设推理强度。
@@ -41,11 +50,9 @@ func (h *Handler) ProbeMessages(ctx context.Context, ch *store.Channel, upstream
 	if d.hasClaude() { // 完整伪装：真实 Claude Code 的系统提示，检测自己的系统指令接在最后
 		system = d.claudeSystem(upstreamModel, req.System)
 	} else {
-		if !req.DisguiseSet {
-			system = []map[string]any{
-				{"type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.319.781; cc_entrypoint=cli;"},
-				{"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."},
-			}
+		system = []map[string]any{
+			{"type": "text", "text": probeClaudeBilling},
+			{"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."},
 		}
 		if req.System != "" {
 			system = append(system, map[string]any{"type": "text", "text": req.System})
@@ -70,12 +77,6 @@ func (h *Handler) ProbeMessages(ctx context.Context, ch *store.Channel, upstream
 	}
 	body := map[string]any{"model": upstreamModel, "max_tokens": maxTokens, "stream": true, "system": system,
 		"messages": []map[string]any{{"role": "user", "content": content}}, "metadata": map[string]any{"user_id": string(userID)}}
-	if len(system) == 0 {
-		delete(body, "system")
-	}
-	if req.DisguiseSet {
-		delete(body, "metadata")
-	}
 	if req.Effort != "" {
 		body["thinking"] = map[string]any{"type": "adaptive"}
 		body["output_config"] = map[string]any{"effort": req.Effort}
@@ -106,11 +107,13 @@ func (h *Handler) ProbeMessages(ctx context.Context, ch *store.Channel, upstream
 		hd.Set("X-Client-Request-Id", NewProbeSession())
 	} else {
 		hd.Set("Accept", "text/event-stream")
-		if !req.DisguiseSet {
-			hd.Set("User-Agent", probeClaudeUA)
-			hd.Set("X-App", "cli")
-			hd.Set("Anthropic-Beta", probeClaudeBeta)
+		hd.Set("User-Agent", probeClaudeUA)
+		hd.Set("X-App", "cli")
+		hd.Set("Anthropic-Beta", probeClaudeBeta)
+		for k, v := range probeClaudeSDKHeaders {
+			hd.Set(k, v)
 		}
+		hd.Set("X-Claude-Code-Session-Id", session)
 	}
 	setUpstreamAuth(hd, usage.Messages, ch.APIKey)
 
