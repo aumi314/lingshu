@@ -20,12 +20,18 @@
 - **线上数据库**：`docker exec lingshu-postgres psql -U lingshu -d lingshu`（改数据前遵守 `AGENTS.md`「运维约定」）。
 - **临时调管理接口**：在 `sessions` 插一条记录（`token_hash` 为随机 token 的 SHA-256，`user_id = 1`，过期时间设短），请求带 Cookie `lingshu_session=<token>`，用完立即删除并确认删掉。
 - **本地测试库**：`LINGSHU_TEST_DATABASE_URL='postgres://lingshu:lingshu_dev@127.0.0.1:55432/lingshu_test?sslmode=disable' go test -p 1 ./...`（`make db-up` 起容器；测试会重建该库的 public schema）。
+- **前端构建 / 浏览器回归**：WSL 系统自带 Node 18，新版 Vite 跑不起来（`styleText` 导出报错），先 `export PATH=$HOME/.nvm/versions/node/v22.22.3/bin:$PATH`，换了 Node 版本要删掉 `web/node_modules` 重装；`npm run build` 会清空 `web/dist/`，提交前确认没把 `web/dist/.gitkeep` 的删除带进去。
 - **打真实上游的实测**：`go test` 加 `-count=1`，否则命中缓存、重放旧结果。
-- **官方对照组**：本机 Magpie 网关 `http://127.0.0.1:3425/v1`，key `magpie`；`codex/*` 走用户自己的官方账号，用于模型检测的官方样本。Claude 暂无免费对照：渠道 18（Anthropic 官方 API）余额不足；渠道 12（OpenRouter）锁定 `provider.only: ["anthropic"]` 可对照模型行为，但贵，用前先报预计花费。
+- **官方对照组**：本机 Magpie 网关 `http://127.0.0.1:3425/v1`，key `magpie`；`codex/*` 走用户自己的官方账号，用于模型检测的官方样本。Claude 没有免费的官方对照：渠道 18（Anthropic 官方 API）余额不足；渠道 12（OpenRouter）锁定 `provider.only: ["anthropic"]` 可对照模型行为，但贵，用前先报预计花费；kirisame（渠道 23，满血号池）可以采样本（`scripts/probe/probe.py` 的请求头能过它的 Claude Code 校验），但它不是官方，用前要和官方样本交叉验证（`docs/research/claude-probe.md` 第九节）。
 
-## 模型检测
+## 模型检测伪装配置
 
-新建渠道质量测试和模型指纹辨别使用渠道已授权的标准 API，无需配置客户端模板。GPT 质量测试需要 Responses 地址，GPT 指纹需要 Chat 地址；Claude 两种检测都需要 Messages 地址。渠道拒绝标准 API 请求时，使用渠道提供的授权 API 或选其他渠道。发布前按 `AGENTS.md` 单独检查 `probe_runs` 的运行中记录。
+`/etc/lingshu/probe-disguise.json`（root:lingshu，0640），`/etc/lingshu/env` 里设 `LINGSHU_PROBE_DISGUISE_FILE=/etc/lingshu/probe-disguise.json`。内容是真实客户端的请求头、系统提示和工具（客户端原文，不进仓库），由 WSL 上 `references/probe-sites/build_disguise.py` 从抓包生成。启动日志有“模型检测伪装配置已加载”。
+
+- 渠道质量测试必须用它：服务器没有对应家族（Claude Code / Codex）的模板时拒绝发起；模型指纹只用传输层伪装，不读这个文件。地址要求：GPT 质量测试要 Responses 地址，GPT 指纹要 Chat 地址，Claude 两种都要 Messages 地址。
+- 更新：抓新版客户端的请求（本机 `~/worktrees/cc-cli` 装了一份 Claude Code，配本地假上游就能抓到原始请求）→ 重新生成 → 传到服务器覆盖 → `systemctl restart lingshu`。
+- 换了模板，模板 hash 就变，质量测试的注入项会提示“基准还没标定”。重新标定后把新值写进 `internal/probe/run.go` 的 `templateBases`：Codex 用本机 Magpie 的 `codex/*` 发基准请求（`scripts/probe/calib_codex.py`），Claude 在 DMIT 上跑 `scripts/probe/calib_claude.py`（kirisame 当对照）。
+- 发布前按 `AGENTS.md` 单独检查 `probe_runs` 的运行中记录。
 
 ## 连接、安装和隔离
 
