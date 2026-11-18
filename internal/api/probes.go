@@ -36,8 +36,8 @@ func (s *Server) withProgress(r store.ProbeRun) probeView {
 	return v
 }
 
-// probeableBaselines 是能发起检测的有样本型号：GPT 走 Chat；Claude 只有在检测名单里的才走 Messages
-// （Sonnet 的样本目前只用来识别“拿 Sonnet 冒充 Opus”，不单独开放检测）。
+// probeableBaselines 是能发起检测的有样本型号：GPT 指纹辨别用 Chat 对照官方样本；
+// Claude 只有在检测名单里的才走 Messages（Sonnet 的样本只用来识别“拿 Sonnet 冒充 Opus”）。
 func probeableBaselines() []string {
 	var out []string
 	for _, m := range probe.BaselineModels() {
@@ -84,13 +84,14 @@ func (s *Server) startProbe(w http.ResponseWriter, r *http.Request) {
 		ChannelID int64  `json:"channel_id"`
 		Model     string `json:"model"`    // 站内模型名
 		Baseline  string `json:"baseline"` // 对照的官方型号；空表示和站内模型同名
-		Preset    string `json:"preset"`   // quick / full
+		Preset    string `json:"preset"`   // quality / fingerprint
 	}
 	if !readJSON(w, r, &in) {
 		return
 	}
-	if in.Preset != "full" {
-		in.Preset = "quick"
+	if in.Preset != probe.ModeQuality && in.Preset != probe.ModeFingerprint {
+		writeError(w, http.StatusBadRequest, "preset 必须是 quality 或 fingerprint")
+		return
 	}
 	if in.Baseline == "" {
 		in.Baseline = in.Model
@@ -110,10 +111,12 @@ func (s *Server) startProbe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var upstream, channelName string
+	var selected *store.Channel
 	for _, ch := range channels {
 		if ch.ID != in.ChannelID {
 			continue
 		}
+		selected = ch
 		channelName = ch.Name
 		for _, m := range ch.Models {
 			if m.ModelName == in.Model {
@@ -124,7 +127,7 @@ func (s *Server) startProbe(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if channelName == "" {
+	if selected == nil {
 		writeError(w, http.StatusNotFound, "渠道不存在")
 		return
 	}
@@ -132,20 +135,26 @@ func (s *Server) startProbe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "这个渠道没有映射模型 "+in.Model)
 		return
 	}
-	secret, err := s.Store.ChannelSecret(r.Context(), in.ChannelID)
+	if protocol && selected.BaseURLMessages == "" {
+		writeError(w, http.StatusBadRequest, in.Model+" 的检测走 Messages 协议，这个渠道没有配置 Messages 地址")
+		return
+	}
+	if !protocol && in.Preset == probe.ModeQuality && selected.BaseURLResponses == "" {
+		writeError(w, http.StatusBadRequest, "GPT 渠道质量测试需要 Responses 地址")
+		return
+	}
+	if !protocol && in.Preset == probe.ModeFingerprint && selected.BaseURLChat == "" {
+		writeError(w, http.StatusBadRequest, "GPT 模型指纹辨别需要 Chat 地址")
+		return
+	}
+	s.probeAdmission.Lock()
+	defer s.probeAdmission.Unlock()
+	total, channelCount, err := s.Store.CountRunningProbesForChannel(r.Context(), in.ChannelID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	if protocol && secret.BaseURLMessages == "" {
-		writeError(w, http.StatusBadRequest, in.Model+" 的检测走 Messages 协议，这个渠道没有配置 Messages 地址")
-		return
-	}
-	if !protocol && secret.BaseURLResponses == "" && secret.BaseURLChat == "" {
-		writeError(w, http.StatusBadRequest, "GPT 的检测走 Responses 协议（没有时退回 Chat），这个渠道两个地址都没配")
-		return
-	}
-	if n, err := s.Store.CountRunningProbes(r.Context()); err != nil || n >= maxRunningProbes {
+	if total >= maxRunningProbes || channelCount > 0 {
 		writeError(w, http.StatusTooManyRequests, "已有检测在进行，等它跑完再发起")
 		return
 	}
@@ -155,14 +164,18 @@ func (s *Server) startProbe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.probeProgress.Store(run.ID, [2]int{0, 0})
-	go s.runProbe(run, secret)
+	go s.runProbe(run, selected)
 	writeJSON(w, http.StatusOK, map[string]any{"id": run.ID})
 }
 
 // runProbe 在后台执行检测并写入结果；和发起请求的连接无关，管理员关掉页面也会跑完。
 func (s *Server) runProbe(run store.ProbeRun, ch *store.Channel) {
 	defer s.probeProgress.Delete(run.ID)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	timeout := 15 * time.Minute
+	if probe.NormalizeMode(run.Preset) == probe.ModeFingerprint {
+		timeout = 60 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	// 一次检测用几个会话编号：号池按会话路由，多个会话才能抽查到不同的上游
 	sessions := make([]string, probe.Sessions)
@@ -173,9 +186,9 @@ func (s *Server) runProbe(run store.ProbeRun, ch *store.Channel) {
 	// 明确返回 400 立刻认定；只是空流要几乎全军覆没（至少 5 次且占 80%）才认定——kinght 这类渠道约 7% 的流会随机断，不能因此整次降档
 	var noneUnsupported atomic.Bool
 	var noneTried, noneEmpty atomic.Int32
-	// GPT 优先走 Responses（真实 Codex 只走这个接口），渠道没配 Responses 地址才退回 Chat
+	// 质量测试用标准 Responses，指纹辨别用标准 Chat；Claude 两种模式都用 Messages。
 	gpt, protocolName := s.Relay.ProbeChat, "chat"
-	if ch.BaseURLResponses != "" {
+	if probe.NormalizeMode(run.Preset) == probe.ModeQuality {
 		gpt, protocolName = s.Relay.ProbeResponses, "responses"
 	}
 	if probe.IsProtocolModel(run.Baseline) {
@@ -205,12 +218,11 @@ func (s *Server) runProbe(run store.ProbeRun, ch *store.Channel) {
 		}
 		return c
 	}
-	report, err := probe.Run(ctx, caller, probe.Spec{Baseline: run.Baseline, UpstreamModel: run.UpstreamModel, Quick: run.Preset == "quick", Disguise: s.Relay.Disguise != nil}, func(done, total int) {
+	report, err := probe.Run(ctx, caller, probe.Spec{Baseline: run.Baseline, UpstreamModel: run.UpstreamModel, Mode: probe.NormalizeMode(run.Preset)}, func(done, total int) {
 		s.probeProgress.Store(run.ID, [2]int{done, total})
 	})
 	if report != nil {
 		report.Protocol = protocolName
-		report.Disguise = s.Relay.Disguise != nil
 	}
 	finish := context.Background()
 	if err != nil {
@@ -220,8 +232,11 @@ func (s *Server) runProbe(run store.ProbeRun, ch *store.Channel) {
 		return
 	}
 	raw, _ := json.Marshal(report)
-	score := report.Score
-	if e := s.Store.FinishProbeRun(finish, run.ID, "done", &score, report.Verdict, s.probeCost(finish, run.Model, report.Calls), raw); e != nil {
+	status := "done"
+	if report.StopReason != "" {
+		status = "failed"
+	}
+	if e := s.Store.FinishProbeRun(finish, run.ID, status, report.Score, report.Verdict, s.probeCost(finish, run.Model, report.Calls), raw); e != nil {
 		slog.Error("写检测结果失败", "id", run.ID, "err", e)
 	}
 }

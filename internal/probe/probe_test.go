@@ -35,6 +35,37 @@ func TestLoadBaselines(t *testing.T) {
 	}
 }
 
+func TestTwoButtonPlanCounts(t *testing.T) {
+	var count func(Spec) int
+	count = func(spec Spec) int {
+		s, _, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := &plan{suite: s, rng: rand.New(rand.NewPCG(17, 19)), spec: spec, protocol: IsProtocolModel(spec.Baseline)}
+		if p.protocol {
+			p.buildProtocol()
+		} else if spec.mode() == ModeQuality {
+			p.buildQuality()
+		} else {
+			p.buildFingerprint()
+		}
+		return len(p.reqs)
+	}
+	if got := count(Spec{Baseline: "gpt-6.1-sol", Mode: ModeQuality}); got != 12 {
+		t.Fatalf("quality GPT requests = %d, want 12", got)
+	}
+	if got := count(Spec{Baseline: "gpt-6.1-sol", Mode: ModeFingerprint}); got != 525 {
+		t.Fatalf("fingerprint GPT requests = %d, want 525", got)
+	}
+	if got := count(Spec{Baseline: "claude-opus-5-5", Mode: ModeQuality}); got != 9 {
+		t.Fatalf("quality Claude requests = %d, want 9", got)
+	}
+	if got := count(Spec{Baseline: "claude-opus-5-5", Mode: ModeFingerprint}); got != 408 {
+		t.Fatalf("fingerprint Claude requests = %d, want 408", got)
+	}
+}
+
 func TestNormalizeAndFold(t *testing.T) {
 	cases := map[string]string{"Týr.": "tyr", " Wisława Szymborska ": "wislawaszymborska", "Comté": "comte", "木漏れ日。": "木漏れ日", "🦦": "🦦", "Straße": "strasse"}
 	for in, want := range cases {

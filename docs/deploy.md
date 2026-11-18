@@ -23,9 +23,9 @@
 - **打真实上游的实测**：`go test` 加 `-count=1`，否则命中缓存、重放旧结果。
 - **官方对照组**：本机 Magpie 网关 `http://127.0.0.1:3425/v1`，key `magpie`；`codex/*` 走用户自己的官方账号，用于模型检测的官方样本。Claude 暂无免费对照：渠道 18（Anthropic 官方 API）余额不足；渠道 12（OpenRouter）锁定 `provider.only: ["anthropic"]` 可对照模型行为，但贵，用前先报预计花费。
 
-## 模型检测伪装配置
+## 模型检测
 
-`/etc/lingshu/probe-disguise.json`（root:lingshu，0640），`/etc/lingshu/env` 里设 `LINGSHU_PROBE_DISGUISE_FILE=/etc/lingshu/probe-disguise.json`。内容是真实客户端的请求头、系统提示和工具（客户端原文，不进仓库），由 WSL 上 `references/probe-sites/build_disguise.py` 从抓包生成。更新：抓新版客户端的请求 → 重新生成 → 传到服务器覆盖 → `systemctl restart lingshu`（日志里有“模型检测伪装配置已加载”）。文件缺失或格式不对时服务照常启动，检测退回简版伪装并打一条警告。
+新建渠道质量测试和模型指纹辨别使用渠道已授权的标准 API，无需配置客户端模板。GPT 质量测试需要 Responses 地址，GPT 指纹需要 Chat 地址；Claude 两种检测都需要 Messages 地址。渠道拒绝标准 API 请求时，使用渠道提供的授权 API 或选其他渠道。发布前按 `AGENTS.md` 单独检查 `probe_runs` 的运行中记录。
 
 ## 连接、安装和隔离
 
