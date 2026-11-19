@@ -421,9 +421,10 @@ func validToolUseID(id string) bool {
 }
 
 // defaultMaxTokens 是客户端没给 max_output_tokens 时的兜底。
-const defaultMaxTokens = 8192
+// 32000 对齐真实 Claude Code 客户端：服务端伪装配置（build_disguise.py 由抓包生成）里写的是 max_tokens: 32000。
+const defaultMaxTokens = 32000
 
-// maxTokens 取上游的 max_tokens，客户端没给就用 8192；给了但不像话就报错。
+// maxTokens 取上游的 max_tokens，客户端没给就用 32000；给了但不像话就报错。
 func (p *preparer) maxTokens() (int, error) {
 	raw, ok := p.body["max_output_tokens"]
 	if !ok {

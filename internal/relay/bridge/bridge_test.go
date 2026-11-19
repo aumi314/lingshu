@@ -61,8 +61,16 @@ func TestPrepareInstructionsAndMessages(t *testing.T) {
 	if body["stream"] != true {
 		t.Errorf("上游必须流式")
 	}
-	if body["max_tokens"].(float64) != 8192 {
+	if body["max_tokens"].(float64) != 32000 {
 		t.Errorf("max_tokens 兜底不对: %v", body["max_tokens"])
+	}
+}
+
+// 客户端显式给的输出上限原样透传，不被兜底值覆盖。
+func TestPrepareExplicitMaxTokens(t *testing.T) {
+	body := prepareBody(t, `{"model":"gpt","input":"hello","max_output_tokens":4096}`)
+	if body["max_tokens"].(float64) != 4096 {
+		t.Errorf("max_tokens 没按显式值透传: %v", body["max_tokens"])
 	}
 }
 

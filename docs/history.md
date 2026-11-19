@@ -776,6 +776,11 @@ DMIT 模型 ID 1 `deepseek-v4.1-flash` 在保留周末谷价的基础上补齐 U
 - #114：#113 上线后实测检测 102（aresai）发现中转还会拦故障词、长串 a 探针和 “Ignore earlier rules…”（403 policy_blocked）。改判定不换题：单个 403 记“被中转拦截，没测成”，分词按其余探针比对（至少三分之二），指令层级只判测成的那题。
 - 运维：本机出口 IP 就是 DMIT，sshd 按来源惩罚会连带拒绝；主连接要 `setsid` 起（`deploy.md`「运维速查」）。
 
+## 2026-11-19：Codex → Claude 转接实测与两处修正（#116）
+
+- 实测：本地灵枢只配大王 claude（清空 Responses 地址强制走转接）+ 真实 Codex 0.170.0，两轮改 bug、写测试、resume 续接全部走通；记录代理比对转接后的上游请求，去掉 cache_control 后 system、tools 和历史消息逐字一致，断点位置正确。大王 Kiro 线路每轮少报约 3000 缓存命中、每个请求固定多约 5000 token 输入、回复末尾带零宽字符，属上游行为。
+- 修正：Codex 不传 `max_output_tokens`，Responses → Messages 的 `max_tokens` 兜底从 8192 改 32000（对齐抓包里的 Claude Code），高强度请求不会再让思考吃满整个上限；桥接请求被渠道按客户端类型 403 时不标 key 失效、不记渠道健康、跳过该渠道剩余 key 且不占重试，避免只收 Claude Code 的渠道被 Codex 连累 30 分钟。验收：新增 / 更新 4 项测试——桥接 403 换兜底渠道且原 key 仍可用、同渠道多 key 只收到一次请求、原生 Messages 403 仍标失效、默认 32000 且显式值透传；`gofmt -l` 无输出，`go vet ./...` 通过，`go test -p 1 -count=1 ./...` 全绿（api 41.5s、relay 70.8s、store 11.4s）。
+
 ## 被取代的模型检测决策原文（2026-11-06～11-11，2026-11-18 移出 decisions）
 
 两个按钮上线（#103、#107）后，`decisions.md`「模型检测」只保留现行细则；下面是移出时的原文，供追溯（其中快速 / 完整档、页面第一版、伪装初版的代价和注入口径已被取代）。
