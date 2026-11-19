@@ -17,11 +17,15 @@
   ssh -i ~/.ssh/dmit_lax_ed25519 -o IdentitiesOnly=yes -o ControlMaster=yes -o ControlPath=/tmp/dmit-ctl -o ControlPersist=60m -fN root@136.175.178.126
   ```
 
+  - 从 Claude Code 里建主连接要在命令前加 `setsid`，否则工具调用一结束主连接就被清掉，下一条命令不带私钥会报 `Permission denied (publickey)`。
+  - 本机 WSL 的出口 IP 就是 136.175.178.126（流量走 DMIT 上的代理），SSH 看到的来源就是服务器自己。服务器 OpenSSH 10.2 默认按来源 IP 惩罚，经这个代理连它的所有连接共用一个来源，谁连得太频繁或认证失败，大家一起被拒，表现为握手阶段 `kex_exchange_identification: Connection closed`，不写日志。别反复重试（每次都会延长）；急用可以经另一台服务器跳一下：`ssh -J ArchDmit …`（ArchDmit 是 45.59.187.63:222，上面没有灵枢）。2026-11-18 晚遇到过一次，约半小时后自行恢复。
+
 - **线上数据库**：`docker exec lingshu-postgres psql -U lingshu -d lingshu`（改数据前遵守 `AGENTS.md`「运维约定」）。
 - **临时调管理接口**：在 `sessions` 插一条记录（`token_hash` 为随机 token 的 SHA-256，`user_id = 1`，过期时间设短），请求带 Cookie `lingshu_session=<token>`，用完立即删除并确认删掉。
 - **本地测试库**：`LINGSHU_TEST_DATABASE_URL='postgres://lingshu:lingshu_dev@127.0.0.1:55432/lingshu_test?sslmode=disable' go test -p 1 ./...`（`make db-up` 起容器；测试会重建该库的 public schema）。
 - **前端构建 / 浏览器回归**：WSL 系统自带 Node 18，新版 Vite 跑不起来（`styleText` 导出报错），先 `export PATH=$HOME/.nvm/versions/node/v22.22.3/bin:$PATH`，换了 Node 版本要删掉 `web/node_modules` 重装；`npm run build` 会清空 `web/dist/`，提交前确认没把 `web/dist/.gitkeep` 的删除带进去。
 - **打真实上游的实测**：`go test` 加 `-count=1`，否则命中缓存、重放旧结果。
+- **手动测 GPT 渠道**：`scripts/probe/gpt_channel_check.py`（注入、推理、缓存、大海捞针）和 `gpt_multiturn.py`（14 轮约 19 万 token 的长上下文保真）放到 DMIT 的 `/root/lingshu-probe/scripts/probe/` 跑，key 从数据库读、不打印，结果逐个请求落盘可续跑；会花渠道余额，开跑前估算。
 - **官方对照组**：本机 Magpie 网关 `http://127.0.0.1:3425/v1`，key `magpie`；`codex/*` 走用户自己的官方账号，用于模型检测的官方样本。Claude 没有免费的官方对照：渠道 18（Anthropic 官方 API）余额不足；渠道 12（OpenRouter）锁定 `provider.only: ["anthropic"]` 可对照模型行为，但贵，用前先报预计花费；kirisame（渠道 23，满血号池）可以采样本（`scripts/probe/probe.py` 的请求头能过它的 Claude Code 校验），但它不是官方，用前要和官方样本交叉验证（`docs/research/claude-probe.md` 第九节）。
 
 ## 模型检测伪装配置

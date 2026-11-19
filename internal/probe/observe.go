@@ -18,7 +18,7 @@ func observe(calls, tokenCalls, anchorCalls []Call, base *Baseline, sessionNeare
 		}
 	}
 
-	// 注入：最短的基准请求（"Reply with exactly: ok"）的输入 token；直连官方 API 只有十几个，Codex 号池会带上 Codex 指令
+	// 注入：最短的基准请求（一道加法题）的输入 token；直连官方 API 只有十几个，Codex 号池会带上 Codex 指令
 	if len(tokenCalls) > 0 && tokenCalls[0].UsageReported {
 		anchor := tokenCalls[0].InputTokens
 		it := Item{Key: "injection", Title: "注入", Details: map[string]any{"anchor_tokens": anchor}}
@@ -57,6 +57,34 @@ func observe(calls, tokenCalls, anchorCalls []Call, base *Baseline, sessionNeare
 			it.Summary += fmt.Sprintf("；另有 %d / %d 个短请求多出约 %d 个输入 token，这部分也会计费", len(extra), short, extra[len(extra)/2])
 		}
 		out = append(out, it)
+	}
+
+	// 缓存计数（只看 GPT）：OpenAI 按 128 token 一块命中缓存，上游原样报的缓存数都是 128 的整数倍。
+	// 2026-11-19 真实流量：pikaqiu 99.4% 是整数倍，aresai 1%（按“上一轮全部输入”自己算），超超 30%（混池）
+	if base != nil {
+		cached, odd := 0, 0
+		for _, c := range ok {
+			if c.CachedTokens > 0 {
+				cached++
+				if c.CachedTokens%128 != 0 {
+					odd++
+				}
+			}
+		}
+		it := Item{Key: "cache", Title: "缓存计数", Details: map[string]any{"cached_calls": cached, "not_multiple_of_128": odd}}
+		switch {
+		case cached >= 2 && odd*2 >= cached:
+			it.Status, it.Summary = Warn, fmt.Sprintf("%d / %d 个命中缓存的请求，缓存数不是 128 的整数倍：OpenAI 按 128 token 一块命中，这些数字是中转自己算的，后台的缓存率不能反映上游真实情况", odd, cached)
+		case cached >= 4 && odd*5 >= cached:
+			it.Status, it.Summary = Warn, fmt.Sprintf("%d / %d 个命中缓存的请求，缓存数不是 128 的整数倍：号池里有部分上游的缓存数是中转自己算的", odd, cached)
+		case cached > 0 && odd == 0:
+			it.Status, it.Summary = Pass, fmt.Sprintf("%d 个命中缓存的请求，缓存数都是 128 的整数倍，和上游原样一致", cached)
+		case cached > 0:
+			it.Status, it.Summary = Info, fmt.Sprintf("%d / %d 个命中缓存的请求，缓存数不是 128 的整数倍，数量太少，仅供参考", odd, cached)
+		}
+		if cached > 0 {
+			out = append(out, it)
+		}
 	}
 
 	// 不可见字符：零宽空格这类，可能是上游加的溯源水印或篡改
