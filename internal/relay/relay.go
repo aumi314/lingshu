@@ -436,6 +436,8 @@ type failure struct {
 	body   []byte
 	reason string // 写进日志的简短原因
 	msg    string // 没有上游原始响应时，返回给客户端的说明
+
+	bridged403 bool // 桥接请求被渠道按客户端类型拒绝：跳到下一个渠道，不标 key 失效、不占重试
 }
 
 func (f *failure) write(w http.ResponseWriter, proto usage.Protocol) {
@@ -518,6 +520,13 @@ func (h *Handler) attemptAll(w http.ResponseWriter, r *http.Request, c *call, re
 		reasons = append(reasons, route.ChannelName+": "+f.reason)
 		c.log.FailedChannelIDs = append(c.log.FailedChannelIDs, route.ChannelID)
 		c.log.FailedKeyIDs = append(c.log.FailedKeyIDs, route.KeyID)
+		if f.bridged403 {
+			// 这个渠道只认原生客户端，同渠道其他 key 也会被同样的检查挡住：整条渠道跳过。
+			// 不占重试次数——是客户端类型不匹配，不是渠道故障。
+			skip[route.ChannelID] = true
+			slog.Warn("桥接请求被渠道拒绝，换下一个", "request_id", c.log.RequestID, "channel", route.ChannelName, "reason", f.reason)
+			continue
+		}
 		if router.KeyFailure(f.status) {
 			keysTried[route.ChannelID]++
 			slog.Warn("key 失败，换下一把", "request_id", c.log.RequestID, "channel", route.ChannelName, "key_id", route.KeyID, "reason", f.reason)
@@ -699,6 +708,12 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request, c *call, route
 			retry, outcome = true, router.Failure
 		}
 		if router.KeyFailure(resp.StatusCode) {
+			if resp.StatusCode == http.StatusForbidden && (converted != nil || reverse != nil) {
+				// 桥接请求的 403 是渠道只收某种原生客户端（例如只认 Claude Code），不是这把 key 的问题。
+				// 不标失效、不记渠道健康，交给 attemptAll 整条渠道跳过，免得把正常 key 停 30 分钟。
+				return &failure{status: resp.StatusCode, header: resp.Header.Clone(), body: errBody,
+					reason: fmt.Sprintf("HTTP %d %s", resp.StatusCode, truncate(string(errBody), 200)), bridged403: true}
+			}
 			// 限流、失效、欠费只记在这把 key 上，不拖累整个渠道
 			h.Keys.Fail(route.KeyID, resp.StatusCode, retryAfter(resp.Header), fmt.Sprintf("HTTP %d %s", resp.StatusCode, truncate(string(errBody), 120)))
 		} else {
