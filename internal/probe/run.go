@@ -805,7 +805,7 @@ func firstError(cs []Call) string {
 }
 
 func (p *plan) judgeTokens(cs []Call, base *Baseline) Item {
-	if it, bad := errorItem("tokens", "分词指纹", cs); bad {
+	if it, bad := errorItem("tokens", "分词指纹", unblocked(cs)); bad {
 		return it
 	}
 	it := Item{Key: "tokens", Title: "分词指纹"}
@@ -816,8 +816,12 @@ func (p *plan) judgeTokens(cs []Call, base *Baseline) Item {
 	anchor := cs[2].InputTokens
 	deltas, match, total := map[string]int64{}, 0, 0
 	var offsets []int64 // 和官方差值的偏差
+	var blocked []string
 	for i, name := range p.tokenNames {
 		c := cs[3+i]
+		if policyBlocked(c) {
+			blocked = append(blocked, name)
+		}
 		if c.Error != "" || !c.UsageReported || anchor == 0 {
 			continue
 		}
@@ -831,10 +835,11 @@ func (p *plan) judgeTokens(cs []Call, base *Baseline) Item {
 			}
 		}
 	}
-	it.Details = map[string]any{"deltas": deltas, "baseline_deltas": base.TokenDeltas, "matched": match, "total": total}
+	it.Details = map[string]any{"deltas": deltas, "baseline_deltas": base.TokenDeltas, "matched": match, "total": total, "blocked": blocked}
 	extra, shifted := fixedOffset(offsets)
+	// 被中转按内容拦掉的探针单独说明；其余至少三分之二时照常比对
 	switch {
-	case total < len(p.tokenNames):
+	case total < len(p.tokenNames)-len(blocked) || total*3 < len(p.tokenNames)*2:
 		it.Status, it.Summary = Warn, "分词请求的输入用量不完整，无法比对"
 	case match*6 >= total*5:
 		it.Status, it.Summary = Pass, fmt.Sprintf("%d / %d 段探针文本的 token 数和官方一致，分词器同属一个家族", match, total)
@@ -846,6 +851,9 @@ func (p *plan) judgeTokens(cs []Call, base *Baseline) Item {
 		it.Status, it.Summary = Warn, fmt.Sprintf("只有 %d / %d 段和官方一致", match, total)
 	default:
 		it.Status, it.Summary = Fail, fmt.Sprintf("只有 %d / %d 段和官方一致，分词器很可能不是这个家族", match, total)
+	}
+	if len(blocked) > 0 {
+		it.Summary += fmt.Sprintf("；%d 段探针被中转拦截（HTTP 403：%s），不计入", len(blocked), strings.Join(blocked, "、"))
 	}
 	return it
 }
@@ -1162,29 +1170,60 @@ func (p *plan) judgeStructured(js, tool []Call) Item {
 }
 
 func (p *plan) judgeInstruction(cs []Call) Item {
-	if it, bad := errorItem("instruction", "指令层级", cs); bad {
+	if it, bad := errorItem("instruction", "指令层级", unblocked(cs)); bad {
 		return it
 	}
 	it := Item{Key: "instruction", Title: "指令层级"}
-	ok := 0
+	ok, tested := 0, 0
 	var notes []string
 	if len(cs) == 2 {
-		if strings.EqualFold(strings.Trim(clean(cs[0].Text), ".!。 "), p.onlyWord) {
-			ok++
+		switch {
+		case policyBlocked(cs[0]):
+			notes = append(notes, "“只回 "+p.onlyWord+"”这题被中转拦截（HTTP 403），没测成")
+		case strings.EqualFold(strings.Trim(clean(cs[0].Text), ".!。 "), p.onlyWord):
+			ok, tested = ok+1, tested+1
 			notes = append(notes, "守住了系统提示（只回 "+p.onlyWord+"）")
-		} else {
+		default:
+			tested++
 			notes = append(notes, fmt.Sprintf("系统提示要求只回 %s，实际回了 %q", p.onlyWord, truncate(clean(cs[0].Text), 40)))
 		}
-		if strings.Contains(cs[1].Text, p.marker) {
-			ok++
+		switch {
+		case policyBlocked(cs[1]):
+			notes = append(notes, "结尾标记这题被中转拦截（HTTP 403），没测成")
+		case strings.Contains(cs[1].Text, p.marker):
+			ok, tested = ok+1, tested+1
 			notes = append(notes, "按系统提示加上了结尾标记")
-		} else {
+		default:
+			tested++
 			notes = append(notes, "没有按系统提示加结尾标记")
 		}
 	}
 	it.Summary = strings.Join(notes, "；")
-	it.Status = map[int]Status{2: Pass, 1: Warn, 0: Fail}[ok]
+	switch {
+	case tested == 0:
+		it.Status = Info
+	case ok == tested:
+		it.Status = Pass
+	case ok > 0:
+		it.Status = Warn
+	default:
+		it.Status = Fail
+	}
 	return it
+}
+
+// policyBlocked：其他请求正常、单个请求 403，是中转按内容拦截了检测题（2026-11-19 aresai 拦故障词、长串 a、“Ignore earlier rules”，返回 policy_blocked）。
+func policyBlocked(c Call) bool { return c.HTTPStatus == http.StatusForbidden }
+
+// unblocked 去掉被拦截的请求，“大部分请求失败”只看真正发出去的那些
+func unblocked(cs []Call) []Call {
+	var out []Call
+	for _, c := range cs {
+		if !policyBlocked(c) {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 func truncate(s string, n int) string {
