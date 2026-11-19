@@ -92,19 +92,19 @@ func (p *plan) buildProtocol() {
 	base := bs[p.spec.Baseline] // 有官方样本（OpenRouter 锁定 Anthropic 采的）时，加分词和单词指纹，推理、指令按官方表现判
 	// 各会话一个基准请求：看注入，以及号池里各会话的上游是否一致
 	for sess := range Sessions {
-		p.add(Request{Item: "anchor", Session: sess, Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
+		p.add(Request{Item: "anchor", Session: sess, Prompt: strings.TrimSpace(p.suffix), MaxTokens: 16})
 	}
 	if base != nil && len(base.TokenDeltas) > 0 {
 		// 分词指纹：和 GPT 同一套探针（基准两次、锚点一次、逐个加探针文本），Claude 的分词器和别家不同
-		p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
-		p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
-		p.add(Request{Item: "tokens", Prompt: s.Tokens.Suffix, MaxTokens: 16})
+		p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(p.suffix), MaxTokens: 16})
+		p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(p.suffix), MaxTokens: 16})
+		p.add(Request{Item: "tokens", Prompt: p.suffix, MaxTokens: 16})
 		for name := range s.Tokens.Probes {
 			p.tokenNames = append(p.tokenNames, name)
 		}
 		sort.Strings(p.tokenNames)
 		for _, name := range p.tokenNames {
-			p.add(Request{Item: "tokens", Prompt: s.Tokens.Probes[name] + s.Tokens.Suffix, MaxTokens: 16})
+			p.add(Request{Item: "tokens", Prompt: s.Tokens.Probes[name] + p.suffix, MaxTokens: 16})
 		}
 	}
 	if base != nil && len(base.Answers) > 0 {

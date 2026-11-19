@@ -167,6 +167,9 @@ func Run(ctx context.Context, call Caller, spec Spec, progress Progress) (*Repor
 		return nil, fmt.Errorf("未知检测模式 %q", spec.Mode)
 	}
 	plan := &plan{suite: s, rng: rng, spec: spec, legacy: legacy, protocol: IsProtocolModel(spec.Baseline)}
+	// 基准请求不用固定的 "Reply with exactly: ok"：有中转按关键词拦截这类测活句（2026-11-19 aresai 返回 403 policy_blocked）。
+	// 换成随机加法题不影响分词差值：探针文本和后缀之间隔着 "\n\n"，后缀内容变了差值不变（o200k、cl100k 逐段验证过）。
+	plan.suffix = fmt.Sprintf("\n\nWhat is %d+%d? Answer with the number only.", 10+seed%90, 10+seed/90%90)
 	if plan.protocol {
 		plan.buildProtocol()
 	} else {
@@ -402,6 +405,7 @@ type plan struct {
 	reqs  []Request
 
 	tokenNames  []string
+	suffix      string   // 分词探针和基准请求的结尾问题（每次随机的加法题）
 	fingerprint []string // 本次抽到的单词指纹题
 	pair        *PairSet
 	math        []MathProblem // 下标和请求一一对应（只算推理能力项）
@@ -439,19 +443,19 @@ func (p *plan) spread(r Request) {
 func (p *plan) build() {
 	s := p.suite
 	// 分词指纹：基准两次、锚点一次，再逐个加探针文本
-	p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
-	p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
-	p.add(Request{Item: "tokens", Prompt: s.Tokens.Suffix, MaxTokens: 16})
+	p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(p.suffix), MaxTokens: 16})
+	p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(p.suffix), MaxTokens: 16})
+	p.add(Request{Item: "tokens", Prompt: p.suffix, MaxTokens: 16})
 	for name := range s.Tokens.Probes {
 		p.tokenNames = append(p.tokenNames, name)
 	}
 	sort.Strings(p.tokenNames)
 	for _, name := range p.tokenNames {
-		p.add(Request{Item: "tokens", Prompt: s.Tokens.Probes[name] + s.Tokens.Suffix, MaxTokens: 16})
+		p.add(Request{Item: "tokens", Prompt: s.Tokens.Probes[name] + p.suffix, MaxTokens: 16})
 	}
 	// 其他会话各发一次基准请求：比较各会话上游注入的内容是否一致
 	for sess := 1; sess < Sessions; sess++ {
-		p.add(Request{Item: "anchor", Session: sess, Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
+		p.add(Request{Item: "anchor", Session: sess, Prompt: strings.TrimSpace(p.suffix), MaxTokens: 16})
 	}
 
 	// 单词指纹：从区分作用强的题里随机抽，每题问几次，不推理
@@ -542,20 +546,20 @@ func (p *plan) buildFingerprint() {
 
 func (p *plan) buildQualityTokens() {
 	s := p.suite
-	p.add(Request{Item: "anchor", Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
+	p.add(Request{Item: "anchor", Prompt: strings.TrimSpace(p.suffix), MaxTokens: 16})
 	_, baselines, _ := Load()
 	if base := baselines[p.spec.Baseline]; base == nil || len(base.TokenDeltas) == 0 {
 		return
 	}
 	p.reqs[len(p.reqs)-1].Item = "tokens"
-	p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(s.Tokens.Suffix), MaxTokens: 16})
-	p.add(Request{Item: "tokens", Prompt: s.Tokens.Suffix, MaxTokens: 16})
+	p.add(Request{Item: "tokens", Prompt: strings.TrimSpace(p.suffix), MaxTokens: 16})
+	p.add(Request{Item: "tokens", Prompt: p.suffix, MaxTokens: 16})
 	for name := range s.Tokens.Probes {
 		p.tokenNames = append(p.tokenNames, name)
 	}
 	sort.Strings(p.tokenNames)
 	for _, name := range p.tokenNames {
-		p.add(Request{Item: "tokens", Prompt: s.Tokens.Probes[name] + s.Tokens.Suffix, MaxTokens: 16})
+		p.add(Request{Item: "tokens", Prompt: s.Tokens.Probes[name] + p.suffix, MaxTokens: 16})
 	}
 }
 
@@ -729,7 +733,7 @@ func finalize(r *Report, hint string) {
 	}
 }
 
-// templateBases：完整伪装下官方基准请求（"Reply with exactly: ok"）报的输入 token，按模板 hash 对应（docs/research/model-probe.md、claude-probe.md）。
+// templateBases：完整伪装下官方基准请求（标定时用 "Reply with exactly: ok"；现在换成加法题，多约 8 个 token，在 ±150 容差内）报的输入 token，按模板 hash 对应（docs/research/model-probe.md、claude-probe.md）。
 // 换了伪装模板 hash 就变，要重新标定：GPT 用本机 Magpie 的 codex/*，Claude 在 DMIT 上跑 /root/lingshu-probe/calib_claude.py。
 var templateBases = map[string]int{
 	"62ac38171048": 34212, // claude-code 2.1.281：kirisame 的 Opus / Sonnet 一致，2026-11-17
@@ -1032,38 +1036,82 @@ func (p *plan) judgeReasoning(cs, effort []Call, base *Baseline) Item {
 		return it
 	}
 	it := Item{Key: "reasoning", Title: "推理能力"}
-	correct, rows := 0, []map[string]any{}
+	// 官方在这些难题上从不零推理作答（基线最少 106）；上游完全不报推理 token 时没法据此判断
+	reportsReasoning := false
+	for _, c := range append(append([]Call{}, cs...), effort...) {
+		if c.ReasoningTokens > 0 {
+			reportsReasoning = true
+		}
+	}
+	skipped := func(c Call) bool {
+		return reportsReasoning && c.Error == "" && c.UsageReported && c.ReasoningTokens == 0
+	}
+	correct, answered, expected, zero, untested, rows := 0, 0, 0, 0, 0, []map[string]any{}
 	for i, c := range cs {
 		prob := p.math[i]
+		ref := base.Math[prob.Kind]
+		row := map[string]any{"kind": prob.Kind, "answer": prob.Answer, "got": clean(c.Text), "reasoning_tokens": c.ReasoningTokens,
+			"baseline_reasoning": ref.MedianReasoning, "baseline_correct": fmt.Sprintf("%d/%d", ref.Correct, ref.Runs)}
+		if c.Error != "" {
+			// 单个请求上游报错（402 欠费、5xx 过载）是没测成，不是答错
+			untested++
+			row["error"] = c.Error
+			rows = append(rows, row)
+			continue
+		}
 		got, ok := lastInt(clean(c.Text))
 		right := ok && got == prob.Answer
+		answered++
 		if right {
 			correct++
 		}
-		ref := base.Math[prob.Kind]
-		rows = append(rows, map[string]any{"kind": prob.Kind, "answer": prob.Answer, "got": clean(c.Text), "correct": right,
-			"reasoning_tokens": c.ReasoningTokens, "baseline_reasoning": ref.MedianReasoning, "baseline_correct": fmt.Sprintf("%d/%d", ref.Correct, ref.Runs)})
-	}
-	var low, high int64
-	if len(effort) == 2 {
-		low, high = effort[0].ReasoningTokens, effort[1].ReasoningTokens
-	}
-	it.Details = map[string]any{"problems": rows, "effort_low": low, "effort_high": high}
-	expected := 0
-	for _, prob := range p.math {
-		if ref := base.Math[prob.Kind]; ref.Runs > 0 && ref.Correct*2 > ref.Runs {
+		if ref.Runs > 0 && ref.Correct*2 > ref.Runs {
 			expected++
 		}
+		if skipped(c) {
+			zero++
+		}
+		row["correct"] = right
+		rows = append(rows, row)
 	}
-	notes := []string{fmt.Sprintf("答对 %d / %d（官方样本在同类题上应答对 %d 道）", correct, len(cs), expected)}
+	var low, high int64
+	effortWrong, highWrong := 0, false
+	if len(effort) == 2 {
+		low, high = effort[0].ReasoningTokens, effort[1].ReasoningTokens
+		for i, c := range effort {
+			if got, ok := lastInt(clean(c.Text)); c.Error == "" && (!ok || got != p.effortProb.Answer) {
+				effortWrong++
+				highWrong = highWrong || i == 1
+			}
+		}
+		if skipped(effort[1]) { // low 允许想得很少，只看 high
+			zero++
+		}
+	}
+	it.Details = map[string]any{"problems": rows, "effort_low": low, "effort_high": high, "effort_answer": p.effortProb.Answer, "effort_wrong": effortWrong, "zero_reasoning": zero}
+	notes := []string{fmt.Sprintf("答对 %d / %d（官方样本在同类题上应答对 %d 道）", correct, answered, expected)}
+	if untested > 0 {
+		notes = append(notes, fmt.Sprintf("%d 个请求上游报错没测成，不计入", untested))
+	}
+	if zero > 0 {
+		notes = append([]string{fmt.Sprintf("%d 个难题请求没有推理就直接作答（推理 token 为 0）：推理被跳过，或请求被转给了不思考的模型", zero)}, notes...)
+	}
+	if effortWrong > 0 {
+		notes = append(notes, fmt.Sprintf("推理强度对照题答错 %d / 2", effortWrong))
+	}
+	if !reportsReasoning {
+		notes = append(notes, "上游没有返回推理 token，无法判断是否跳过推理")
+	}
 	if low > 0 || high > 0 {
 		// 只作参考：官方 sol、astra 在这类题上 high 只比 low 多 0–40%（2026-11-07 校准），据此判断推理强度是否生效会误报
 		notes = append(notes, fmt.Sprintf("推理强度 low / high 的推理 token：%d / %d（仅供参考）", low, high))
 	}
 	switch {
+	case zero > 0:
+		it.Status = Fail
 	case correct+1 < expected:
 		it.Status = Fail
-	case correct < expected:
+	case correct < expected || highWrong: // low 允许偶尔算错，high 答错至少要关注
 		it.Status = Warn
 	default:
 		it.Status = Pass

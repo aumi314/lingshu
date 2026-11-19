@@ -39,7 +39,7 @@ func (h *Handler) Probe(ctx context.Context, ch *store.Channel, proto usage.Prot
 		res.Error = "这个渠道没有配置该协议的地址"
 		return res
 	}
-	prompt := "Reply with exactly: ok"
+	prompt := "What is 2+3? Answer with the number only." // 不用 "Reply with exactly: ok"：有中转按关键词拦截这类测活句（aresai 403 policy_blocked）
 	var body map[string]any
 	switch proto {
 	case usage.Chat:

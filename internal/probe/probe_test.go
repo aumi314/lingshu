@@ -137,11 +137,11 @@ func fakeUpstream(t *testing.T, model string, seed uint64) Caller {
 		switch req.Item {
 		case "tokens":
 			c.InputTokens = 4158
-			if req.Prompt == s.Tokens.Suffix {
+			if strings.HasPrefix(req.Prompt, "\n\nWhat is ") { // 后缀是每次随机的加法题
 				c.InputTokens = 4159
 			}
 			for name, text := range s.Tokens.Probes {
-				if req.Prompt == text+s.Tokens.Suffix {
+				if strings.HasPrefix(req.Prompt, text+"\n\nWhat is ") {
 					c.InputTokens = 4159 + int64(b.TokenDeltas[name])
 				}
 			}
@@ -398,11 +398,11 @@ func fakeClaudeAs(t *testing.T, model string, obey bool, seed uint64) Caller {
 		switch req.Item {
 		case "tokens":
 			c.InputTokens = 42
-			if req.Prompt == s.Tokens.Suffix {
+			if strings.HasPrefix(req.Prompt, "\n\nWhat is ") { // 后缀是每次随机的加法题
 				c.InputTokens = 43
 			}
 			for name, text := range s.Tokens.Probes {
-				if req.Prompt == text+s.Tokens.Suffix {
+				if strings.HasPrefix(req.Prompt, text+"\n\nWhat is ") {
 					c.InputTokens = 43 + int64(b.TokenDeltas[name])
 				}
 			}
