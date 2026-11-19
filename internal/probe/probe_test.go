@@ -593,3 +593,53 @@ func TestDisguiseInjectionTemplateBase(t *testing.T) {
 		t.Errorf("没有完整伪装时不改: %+v", got[0])
 	}
 }
+
+// 中转按内容拦掉个别检测题（2026-11-19 aresai：故障词、长串 a、“Ignore earlier rules” 都回 403 policy_blocked）：
+// 被拦的单独写明、不算答错；分词剩下至少三分之二照常比对，不够才记“不完整”。
+func TestBlockedProbesAreUntested(t *testing.T) {
+	_, bs, _ := Load()
+	base := bs["claude-opus-5-5"]
+	p := &plan{onlyWord: "kiwi", marker: "[[END-0001]]"}
+	for name := range base.TokenDeltas {
+		p.tokenNames = append(p.tokenNames, name)
+	}
+	sort.Strings(p.tokenNames)
+	blocked := Call{HTTPStatus: 403, Error: "HTTP 403 policy_blocked"}
+	build := func(bad int, fail Call) []Call {
+		cs := []Call{{InputTokens: 42, UsageReported: true}, {InputTokens: 42, UsageReported: true}, {InputTokens: 43, UsageReported: true}}
+		for i, name := range p.tokenNames {
+			if i < bad {
+				cs = append(cs, fail)
+				continue
+			}
+			cs = append(cs, Call{InputTokens: 43 + int64(base.TokenDeltas[name]), UsageReported: true})
+		}
+		return cs
+	}
+	if it := p.judgeTokens(build(2, blocked), base); it.Status != Pass || !strings.Contains(it.Summary, "2 段探针被中转拦截") {
+		t.Errorf("拦 2 段、其余一致应通过并写明: %+v", it)
+	}
+	if it := p.judgeTokens(build(5, blocked), base); it.Status != Warn || !strings.Contains(it.Summary, "不完整") {
+		t.Errorf("拦掉超过三分之一应记不完整: %+v", it)
+	}
+	if it := p.judgeTokens(build(1, Call{HTTPStatus: 500, Error: "HTTP 500"}), base); it.Status != Warn || !strings.Contains(it.Summary, "不完整") {
+		t.Errorf("非拦截的失败仍记不完整: %+v", it)
+	}
+
+	ok0, ok1 := Call{Text: "kiwi"}, Call{Text: "done [[END-0001]]"}
+	for _, c := range []struct {
+		name string
+		cs   []Call
+		want Status
+		text string
+	}{
+		{"都守住", []Call{ok0, ok1}, Pass, "守住了"},
+		{"拦一题、另一题守住", []Call{blocked, ok1}, Pass, "被中转拦截（HTTP 403），没测成"},
+		{"拦一题、另一题没守住", []Call{blocked, {Text: "done"}}, Fail, "没测成"},
+		{"两题都被拦", []Call{blocked, blocked}, Info, "没测成"},
+	} {
+		if it := p.judgeInstruction(c.cs); it.Status != c.want || !strings.Contains(it.Summary, c.text) || strings.Contains(it.Summary, `""`) {
+			t.Errorf("%s: %+v", c.name, it)
+		}
+	}
+}
