@@ -703,6 +703,47 @@ export default function Channels() {
         okText={t('确定', 'Confirm')}
         width={820}
       >
+        <div
+          data-testid="picked-models"
+          style={{
+            marginBottom: 12,
+            padding: '8px 10px',
+            borderRadius: 6,
+            border: '1px solid rgba(128, 128, 128, 0.2)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {t(`将接入 ${picked.length} 个模型`, `${picked.length} models selected`)}
+            </Typography.Text>
+            {picked.length > 0 && (
+              <Button type="link" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => setPicked([])}>
+                {t('清空', 'Clear')}
+              </Button>
+            )}
+          </div>
+          {picked.length > 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 96, overflowY: 'auto' }}>
+              {picked.map((n) => (
+                <Tag
+                  key={n}
+                  closable
+                  style={{ margin: 0 }}
+                  onClose={(e) => {
+                    e.preventDefault()
+                    setPicked((prev) => prev.filter((item) => item !== n))
+                  }}
+                >
+                  <span className="mono">{n}</span>
+                </Tag>
+              ))}
+            </div>
+          ) : (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {t('未选择模型', 'No models selected')}
+            </Typography.Text>
+          )}
+        </div>
         <Input.Search
           allowClear
           placeholder={t('搜索模型名，例如 claude、gpt-6', 'Search, e.g. claude, gpt-6')}
