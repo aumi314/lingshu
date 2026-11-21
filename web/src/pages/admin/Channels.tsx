@@ -217,8 +217,7 @@ export default function Channels() {
     setFetching(true)
     try {
       const names = await post<string[]>('/api/admin/channels/fetch-models', d)
-      const have = new Set(rows.map((r) => r.upstream))
-      setPicked(names.filter((n) => have.has(n)))
+      setPicked([])
       setModelSearch('')
       setFetched(names)
     } catch (e) {

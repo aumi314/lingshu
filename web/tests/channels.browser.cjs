@@ -120,6 +120,7 @@ const path = require('node:path')
     for (const name of ['openai/gpt-6.1-terra', 'anthropic/claude-fable-5.2']) {
       const choice = picker.locator('label').filter({ hasText: name })
       await choice.getByText('站内已有', { exact: true }).waitFor()
+      assert.equal(await choice.getByRole('checkbox').isChecked(), false)
       await choice.click()
     }
     assert.equal(await picker.locator('label').filter({ hasText: 'provider/unknown' }).getByText('站内已有', { exact: true }).count(), 0)
@@ -131,18 +132,17 @@ const path = require('node:path')
       await picker.waitFor({ state: 'hidden' })
       await drawer.locator('button').filter({ hasText: '从上游拉取模型' }).click()
     }
-    // 取消弹窗不改草稿，确认取消勾选才移除；未拉取到的原有配置保留。
+    // 每次打开都是空选择；取消不改草稿，确定时按当前勾选覆盖；未拉取到的原有配置保留。
     await openPicker()
-    await picker.getByRole('checkbox', { name: /openai\/gpt-6.1-terra/ }).uncheck()
+    assert.deepEqual(await picker.getByRole('checkbox').evaluateAll((boxes) => boxes.filter((box) => box.checked).length), 0)
     await picker.getByRole('button', { name: /取\s*消/ }).click()
     assert.deepEqual(await upstreamNames(), ['gpt-6-sol', 'openai/gpt-6.1-terra', 'anthropic/claude-fable-5.2'])
     await openPicker()
-    await picker.getByRole('checkbox', { name: /openai\/gpt-6.1-terra/ }).uncheck()
+    await picker.getByRole('checkbox', { name: /anthropic\/claude-fable-5.2/ }).check()
     await picker.getByRole('button', { name: /确\s*定/ }).click()
     assert.deepEqual(await upstreamNames(), ['gpt-6-sol', 'anthropic/claude-fable-5.2'])
-    // 全不选也能确认；不会误删列表外的手动配置。
+    // 全不选也能确认，会移除本次拉取到的全部映射；不会误删列表外的手动配置。
     await openPicker()
-    await picker.getByRole('checkbox', { name: /anthropic\/claude-fable-5.2/ }).uncheck()
     await picker.getByRole('button', { name: /确\s*定/ }).click()
     assert.deepEqual(await upstreamNames(), ['gpt-6-sol'])
     // 搜索隐藏的勾选继续保留，新勾选模型仍自动匹配。
