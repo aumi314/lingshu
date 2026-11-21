@@ -11,14 +11,14 @@
 日常要用的几条，细节见后面各节。
 
 - **确认上线**：PR 合并到 main 后，DMIT 的 `lingshu-deploy.timer` 约一分钟内拉取并发布（发布前自动备份）；看 `/opt/lingshu/release.json` 里的 commit。只改 `docs/`、`*.md`、`.github/`、`deploy/`、`scripts/`、`LICENSE` 的提交不发布。
-- **SSH 复用连接**：DMIT 对短时间内重复建连会直接断开，先建一条主连接，后续 `ssh -o ControlPath=/tmp/dmit-ctl root@136.175.178.126 …` 复用；连接过期时删掉 `/tmp/dmit-ctl` 再建。
+- **SSH 复用连接**：DMIT 对短时间内重复建连会直接断开，先建一条主连接，后续 `ssh -o ControlPath=/tmp/dmit-ctl root@45.59.185.30 …` 复用；连接过期时删掉 `/tmp/dmit-ctl` 再建。
 
   ```bash
-  ssh -i ~/.ssh/dmit_lax_ed25519 -o IdentitiesOnly=yes -o ControlMaster=yes -o ControlPath=/tmp/dmit-ctl -o ControlPersist=60m -fN root@136.175.178.126
+  ssh -i ~/.ssh/dmit_lax_ed25519 -o IdentitiesOnly=yes -o ControlMaster=yes -o ControlPath=/tmp/dmit-ctl -o ControlPersist=60m -fN root@45.59.185.30
   ```
 
   - 从 Claude Code 里建主连接要在命令前加 `setsid`，否则工具调用一结束主连接就被清掉，下一条命令不带私钥会报 `Permission denied (publickey)`。
-  - 本机 WSL 的出口 IP 就是 136.175.178.126（流量走 DMIT 上的代理），SSH 看到的来源就是服务器自己。服务器 OpenSSH 10.2 默认按来源 IP 惩罚，经这个代理连它的所有连接共用一个来源，谁连得太频繁或认证失败，大家一起被拒，表现为握手阶段 `kex_exchange_identification: Connection closed`，不写日志。别反复重试（每次都会延长）；急用可以经另一台服务器跳一下：`ssh -J ArchDmit …`（ArchDmit 是 45.59.187.63:222，上面没有灵枢）。2026-11-18 晚遇到过一次，约半小时后自行恢复。
+  - 本机 WSL 的出口 IP 就是 45.59.185.30（流量走 DMIT 上的代理），SSH 看到的来源就是服务器自己。服务器 OpenSSH 10.2 默认按来源 IP 惩罚，经这个代理连它的所有连接共用一个来源，谁连得太频繁或认证失败，大家一起被拒，表现为握手阶段 `kex_exchange_identification: Connection closed`，不写日志。别反复重试（每次都会延长）；急用可以经另一台服务器跳一下：`ssh -J ArchDmit …`（ArchDmit 是 45.59.187.63:222，上面没有灵枢）。2026-11-18 晚遇到过一次，约半小时后自行恢复。
 
 - **线上数据库**：`docker exec lingshu-postgres psql -U lingshu -d lingshu`（改数据前遵守 `AGENTS.md`「运维约定」）。
 - **临时调管理接口**：在 `sessions` 插一条记录（`token_hash` 为随机 token 的 SHA-256，`user_id = 1`，过期时间设短），请求带 Cookie `lingshu_session=<token>`，用完立即删除并确认删掉。
@@ -42,7 +42,7 @@
 从 WSL 连接 DMIT：
 
 ```bash
-ssh -i ~/.ssh/dmit_lax_ed25519 -o IdentitiesOnly=yes root@136.175.178.126
+ssh -i ~/.ssh/dmit_lax_ed25519 -o IdentitiesOnly=yes root@45.59.185.30
 ```
 
 | 用途 | 仓库文件 | DMIT 安装位置 |
